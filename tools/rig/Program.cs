@@ -78,6 +78,7 @@ internal static class Program
             "census" => Census.Run(args),
             "sizes" => Sizes.Run(args),
             "export" => Sizes.Export(args),
+            "clubs" => Clubs.Run(args),
             _ => Usage(),
         };
     }

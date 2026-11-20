@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The soft tissue's size limits and a preview of them (tools/rig/README.md "Sizes", docs/trilogy-hair-plan.md section 12): the
-// game (game/Hair, the clubs' dancers) grows each Breast*/Glute* bone by an amount a, mostly outward from the body and a little
+// clubs' dancers' breasts and glutes (game/Hair, Clubs.cs) grow by an amount a, mostly outward from the body and a little
 // down (the owner, 2026-11-20: grown the same every way they looked rounder and higher). In the mesh's bind frame (x forward,
 // y side, z up; for a glute "out" is -x, the glute bone's own X since its yaw is 180) about the bone's bind place P, a vertex's
 // share on the bone moves to P + G (v - P), G linear:
 //   out' = out (1 + a kOut), y' = y (1 + a kSide), z' = z (1 + a kUp) - a kDrop out'
-// (the last a sag: what stands further out drops more). Shape.Breasts and Shape.Glutes hold the k's; the game's runtime uses
-// the same G conjugated into the bone's frame. This file says how far each rigged body may go and shows it.
+// (the last a sag: what stands further out drops more). Shape.Breasts and Shape.Glutes hold the k's. The game skins a bone
+// with one uniform scale, so this G is baked into the clubs' copies of the bodies (Clubs.cs). This file says how far each
+// rigged body may go and shows it.
 //
 // - `mevr-rig sizes <bodies.pcc> --ref <package> <mesh> [--write]`: per rigged body, `breastMax` = 1 + the largest a at which
 //   its breast peak (the furthest forward point of the vertices weighted to that side's breast bone, grown, from Chest2's rest
@@ -14,8 +15,10 @@
 //   the smaller of the two sides, clamped 1.0..1.8 (for LIAd itself 1.10). The real weights count: a vertex weighted 0.6 moves
 //   0.6 of the bone's growth. With --write it goes into the package's index (<bodies>.json, mevr-rig-index v1, an added field).
 // - `mevr-rig export <package> <mesh> <out.obj> [--breast 1+a] [--glute 1+a] [--breast-shape kOut,kSide,kUp,kDrop]
-//   [--glute-shape ...]`: LOD 0 in its bind pose as OBJ (cm, z up), the growth applied as above; for the previews
-//   (tools/rig/preview-sizes.ps1). The output is the player's game data: local only.
+//   [--glute-shape ...] [--uniform-breast s] [--uniform-glute s] [--pivot-up 5]`: LOD 0 in its bind pose as OBJ (cm, z up), the
+//   growth applied as above, then the game's per-dancer variation on a club body (each bone scaled uniformly by s about a
+//   pivot pivotUp units above it); for the previews (tools/rig/preview-sizes.ps1, preview-clubs.ps1). The output is the
+//   player's game data: local only. The game can't draw this growth (one uniform scale per bone): Clubs.cs bakes it.
 // Uses Legendary Explorer's library (GPL-3.0).
 using System;
 using System.Collections.Generic;
@@ -60,7 +63,7 @@ internal static class Sizes
     }
 
     // One vertex's rest position and its weight on each soft-tissue bone (skeleton index -> 0..1).
-    sealed class Body
+    internal sealed class Body
     {
         public SkeletalMesh Mesh;
         public Vector3[] Pos;
@@ -69,9 +72,9 @@ internal static class Sizes
         public uint[] Index;
     }
 
-    static Body Load(SkeletalMesh mesh)
+    internal static Body Load(SkeletalMesh mesh, int lodIndex = 0)
     {
-        var lod = mesh.LODModels[0];
+        var lod = mesh.LODModels[lodIndex];
         var data = lod.VertexBufferGPUSkin.VertexData;
         var b = new Body
         {
@@ -113,7 +116,7 @@ internal static class Sizes
         Array.FindIndex(mesh.RefSkeleton, b => b.Name.Instanced.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     // The vertex grown: v + sum over soft bones of w (G (v - P) - (v - P)).
-    static Vector3 Grown(Body b, int v, Func<string, (float a, Shape shape, float outSign)> growthOf)
+    internal static Vector3 Grown(Body b, int v, Func<string, (float a, Shape shape, float outSign)> growthOf)
     {
         var p = b.Pos[v];
         if (b.Soft[v] == null) return p;
@@ -239,7 +242,7 @@ internal static class Sizes
     }
 
     // The index in WriteIndex's layout (one entry a line), with the added fields.
-    static void WriteIndex(string path, JsonNode root)
+    internal static void WriteIndex(string path, JsonNode root)
     {
         var o = new StringBuilder();
         o.Append("{\n  \"format\": ").Append(root["format"].ToJsonString()).Append(",\n  \"version\": ").Append(root["version"].ToJsonString())
@@ -288,10 +291,28 @@ internal static class Sizes
             bone.StartsWith("Glute", StringComparison.OrdinalIgnoreCase) ? (glute - 1f, gluteShape, -1f) : (0f, breastShape, 1f);
         var o = new StringBuilder();
         o.Append("# mevr-rig export: ").Append(args[2]).Append(string.Create(CultureInfo.InvariantCulture, $" breast {breast} glute {glute}\n"));
+        // The game's per-dancer variation on a club body (game/Hair): each Breast*/Glute* bone scaled uniformly by s about a pivot
+        // pivotUp units above it (--uniform-breast s --uniform-glute s [--pivot-up 5]), on top of the growth above.
+        float ub = float.Parse(Program.Arg(args, "--uniform-breast") ?? "1", CultureInfo.InvariantCulture);
+        float ug = float.Parse(Program.Arg(args, "--uniform-glute") ?? "1", CultureInfo.InvariantCulture);
+        float pivotUp = float.Parse(Program.Arg(args, "--pivot-up") ?? "5", CultureInfo.InvariantCulture);
         int moved = 0;
         for (int v = 0; v < body.Pos.Length; ++v)
         {
             var p = Grown(body, v, GrowthOf);
+            if ((ub != 1f || ug != 1f) && body.Soft[v] != null)
+            {
+                var d = Vector3.Zero;
+                foreach (var (bone, w) in body.Soft[v])
+                {
+                    string n = body.Mesh.RefSkeleton[bone].Name.Instanced;
+                    float s = n.StartsWith("Breast", StringComparison.OrdinalIgnoreCase) ? ub : n.StartsWith("Glute", StringComparison.OrdinalIgnoreCase) ? ug : 1f;
+                    if (s == 1f) continue;
+                    var pivot = body.Rest[bone].Position + new Vector3(0f, 0f, pivotUp);
+                    d += w * (s - 1f) * (p - pivot);
+                }
+                p += d;
+            }
             if (p != body.Pos[v]) ++moved;
             o.Append(string.Create(CultureInfo.InvariantCulture, $"v {p.X:F4} {p.Y:F4} {p.Z:F4}\n"));
         }

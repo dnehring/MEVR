@@ -434,3 +434,49 @@ else was detected as a skirt (trousers, bare legs, armour: the back comes in, or
 
 Renders: %LOCALAPPDATA%\MEVR\rig\previews\sizes2-LE1.png, -LE2.png, -LE3.png (a bare body and a dress each, beside LIAd),
 sizes2-all.png. The game's own normals were not compared in the game yet: [verify] the fitted dresses' shading in the headset.
+
+## The clubs' bodies baked, and the dress fit draped (2026-11-20, the rig lane of section 12)
+
+**Why baked.** The game skins a bone from a rotation, a translation and one uniform scale (lane D, 2026-11-20), so the growth
+the owner approved on the sizes2 sheets (breasts mostly outward and a little down, glutes outward) can't be made at run time.
+The owner chose to bake it: `mevr-rig clubs` (tools/rig/Clubs.cs, README "Club bodies") writes a copy of each body the clubs'
+women wear into the same package, `<rig minus _MEVR>_CLUB_MEVR`, with the same bones, weights, materials and sockets
+(LEC's `EntryCloner.CloneTree`), every LOD's vertices grown at a middle dancer's amounts (breasts a = 0.7 (breastMax - 1),
+glutes a = 0.12; Sizes.cs' coefficients 1.0, 0.45, 0.15, 0.18 and 1.0, 0.35, 0.3, 0.15), tangent frames turned with the
+surface (Fit.TurnNormals), its body spheres in colliders\<copy>.json. The index's rig entries get `"club"` (the copy's object
+name) and `"clubBreastA"` (the baked breast amount); game/Hair wears the copy on a club NPC and adds only a small uniform
+per-dancer variation (each bone scaled about a pivot 5 units above it). build-bodies.ps1 runs it after `sizes`.
+
+**Which bodies** (tools/rig/club-bodies.py: the census rows in the club levels' packages, game/Hair's `clubLevels`, that keep
+all of their jiggle; the per-mesh list is printed by `--list`):
+
+| game | club copies | left out (armour, a quarter of the jiggle) |
+| --- | --- | --- |
+| ME1 | HMF_ARM_NKDb (Chora's Den, `BIOA_STA60_05women_DSG`; the only female body there) | none |
+| ME2 | HMF_ARM_CTHd (Afterlife's dance floor, bar and dock levels) | HMF_ARM_LGTc, LGTd |
+| ME3 | HMF_ARM_NKDb, CTHb, CTHc, CTHd, ASA_ARM_ARIa (Aria), HMF_ARM_JCKa (Jack) | HMF_ARM_CRBb (Cerberus), MEDa |
+
+ME2's Afterlife holds no other female body: its dancers on the bar and the stage are the art levels' matinee actors
+(`BIOA_DenOfSin_Strippers_NoCam_A`, `biostage_omghub.ST_omghub_stripper_mesh` are stage meshes, not bodies); the bodies they
+wear are CTHd. Baked amounts: NKDb breasts a 0.456 (breastMax 1.652), CTHd 0.531 (1.759), CTHc 0.444 (1.635), CTHb 0.214
+(1.306), ARIa 0.114 (1.163), JCKa 0.464 (1.663). Packages before and after (the drape and the copies): LE1 7.69 -> 7.84 MB,
+LE2 14.75 -> 14.94 MB, LE3 22.58 -> 24.09 MB.
+
+**The dress's pointed glutes** (the owner on sizes2, ME3 CTHc and ME2 CTHd: "the glutes look pointed"). Measured on ME3 CTHc's
+back centre (|y| < 2.5 cm, x of the vertex rows): the first fit put the glutes' peak at -12.9 cm (z 95), then -11.5 (91),
+-10.6 (87), -10.9 (82): the fabric went in under the glutes and out again. Two causes: each slice's own middle (the hull's
+front-to-back centre) jumps at the crotch, where a slice becomes two thighs, so radii from it bent the surface there; and the
+ease grew downward (0.5 cm at the glutes to 2.5 cm 25 cm under) while the body's hull came in, which made a dip followed by a
+rise. The fix (tools/rig/Fit.cs `Drape`): radii from one axis (the reference's middle at the glutes) for the whole band; per
+angle (5-degree bins) the target radius k hull + ease, bridged under the glutes' widest point by its upper envelope (the cloth
+hangs from the peak toward the thighs, never into the fold), then smoothed along the height (a Gaussian of 3 cm); the band
+fades in over 12 cm above (13 cm above to 1 cm above the peak, was 10 to 3). CTHc's back centre now: -12.7 (95), -12.6, -12.5,
+-12.3 (82), -12.1 (75), -11.6 (70), -11.2 (63): a round top and a straight drape. The same 20 skirts are fitted (CTHc, CTHd,
+CTHg and their `_old` versions in all three games, ME2's ASA_ARM_CTHa), largest moves 1.5-5.4 cm. Every woman in such a dress
+gets the new fit, not only the dancers.
+
+Renders (local only): %LOCALAPPDATA%\MEVR\rig\previews\sizes3-LE1.png, -LE2.png, -LE3.png, sizes3-all.png (tools/rig/
+preview-clubs.ps1): per game an underwear body and a dress, LIAd, the game's mesh, the club copy exported from the package as
+the game will draw it, and the copy with the strongest variation (breasts x1.06, glutes x1.03 about a pivot 5 units up). ME1's
+CTHc and ME2's NKDa aren't worn in a club: their columns are the rig with the same growth. [verify] in the headset: the club
+copies' shading and the dresses' fit in motion.

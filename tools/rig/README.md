@@ -100,7 +100,8 @@ Sizes and times (2026-11-19): ME1 38 bodies 7.5 MB, ME2 80 of 101 14.4 MB, ME3 1
 
 ## Sizes (the clubs' dancers)
 
-The game grows a dancer's breasts and glutes (game/Hair, docs/trilogy-hair-plan.md section 12) by an amount `a` per region,
+A dancer's breasts and glutes (game/Hair, docs/trilogy-hair-plan.md section 12; baked into the clubs' copies of the bodies,
+"Club bodies" below: the game can't make this growth itself) grow by an amount `a` per region,
 mostly outward from the body and a little down (`Sizes.cs`; the owner, 2026-11-20: grown the same every way they looked rounder
 and higher). In the mesh's bind frame (x forward, y side, z up; "out" is +x for a breast, -x for a glute) about the bone's bind
 place P, a vertex's share on the bone moves to P + G (v - P):
@@ -132,16 +133,49 @@ shares the skeleton) by `Fit.cs`:
 
 - **A skirt** when its back comes in less than 2.5 cm over the 12 cm under the glutes' widest point (the reference's height),
   is closed in the middle 24 cm under it, and has no second surface inside (legs modelled under a coat: left alone).
-- **The fit**: on the back half (the angle from straight back under 70 degrees, fading out at 110), from 10 cm above the
-  glutes' widest point to 38 cm under it (fading in over the top 7 cm and out over the bottom 16: the hem and the front are the
-  game's), each vertex moves along the line from the slice's middle onto the reference's convex hull at that height (the shape
-  a cloth stretched round the hips and both thighs takes), scaled by the hips' width ratio, plus 0.5 cm of ease at the glutes
-  growing to 2.5 cm 25 cm under them; at most 6 cm, never a vertex more than 8 cm from that shape (an arm, a hand). Every LOD;
-  each moved vertex's tangent frame turned with its surface's normal, so the game's shading follows. Baked before the bones
-  are placed, so the glute bone and region sit on the fitted shape.
+- **The fit**: on the back half (the angle from straight back under 70 degrees, fading out at 110), from 13 cm above the
+  glutes' widest point to 38 cm under it (fading in over the top 12 cm and out over the bottom 16: the hem and the front are
+  the game's), each vertex moves along the line from one axis (the reference's middle front to back at the glutes) onto the
+  **draped shape** at that angle and height: the reference's convex hull (the shape a cloth stretched round the hips and both
+  thighs takes) scaled by the hips' width ratio, plus 0.5 cm of ease at the glutes growing to 2.5 cm 25 cm under them, then
+  bridged under the glutes' widest point (per angle the upper envelope of that radius below the peak: the cloth hangs from the
+  glutes toward the thighs, never into the fold under them) and smoothed along the height (a Gaussian, 3 cm). At most 6 cm,
+  never a vertex more than 8 cm from that shape (an arm, a hand). Every LOD; each moved vertex's tangent frame turned with its
+  surface's normal, so the game's shading follows. Baked before the bones are placed, so the glute bone and region sit on the
+  fitted shape.
+- **Why the drape** (the owner, 2026-11-20, of the first fit on ME3 CTHc and ME2 CTHd: "the glutes look pointed"): the first fit
+  followed the hull slice by slice from each slice's own middle, with the ease growing downward, so the fabric went in under the
+  glutes and out again (ME3 CTHc's back centre: -12.9 cm at z 95, -10.6 at 87, -10.9 at 82) and each slice's middle jumped at
+  the crotch; the glutes' peak read as a point. Drape: -12.7 at 95, then -12.6, -12.5, -12.3, -12.1 down to the hem's -11.2.
 - The build log says per step `fit: fitted under the glutes, ...` or `fit: not fitted, <why>`. Fitted on 2026-11-20: CTHc,
   CTHd and CTHg (and their `_old` versions) in all three games, and ME2's ASA_ARM_CTHa (Liara's dress in the cabin): 20 rigs.
   Every woman wearing one of those dresses gets the fitted shape, not only the dancers.
+
+## Club bodies (the dancers' shape, baked)
+
+The game skins a bone from a rotation, a translation and one uniform scale, so the growth above (more outward than sideways, a
+sag) can't be made at run time. `Clubs.cs` bakes it into a copy of each body the clubs' women wear, beside the rig in the same
+package:
+
+    python tools\rig\club-bodies.py LE3 --list       # which rigs: in a club level's packages, all of their jiggle kept
+    mevr-rig clubs <bodies.pcc> --names <rig>,<rig>... [--middle 0.7] [--glute 0.12]
+
+- **Which bodies**: every rigged body the census finds in a club level's packages (game/Hair's `clubLevels`: ME1 Chora's Den
+  `bioa_sta60_05`, ME2 Afterlife `biod_omghub_2*`, the VIP room and the bars, ME3 Purgatory `biod_cithub_wardsflux*`,
+  `bioa_cithub_afterlife`, Omega's Afterlife `biod_omg004_9*`) that keeps all of its jiggle (no armour type, no `bodyJiggle`
+  share under 1: Cerberus armour, a light or medium armour set stay out). `club-bodies.py` holds a copy of both lists.
+- **The copy**: `<rig minus _MEVR>_CLUB_MEVR` (e.g. HMF_ARM_NKDb_MDL_CLUB_MEVR): the same bones, weights, materials and
+  sockets; every LOD's vertices grown by the formula above at a middle dancer's amounts (breasts a = 0.7 (breastMax - 1),
+  glutes a = 0.12), the shading turned with the surface, a skirt's fit kept; its body spheres in `colliders\<copy>.json`.
+- **The index**: the rig's entries get `"club": "<copy>"` and `"clubBreastA": <a baked>` beside `breastMax`. The game wears
+  the copy on a club NPC and adds only a small uniform per-dancer variation on top (each Breast*/Glute* bone scaled about a
+  pivot 5 units above it).
+- build-bodies.ps1 runs it after `sizes` (it needs breastMax). Pictures of what the game will draw:
+
+      tools\rig\preview-clubs.ps1        # %LOCALAPPDATA%\MEVR\rig\previews\sizes3-<GAME>.png, sizes3-all.png
+
+  per game an underwear body and a dress: LIAd, the game's mesh, the club copy exported from the package, and the copy with
+  the strongest variation (`mevr-rig export ... --uniform-breast 1.06 --uniform-glute 1.03 [--pivot-up 5]`).
 
 ## Body spheres (the hair's collision with the body)
 

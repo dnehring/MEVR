@@ -12,10 +12,13 @@
 // trousers and bare legs aren't, nor a body with a second surface inside the skirt (legs modelled under it: a coat).
 //
 // A skirt's vertex on the back half (the angle from straight back under 70 degrees, fading to nothing at 110) in the band from
-// 10 cm above the glutes' widest point to 38 cm under it moves along the line from the slice's middle to the reference's hull
-// at that angle, scaled by the hips' width ratio, plus some ease (0.5 cm at the glutes to 2.5 cm 25 cm under them: never
-// skin-tight); the band fades in over the top 7 cm and out over the bottom 16 (the hem and the front are the game's). A move
-// is at most 6 cm, and a vertex further than 8 cm from the fitted shape (an arm, a hand, a belt's loop) isn't touched.
+// 13 cm above the glutes' widest point to 38 cm under it moves along the line from one axis (the reference's middle front to
+// back at the glutes) onto the draped shape at that angle and height (Drape): the reference's hull scaled by the hips' width
+// ratio, plus some ease (0.5 cm at the glutes to 2.5 cm 25 cm under them: never skin-tight), bridged under the glutes' widest
+// point (the cloth hangs from it toward the thigh, never into the fold and out again) and smoothed along the height, so the
+// glutes are a round curve under the fabric, not a point (the owner, 2026-11-20, of the first fit); the band fades in over the
+// top 12 cm and out over the bottom 16 (the hem and the front are the game's). A move is at most 6 cm, and a vertex further
+// than 8 cm from the fitted shape (an arm, a hand, a belt's loop) isn't touched.
 // Uses Legendary Explorer's library (GPL-3.0). Reads the player's game data; writes nothing of it.
 using System;
 using System.Collections.Generic;
@@ -29,7 +32,7 @@ internal static class Fit
 {
     const float MaxY = 24f;          // a slice's points further out are arms and hands
     const float StraightCm = 2.5f;   // a back that comes in less than this over 12 cm under the glutes runs straight down
-    const float BandTop = 10f, FullTop = 3f, FullBottom = -22f, BandBottom = -38f;  // cm from the glutes' widest point
+    const float BandTop = 13f, FullTop = 1f, FullBottom = -22f, BandBottom = -38f;  // cm from the glutes' widest point
     const float MaxMove = 6f, Reach = 8f;
 
     internal sealed class Slice
@@ -44,8 +47,124 @@ internal static class Fit
     public sealed class Profile
     {
         public float ZGlute;
+        public float Cx;   // the middle front to back at the glutes: one axis for the whole band (a slice's own middle jumps at the crotch)
         public Dictionary<int, Slice> Slices = new();
         internal Slice At(float z) => Slices.TryGetValue((int)MathF.Round(z), out var s) ? s : null;
+        internal Drape Drape;
+    }
+
+    // The fitted shape a cloth takes (the owner, 2026-11-20: the first fit followed the bare body's hull slice by slice, plus an
+    // ease that grew downward, so the fabric dipped into the fold under the glutes and came out again below it, and their peak
+    // read as a point): per angle round the band's axis (bins of DrapeBinDeg from straight back), the reference hull's radius
+    // per centimetre of height (Raw); for a skirt, k times it plus the ease, bridged below the glutes' widest point (the cloth
+    // hangs from it along the tangent to the thigh: the upper envelope of r(z) under the peak, never into the fold or out again)
+    // and low-passed along the height (a Gaussian of DrapeSigma cm), so the curve is round at the top and smooth into the drop.
+    internal sealed class Drape
+    {
+        public int Z0;
+        public float ZGlute;
+        public float[,] Raw;   // [bin, z - Z0]: the reference hull's radius
+        public float[,] R;     // the fitted target (Fitted)
+
+        public float Radius(float angleDeg, float z)
+        {
+            int bins = R.GetLength(0), heights = R.GetLength(1);
+            float b = Math.Clamp((angleDeg + DrapeSpanDeg) / DrapeBinDeg, 0f, bins - 1.001f);
+            float h = Math.Clamp(z - Z0, 0f, heights - 1.001f);
+            int b0 = (int)b, h0 = (int)h;
+            float fb = b - b0, fh = h - h0;
+            float r00 = R[b0, h0], r01 = R[b0, h0 + 1], r10 = R[b0 + 1, h0], r11 = R[b0 + 1, h0 + 1];
+            return (r00 * (1 - fh) + r01 * fh) * (1 - fb) + (r10 * (1 - fh) + r11 * fh) * fb;
+        }
+
+        // The target for hips k times the reference's: k Raw + Ease, enveloped under the peak, smoothed.
+        public Drape Fitted(float k)
+        {
+            int bins = Raw.GetLength(0), heights = Raw.GetLength(1);
+            var r = new float[bins, heights];
+            var line = new float[heights];
+            for (int bi = 0; bi < bins; ++bi)
+            {
+                for (int h = 0; h < heights; ++h) line[h] = k * Raw[bi, h] + Ease(Z0 + h - ZGlute);
+                int peak = -1;
+                for (int h = 0; h < heights; ++h)
+                {
+                    float dz = Z0 + h - ZGlute;
+                    if (dz < -8f || dz > 6f) continue;
+                    if (peak < 0 || line[h] > line[peak]) peak = h;
+                }
+                if (peak > 0)
+                {
+                    var hull = new List<int>();
+                    for (int h = 0; h <= peak; ++h)
+                    {
+                        while (hull.Count >= 2)
+                        {
+                            int a = hull[^2], b = hull[^1];
+                            float onLine = line[a] + (line[h] - line[a]) * (b - a) / (float)(h - a);
+                            if (line[b] <= onLine) hull.RemoveAt(hull.Count - 1); else break;  // b under the line a-h
+                        }
+                        hull.Add(h);
+                    }
+                    for (int i = 0; i + 1 < hull.Count; ++i)
+                    {
+                        int a = hull[i], b = hull[i + 1];
+                        for (int h = a; h <= b; ++h) line[h] = line[a] + (line[b] - line[a]) * (h - a) / (float)(b - a);
+                    }
+                }
+                int n = (int)MathF.Ceiling(3 * DrapeSigma);
+                for (int h = 0; h < heights; ++h)
+                {
+                    float sum = 0f, wsum = 0f;
+                    for (int d = -n; d <= n; ++d)
+                    {
+                        int j = Math.Clamp(h + d, 0, heights - 1);
+                        float w = MathF.Exp(-0.5f * d * d / (DrapeSigma * DrapeSigma));
+                        sum += w * line[j];
+                        wsum += w;
+                    }
+                    r[bi, h] = sum / wsum;
+                }
+            }
+            return new Drape { Z0 = Z0, ZGlute = ZGlute, Raw = Raw, R = r };
+        }
+    }
+
+    const float DrapeBinDeg = 5f, DrapeSpanDeg = 115f, DrapeSigma = 3f;
+
+    // Never skin-tight: 0.5 cm at the glutes to 2.5 cm 25 cm under them.
+    static float Ease(float dz) => 0.5f + 2.0f * Math.Clamp(-dz / 25f, 0f, 1f);
+
+    static Vector2 BackDir(float angleDeg)
+    {
+        float t = angleDeg * MathF.PI / 180f;
+        return new Vector2(-MathF.Cos(t), MathF.Sin(t));  // 0: straight back (-x), +: toward +y
+    }
+
+    static Drape MakeDrape(Profile p)
+    {
+        int z0 = (int)p.ZGlute + (int)BandBottom - 8, z1 = (int)p.ZGlute + (int)BandTop + 8;
+        int bins = (int)(2 * DrapeSpanDeg / DrapeBinDeg) + 1, heights = z1 - z0 + 1;
+        var raw = new float[bins, heights];
+        for (int bi = 0; bi < bins; ++bi)
+        {
+            var dir = BackDir(-DrapeSpanDeg + bi * DrapeBinDeg);
+            for (int h = 0; h < heights; ++h)
+            {
+                var sl = p.At(z0 + h);
+                raw[bi, h] = sl != null && sl.Hull.Count >= 3 ? HullRadius(sl.Hull, new Vector2(p.Cx, 0f), dir) : float.NaN;
+            }
+            for (int h = 0; h < heights; ++h)  // a missing slice takes its nearest neighbour's
+            {
+                if (!float.IsNaN(raw[bi, h])) continue;
+                for (int d = 1; d < heights; ++d)
+                {
+                    if (h - d >= 0 && !float.IsNaN(raw[bi, h - d])) { raw[bi, h] = raw[bi, h - d]; break; }
+                    if (h + d < heights && !float.IsNaN(raw[bi, h + d])) { raw[bi, h] = raw[bi, h + d]; break; }
+                }
+            }
+        }
+        return new Drape { Z0 = z0, ZGlute = p.ZGlute, Raw = raw };
     }
 
     static Dictionary<int, Slice> SliceMesh(SkeletalMesh mesh, int zFrom, int zTo)
@@ -156,6 +275,8 @@ internal static class Fit
             }
         }
         p.Slices = all;
+        p.Cx = all[(int)p.ZGlute].Cx;
+        p.Drape = MakeDrape(p);
         return p;
     }
 
@@ -206,6 +327,7 @@ internal static class Fit
     public static (int moved, float peak) Apply(SkeletalMesh mesh, Profile reference, float k)
     {
         float zg = reference.ZGlute;
+        var drape = reference.Drape.Fitted(k);
         int moved = 0;
         float peak = 0f;
         foreach (var lod in mesh.LODModels)
@@ -221,15 +343,15 @@ internal static class Fit
                 var sl = reference.At(v.Z);
                 if (sl == null || sl.Hull.Count < 3) continue;
                 float wz = dz > FullTop ? Smooth(BandTop, FullTop, dz) : dz < FullBottom ? Smooth(BandBottom, FullBottom, dz) : 1f;
-                var c = new Vector2(sl.Cx, 0f);
+                var c = new Vector2(reference.Cx, 0f);
                 var rel = new Vector2(v.X, v.Y) - c;
                 float r = rel.Length();
                 if (r < 1e-3f) continue;
                 var dir = rel / r;
                 float wb = Smooth(-0.342f, 0.342f, -dir.X);   // cos of the angle from straight back: 70..110 degrees fade
                 if (wz * wb <= 0f) continue;
-                float ease = 0.5f + 2.0f * Math.Clamp(-dz / 25f, 0f, 1f);
-                float target = k * HullRadius(sl.Hull, c, dir) + ease;
+                float angle = MathF.Atan2(dir.Y, -dir.X) * 180f / MathF.PI;
+                float target = drape.Radius(angle, v.Z);
                 if (target <= 0f || MathF.Abs(target - r) > Reach) continue;
                 float d = Math.Clamp(target - r, -MaxMove, MaxMove) * wz * wb;
                 if (MathF.Abs(d) < 0.01f) continue;
@@ -245,7 +367,7 @@ internal static class Fit
 
     // The shading follows the new shape: each vertex's tangent frame turned by the turn of its surface's normal (area-weighted
     // from its triangles, before and after), so the game's own smoothing and seams stay as they were.
-    static void TurnNormals(ushort[] index, Vector3[] before, GPUSkinVertex[] data)
+    internal static void TurnNormals(ushort[] index, Vector3[] before, GPUSkinVertex[] data)
     {
         var n0 = new Vector3[data.Length];
         var n1 = new Vector3[data.Length];
