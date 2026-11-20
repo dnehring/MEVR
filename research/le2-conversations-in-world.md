@@ -720,7 +720,31 @@ conversation (no depth of field switch) and it finished.
 3. A conversation opened around a load and held by hand never switches the depth of field.
 
 **Check:** hold the docking officer's conversation by hand, pick a ride: the ride's load finishes (`mevr state` at the
-destination), the log has the waits and the switch back after the load.
+destination, `tools/game-watch.ps1 -UntilWorld` exit 0), the log has the waits and the switch back after the load.
+
+**Unexplained (2026-11-20 11:44:11):** the next stretch's game (`20261120-114240-*-LE3-fpcme3b`, Save_0090 loaded into the
+docking officer's wheel on the 3D screen, mode 7) vanished while `load.ps1` polled it: both logs stop mid-stream, no crash report,
+nothing in Windows' Application log, SteamVR's `vrserver.txt` only "exited after 58.87 seconds"; nothing of the coordinator's
+stopped it. Not seen again yet.
+
+### 10.3 Moments: the game's black takes the view with him; the seat in a moment
+
+ME1's moment rules the sequels lacked (section 7.6 item 3): in a moment, a jump of Shepard's pawn past 30 units in a tick (ME1's
+`kJumpUnits`) while the camera's fade is black or was within 1.5 s (`gBlackMs`, read in each camera update) takes the view with him
+whatever the distance, at the same place relative to him, turned to his facing there, under a dip (`worldBlackMoves`; log
+`conversation world: moment N: under the game's fade to black the script moved Shepard X m: the view goes with him`). ME2's
+ANIMCUTSCENEs park his pawn at the world's origin: never followed there. Without the black, the view stays the player's and joins
+him at rest (`worldMoments = view`). While the view is with him (his pawn shown, within 0.4 m), the view sits with him (core
+`cw::StepSeat`, ME1's numbers, as in the conversations; the owner's "every sit-down in first person"). ME3's first fixture is
+Purgatory's bar (`BioD_CitHub_WardsFlux`, `Main_Sequence.Drinking`: used at `SFXPointOfInterest_1`; `SeqAct_Interp_0` at the bar,
+`SeqAct_Interp_2` walks him 1.5 m under a fade and a black-screen track, `SeqAct_Teleport_1` to a booth, `SeqAct_Interp_3` seats
+him there, `SeqAct_Teleport_2` back).
+
+### 10.4 The face axis
+
+The records give each head bone axis's angle to where the game's look-at chain aims (`axesToAimDeg`; `python -I
+scratch/.../faceaxis.py`: the median per axis over every record with an aim). **ME2: +X** (lane FPC4's Tali records: Tali +X 23,
+Prazza 33, Jacob 19, Miranda 18 degrees, the other axes 64-92): ME1's `kFaceAxis 0` holds. ME3: see below.
 
 ## 5. How to check ME1 is unchanged
 
