@@ -26,6 +26,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/Player.hpp"
+#include "game/SceneWaits.hpp"
 #include "game/SequelConversationWorld.hpp"
 #include "game/SquadWeapons.hpp"
 #include "game/ViewAnchor.hpp"
@@ -6328,6 +6329,10 @@ cw::MarkerState gMomentMarker;
 void const* gMomentEndTrack = nullptr;
 std::optional<ik::Vec3> gMomentWalkEnd;  // on the floor
 unsigned gMomentMarkers = 0;
+// The marker's black-move source in a moment (need (c); lane FPC5): the script moved Shepard under the game's fade to black in a
+// curated walk (the Council's), where the player walks on to him instead of going with him: his place, until the player stands
+// in it or joins him.
+std::optional<ik::Vec3> gMomentBlackMove;
 
 void StepMomentMarker(cw::State& state, ue3::Object* pawn, std::optional<engine::TrackingFrame> const& frame, double dtS) {
     if (gMoment.provisional) {
@@ -6349,6 +6354,19 @@ void StepMomentMarker(cw::State& state, ue3::Object* pawn, std::optional<engine:
     facts.scene = true;
     if (gMomentWalkEnd) {
         facts.walkEnd = cw::Vec3{gMomentWalkEnd->x, gMomentWalkEnd->y, gMomentWalkEnd->z};
+    }
+    if (gMomentBlackMove && !gMoment.wanted && !gC.detached) {
+        gMomentBlackMove.reset();  // the view joined him: the need passed
+    }
+    if (gMomentBlackMove) {
+        facts.blackMove = cw::Vec3{gMomentBlackMove->x, gMomentBlackMove->y, gMomentBlackMove->z - half};
+    }
+    // A level trigger the script waits on around where it wants Shepard (need (a); game/SceneWaits, every game): his pawn stands
+    // there in a moment (the script's Shepard), so on ME1 this is found only where nobody touches it.
+    if (gMoment.wanted && pawn != nullptr) {
+        if (auto const waits = scene_waits::Find(EnginePoint(*gMoment.wanted), pawn, EnginePoint(feet))) {
+            facts.waits = cw::Vec3{waits->at.x, waits->at.y, waits->at.z - half};
+        }
     }
     facts.player = cw::Vec3{feet.x, feet.y, feet.z - half};
     cw::Marker const m = cw::StepMarker(gMomentMarker, facts, dtS);
@@ -6377,6 +6395,8 @@ void ForgetMomentMarker() {
     gMomentMarker = {};
     gMomentEndTrack = nullptr;
     gMomentWalkEnd.reset();
+    gMomentBlackMove.reset();
+    scene_waits::Forget();
 }
 
 // What the host is told of a moment's view: held at gC.hold, the game's camera too.
@@ -6728,6 +6748,10 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             } else if (curated) {
                 log::Info("moment: the script moved Shepard under the game's fade to black in a curated walk ({}): the player walks on to him",
                     gMoment.trackPath);
+                gMomentBlackMove = here;  // the floor marker's black-move source there (StepMomentMarker)
+                log::Info("convo: marker: moment: under the game's fade to black the script put Shepard {:.2f} m from the player in a curated "
+                          "walk: a marker there", std::hypot(here.x - (gC.detached ? gC.detachedAt : gMoment.pawnAt).x,
+                              here.y - (gC.detached ? gC.detachedAt : gMoment.pawnAt).y) / kUnitsPerMeter);
             }
             if (rule != cw::Opening::Cut) {
                 // The same space: nothing is cut, and Shepard stays where the script put him. What follows may count on it in
