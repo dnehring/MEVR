@@ -17,7 +17,7 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   B arc, or by voice.
 - **People leave a first-person conversation instead of vanishing (Mass Effect 1, experimental).** In the first-person
   conversation mode, when the game takes someone away at a scene's end while you can see them (Udina after the council
-  hearing's aftermath, Wrex at Fist's door), they now walk away with the game's own walk first and are gone once out of your
+  hearing's aftermath, Anderson after his final chat), they now walk away with the game's own walk first and are gone once out of your
   sight; with nowhere to walk to they go when you look away, or after a few seconds under a short fade. Squadmates and
   anyone the next scene needs stay as before, and the story is unchanged. `[Cinematics] worldExit = hold` keeps people where
   they stand until you look away; `off` lets them vanish as before.

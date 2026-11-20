@@ -140,7 +140,7 @@ void TestPick() {
     std::vector<cx::Candidate> range{{{1100.0, 0.0, 0.0}, true, true, false}, {{3000.0, 0.0, 0.0}, true, true, false}};
     CHECK(!cx::PickDestination(range, person, eyes, lim));
     // Nowhere hidden (an open hall, the council chamber): the farthest place straight away, not hidden (the view's edge decides).
-    std::vector<cx::Candidate> open{{{1400.0, 0.0, 0.0}, true, false, false}, {{2100.0, 100.0, 0.0}, true, false, false},
+    std::vector<cx::Candidate> open{{{1400.0, 0.0, 0.0}, true, false, false}, {{2050.0, 100.0, 0.0}, true, false, false},
         {{1000.0, 800.0, 0.0}, true, false, false}};
     pick = cx::PickDestination(open, person, eyes, lim);
     CHECK(pick && pick->index == 1 && !pick->hidden);

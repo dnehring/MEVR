@@ -47,7 +47,7 @@ struct Limits {
     double walkMaxS = 12.0;        // a walk not out of sight by then has failed (then the look-away's wait)
     double holdMaxS = 25.0;        // nothing is held longer (under a dip)
     double minUnits = 300.0;       // a destination at least this far from the person (3 m)
-    double maxUnits = 1200.0;      // ... and at most this far (12 m)
+    double maxUnits = 1100.0;      // ... and at most this far (11 m: inside the engine's longest straight walk, 1200 units)
     double sameSpaceUnits = 60.0;  // its floor within this of the person's (the same space: no ledge, no other storey)
     double swapUnits = 200.0;      // someone shown within 2 m of a held person ...
     double swapWithinS = 1.0;      // ... within a second of the hold: the scene's swap of one actor for another

@@ -65,7 +65,8 @@ a play takes: a plot check on the way decides, as Chorban's showed in the game, 
 | teleported / hidden | 9 / 5 | 2 / 4 |
 
 So ME1 removes people almost only one way: **the deactivation**, a Kismet `BioSeqAct_ModifyPropertyPawn` whose `Active` row is
-false (68 conversations end so with one of their people in it; Udina, Chorban, Wrex at Fist's, Anderson after the final chat).
+false (50 conversations end so in the clear with one of their people in it, 13 more under a black screen turning on in the same
+tick; Udina, Chorban, Wrex at Fist's, Anderson after the final chat).
 Teleports of a conversation person (8: Morlan "jumped back a bit", the bouncer "returned to first position", Kirrahe) are the
 second way. Hides and destroys of people are rare. A streaming change is a level's part going out or in.
 
@@ -120,7 +121,8 @@ Pure functions and data, no engine; each game's adapter gives the facts.
   scene's people (speaker, owner, listener, the speaker list: now, or within `windowS` 2 s of a scene shown in the world), not the
   player, not a squadmate, not needed by a scene that began since, and **seen**: inside the view and in sight of the drawn eyes.
   Out of sight the change goes through at once (nobody sees it).
-- `CandidatePoints(person, eyes)`: 12 bearings in 30-degree steps starting straight away from the eyes, at 3, 7.5 and 12 m.
+- `CandidatePoints(person, eyes)`: 12 bearings in 30-degree steps starting straight away from the eyes, at 3, 7 and 11 m (12 m
+  until run 3: the engine's straight-walk limit is 12 m, section 6).
   `PickDestination(candidates, person, eyes)`: where the script sends them if the way there is clear (a teleport's destination:
   the walk is its move); else a candidate with a clear way in the same space (floor within 0.6 m), hidden from the eyes (head and
   body lines blocked), not toward the player, the most away from the eyes and the nearest among equals; else nowhere.
@@ -142,8 +144,8 @@ Pure functions and data, no engine; each game's adapter gives the facts.
 | `src/core/vr/ConversationWorld.{hpp,cpp}` | `FootCut()`: the on-foot word's counter, for the host. |
 | `src/plugin/TransitionFade.cpp` | LE1's fade seam dips on the on-foot counter too (a scene's, else `FootCut()`): a removal under a dip on foot. An older mod sends 0 there: no dip, ignored. |
 | `src/mod/Mod.cpp` | `ai_walk::TryStartup()` (lane FPC's helper's movement-ban answer, before the CallFunction hook), `conversation_exit::TryStartup()`, `EnsureExitHook()` (the hook once wanted; the CallFunction hook and the name lookup for walks), `Tick` after `conversation_world::Tick`, `Shutdown` before it, the hook's uninstall, the snapshot's `"mod"."conversationExit"`. |
-| `src/game/ConsoleRequest.cpp` | `mevr convo exit [on | walk | hold | off | auto | status]`. |
-| `src/engine/ReflectCheck.cpp` | Rows for `SFXGame.BioActorBehavior.SetActive`, its `bSetActive` and ParmsSize (the other names had rows). |
+| `src/game/ConsoleRequest.cpp` | `mevr convo exit [on | walk | hold | off | auto | status | shots on|off | trace on|off | test <tag>]` (`shots`: snapshots at each hold and apply; `trace`: the AI's call trace for 4 s as each walk away begins; `test`: the walk away of anyone now, without a hold, 8 s at most). |
+| `src/engine/ReflectCheck.cpp` | Rows for `SFXGame.BioActorBehavior.SetActive`, its `bSetActive` and ParmsSize, `Engine.Controller.PointReachable`, its `aPoint`, ReturnValue and ParmsSize (the other names had rows). |
 | `tools/scene_audit.py`, `tools/audit-report.py`, `tests/SceneAuditTests.py` | The offline rule `vanished-in-view` (someone of the scene in sight in one stance record, gone or hidden in the next with no dip between; never excused by a baseline) and the live one in `FAIL_RULES`. |
 
 **The held change.** In the provider (inside the level script's update, the game thread): a `SetActive(false)` for the behaviour
@@ -154,8 +156,10 @@ in the tick. Our own call (`gApplying`) always passes.
 
 **The walk.** In `walk` mode, the first tick with the player seeing the world: `Destination` traces the core's candidate points
 (`Actor.Trace` down for the floor; `FastTrace` at knee and chest height for the way; from the eyes to the spot's head and body
-for sight) and `PickDestination` chooses; `ai_walk::Start` walks them there (its refusal logged: then the look-away). Each tick
-`ai_walk::Step`: arrived or stalled ends the walk (the look-away's wait begins); a walk still in view after 12 s too.
+for sight; `Engine.Controller.PointReachable` on the person's AI for each clear one: only places the AI walks to, section 6
+run 3) and `PickDestination` chooses; `ai_walk::Start` walks them there (its refusal logged: then the look-away). Each tick
+`ai_walk::Step`: arrived or stalled ends the walk (the look-away's wait begins; a stall under 0.5 m from where they stood asks one
+other place first); a walk still in view after 12 s too.
 
 **The apply** (`Apply`): the walk ended (every hold given back), the dip asked for when the rule says so
 (`conversation_world::DipFromBlack()`: in a scene the scene's cut, on foot the "armed" word's), `BioActorBehavior.SetActive(false)`
@@ -201,7 +205,50 @@ saves (`tools/conversation-from-save.ps1 -All -Career John02 -List %LOCALAPPDATA
    failed on it: such vanishes are now noticed and counted (`vanishedOther`), the failing rule kept for deactivations the player
    saw go through.
 
-**Run 2** (below).
+**Run 2 (2026-11-20 00:48-00:56), with those fixes:**
+
+1. **Wrex at Fist's (slot 87)**: the `Deactivate Wrex` at the end is the hidden gameplay Wrex (the framed scene shows its own
+   doubles: the stance records have Wrex and the bouncer `hidden`): `let through (out of the player's sight: at once)`, right. Not
+   an exit fixture either. (The runner's `-Before` lines did not run for this save's walk-in start, so its "worldExit off" pass
+   was a second plain pass.)
+2. **The hearing's end**: the hearing's own Anderson (the walk's, `BIOA_STA70_02captain_DSG` `BioPawn_9`) is deactivated about 8 s
+   before the hearing ends, beside the player on the podium: held, no way off the podium within 12 m (1 of 36 points), applied
+   under a dip 3.0 s later. The councillors and Saren's hologram, deactivated in the tick the hearing's black screen turned on:
+   `let through (the game's own black screen covers it: at once)`. Saren's hologram going off earlier: `noticed ... by another
+   route`, no audit failure.
+3. **Udina**: at `sta90_captain_dlg`'s end `held back` (2.1 m from the eyes); `walks away 12.0 m straight away from the player
+   (nowhere out of sight within reach: it leaves the view) with the game's AI (22 of 36 points with a way, 0 hidden)`; **the
+   game's AI did not move him** (`stalled after 0.00 m` at 2 s); the look-away's wait, then `applied after 5.1 s: the player kept
+   looking, under a dip from black; hidden now yes`. Anderson after his final chat the same (5.2 s). Snapshots
+   `%LOCALAPPDATA%\MEVR\snapshots\2026-11-20_00-55-28-801-left.png` and `..._00-55-30-793-left.png` (Udina and Anderson on the
+   tower's plaza during Anderson's final chat, Udina held), `..._00-55-32-855-left.png` (the dip).
+
+**Run 3 (2026-11-20 01:03-), why the AI did not walk Udina** (`mevr convo exit trace on`: the AI's call trace for 4 s at
+each walk away; `mevr convo exit test <tag>`: the walk away of anyone now, without a hold):
+
+1. **On foot the walk works**: after Chorban's scene, `mevr convo exit test sta20_chorban` picked a place 12 m straight away
+   (30 of 36 points with a way, 2 hidden) and `game/AiWalk` walked him there with the game's own walk: 0.23 m after 1 s, 1.51,
+   2.74, ... 7.01 m after 8 s (about 0.9 m/s once under way), the trace `BioAiController.PushMoveToPoint` ->
+   `BioSeqAct_MoveToPoint.InitState`, `GetNextPredictedMoveLocation` every tick.
+2. **At the council the AI gives the move up in its first tick**: Udina held at `sta90_captain_dlg`'s end, `ai walk: ... walks
+   12.00 m to (-9443, -8982, 62126)`, and the trace in the same tick: `PushMoveToPoint`, `BioSeqAct_MoveToPoint.InitState`,
+   `CanUseStack`, `GetNextPredictedMoveLocation` x7, **`BioAiController.HandleTeleport`, `PopState`, `Cleanup`, `PoppedState`**;
+   `stalled after 0.00 m` 2 s later, applied under the look-away's dip at 5.1 s. Anderson after his final chat the same (a place
+   12 m off, 24 of 36 points with a way, 3 hidden; the same trace).
+3. **Why** (the state's script, read with `tools/conversation-scan <CookedPCConsole> <out> --script BioAiController.BioSeqAct_MoveToPoint`
+   and `--script BioAiController.HandleTeleport`; the game's code stays out of the repository, this is what it does): the
+   `BioSeqAct_MoveToPoint` state walks straight to the point when `PointReachable(point + 5 up)` says yes, else along
+   `FindPathTo`'s route; with neither (no route, the point not reachable) it asks `HandleTeleport` (which teleports only a pawn
+   marked to teleport on failure: none of these), sets the completion reason "failed" and pops itself. So it was never the
+   conversation mode holding Udina still: the 12 m point was not reachable for the AI there, and the chamber's plaza has no
+   route it found to it. The engine's `PointReachable` also refuses any point flat-farther than its longest straight walk (1200
+   units, UE3's `MAXPATHDIST` [verify] that LE1 keeps it), and every 12 m candidate sat exactly on that limit.
+4. **The fix** (built after run 3): `Destination` asks the game's own `Engine.Controller.PointReachable` (the person's AI
+   controller, `Engine.Pawn.Controller`; a simulated walk from where they stand, the state's own point 5 units up) for every
+   candidate with a clear way, and only those it admits are picked (logged: `N clear but not reachable for the AI`); the far ring
+   is 11 m (`Limits::maxUnits` 1100, inside the 1200-unit limit); a walk the AI still gives up under 0.5 m from where it stood is
+   asked once more to another place (`refused`, 1.5 m around the first kept out), then the look-away. The run-3 guess that the
+   conversation mode held him (wait for the player on foot) was dropped unbuilt: the trace refutes it.
 
 ## 7. What the sequels need
 
@@ -261,7 +308,7 @@ post-handler: the change itself lands later) takes out a level holding someone i
 1. **Bystanders.** Built for the conversation's own people (speaker list, owner, speaker, listener). ME1 also deactivates other
    pawns at conversations' ends (31 in the clear: extras, doubles). Cover anyone the player sees within about 10 m too?
    Recommendation: yes, after the headset pass of this one.
-2. **Open rooms.** Where nothing within 12 m is out of sight (the council chamber), the person walks straight away from the
+2. **Open rooms.** Where nothing within 11 m is out of sight (the council chamber), the person walks straight away from the
    player and goes once out of the view, or under a dip after the walk (12 s) and 3 s more of looking. Keep it, or dip sooner?
    Recommendation: keep (a walk is what the owner asked for).
 3. **The look-away's 3 s and the 25 s cap.** Recommendation: keep until the headset says otherwise.

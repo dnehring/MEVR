@@ -64,6 +64,8 @@ ue3::FunctionRef gFastTrace{"Engine.Actor.FastTrace"};
 ue3::FunctionRef gTrace{"Engine.Actor.Trace"};
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation"};
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation"};
+ue3::FieldRef gController{"Engine.Pawn", "Controller"};
+ue3::FunctionRef gPointReachable{"Engine.Controller.PointReachable"};
 
 // ---- Settings -------------------------------------------------------------------------------------------------------------------
 struct Settings {
@@ -314,6 +316,8 @@ struct HeldChange {
     cx::Held timer;
     std::optional<walk::Walk> walking;
     bool walkTried = false;
+    bool retried = false;            // one more place asked after the AI gave the first up where it stood
+    std::vector<ik::Vec3> refused;   // places the AI gave up (no way it knows)
     std::string walkWhy;
     std::optional<ik::Vec3> destination;
     double nearestUnits = 0.0;       // how far it walked
@@ -438,8 +442,28 @@ void ApplyAll(char const* why) {
     gHeld.clear();
 }
 
-// Where to: the candidates traced from the person's place (core's CandidatePoints), the best picked (PickDestination).
-std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::string& why, bool& hidden) {
+// The AI's own first test of a walk: BioAiController's BioSeqAct_MoveToPoint state walks straight to a point PointReachable
+// admits, else along a path FindPathTo finds, and with neither gives the move up in its first tick (research/conversation-exits.md
+// section 6.3: Udina at the council, 12 m off, no path there). Controller.PointReachable from where the pawn stands (a
+// simulated walk; it also refuses anything flat-farther than the engine's longest path, 1200 units). Unknown (no controller or
+// function): nullopt.
+std::optional<bool> Reachable(ue3::Object* pawn, ik::Vec3 const& to) {
+    ue3::Object* const ai = pawn != nullptr ? gController.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    if (ai == nullptr || !ue3::runtime::IsAlive(ai) || gPointReachable.Get() == nullptr) {
+        return std::nullopt;
+    }
+    ue3::Params p(ue3::runtime::Get(), gPointReachable.Get());
+    // The state's own target: the point 5 units up
+    if (!p.Valid() || !p.Set("aPoint", U(to + ik::Vec3{0.0, 0.0, 5.0})) || !ue3::runtime::Call(ai, gPointReachable.Get(), p)) {
+        return std::nullopt;
+    }
+    return p.ReturnBool();
+}
+
+// Where to: the candidates traced from the person's place (core's CandidatePoints), the best picked (PickDestination); only places
+// the AI would walk to (Reachable) and none it gave up before (`refused`).
+std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::string& why, bool& hidden,
+    std::vector<ik::Vec3> const& refused = {}) {
     hidden = false;
     if (!gEyes) {
         why = "no view to judge sight from";
@@ -454,7 +478,7 @@ std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::
     double const lift = at.z - *floor;  // the pawn's location above its floor
     std::vector<cx::Vec3> const points = cx::CandidatePoints(C(at), C(gEyes->at), gLimits);
     std::vector<cx::Candidate> candidates;
-    int hiddenCount = 0, pathCount = 0;
+    int hiddenCount = 0, pathCount = 0, unreachable = 0, unknown = 0;
     for (cx::Vec3 const& q : points) {
         cx::Candidate c;
         ik::Vec3 const guess = I(q);
@@ -468,6 +492,17 @@ std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::
         ik::Vec3 const knee{0.0, 0.0, -lift + 40.0};
         ik::Vec3 const chest{0.0, 0.0, 30.0};
         c.path = Clear(tracer, at + knee, spot + knee) && Clear(tracer, at + chest, spot + chest);
+        for (ik::Vec3 const& r : refused) {
+            c.path = c.path && Dist(r, spot) > 150.0;
+        }
+        if (c.path) {
+            std::optional<bool> const reach = Reachable(pawn, spot);
+            unknown += reach ? 0 : 1;
+            if (reach && !*reach) {
+                c.path = false;
+                ++unreachable;
+            }
+        }
         ik::Vec3 const head = spot + ik::Vec3{0.0, 0.0, 70.0};
         c.hidden = !Clear(tracer, gEyes->at, head) && !Clear(tracer, gEyes->at, spot);
         hiddenCount += c.hidden ? 1 : 0;
@@ -476,12 +511,15 @@ std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::
     }
     auto const pick = cx::PickDestination(candidates, C(at), C(gEyes->at), gLimits);
     if (!pick) {
-        why = std::format("nowhere to walk away to within {:.0f}-{:.0f} m with a clear way ({} of {} points with a way, {} hidden)",
-            gLimits.minUnits / kUnitsPerMeter, gLimits.maxUnits / kUnitsPerMeter, pathCount, candidates.size(), hiddenCount);
+        why = std::format("nowhere to walk away to within {:.0f}-{:.0f} m with a clear way ({} of {} points with a way, {} hidden, {} "
+                          "clear but not reachable for the AI{})",
+            gLimits.minUnits / kUnitsPerMeter, gLimits.maxUnits / kUnitsPerMeter, pathCount, candidates.size(), hiddenCount, unreachable,
+            unknown > 0 ? std::format(", {} not asked", unknown) : std::string());
         return std::nullopt;
     }
     hidden = pick->hidden;
-    why = std::format("{} of {} points with a way, {} hidden", pathCount, candidates.size(), hiddenCount);
+    why = std::format("{} of {} points with a way, {} hidden, {} clear but not reachable for the AI{}", pathCount, candidates.size(),
+        hiddenCount, unreachable, unknown > 0 ? std::format(", {} not asked", unknown) : std::string());
     return I(candidates[pick->index].at);
 }
 
@@ -496,7 +534,7 @@ void StartWalk(HeldChange& h) {
     }
     std::string why;
     bool hidden = false;
-    auto const to = Destination(pawn, h.at, why, hidden);
+    auto const to = Destination(pawn, h.at, why, hidden, h.refused);
     if (!to) {
         h.walkWhy = why;
         ++gTotals.walkRefused;
@@ -868,6 +906,15 @@ void Tick(double /*deltaSeconds*/) {
             }
             if (ph == walk::Phase::Walking && !cx::WalkOverdue(h.timer, now, gLimits)) {
                 walkingNow = true;
+            } else if (ph == walk::Phase::Stalled && h.nearestUnits < 50.0 && !h.retried && h.destination) {
+                // Given up where it stood (the AI found no way it knows): once more, to another place.
+                StopWalk(h, "the AI gave the place up");
+                h.refused.push_back(*h.destination);
+                h.walkTried = false;
+                h.retried = true;
+                walkingNow = true;
+                log::Info("convo exit: {}: the game's AI gave the walk to ({:.0f}, {:.0f}, {:.0f}) up where it stood: another place is "
+                          "asked", h.name, h.destination->x, h.destination->y, h.destination->z);
             } else {
                 log::Info("convo exit: {}'s walk {} after {:.2f} m ({})", h.name, walk::Name(ph), h.nearestUnits / kUnitsPerMeter,
                     ph == walk::Phase::Walking ? "not out of sight in time" : "the game's AI");
@@ -937,11 +984,11 @@ std::string StatusJson() {
     return std::format("{{\"mode\": \"{}\", \"world\": {}, \"hooked\": {}, \"held\": {}, \"people\": {}, \"totals\": {{\"held\": {}, "
                        "\"outOfSight\": {}, \"underDip\": {}, \"atOnce\": {}, \"walks\": {}, \"walkRefused\": {}, \"swaps\": {}, \"shownAgain\": {}, "
                        "\"passed\": {}, \"passedSeen\": {}, \"vanished\": {}, \"vanishedOther\": {}, \"elsewhere\": {}, \"heldAgain\": {}}}, \"hook\": {{\"calls\": {}, \"fromEvent\": {}, \"withheld\": {}}}, "
-                       "\"lastPass\": {}}}",
+                       "\"lastPass\": {}, \"aiWalk\": {}}}",
         cx::Name(CurrentMode()), gSettings.world ? "true" : "false", engine::exit_hooks::Installed() ? "true" : "false", held,
         gPeople.size(), gTotals.held, gTotals.outOfSight, gTotals.underDip, gTotals.atOnce, gTotals.walks, gTotals.walkRefused,
         gTotals.swaps, gTotals.again, gTotals.passed, gTotals.passedSeen, gTotals.vanished, gTotals.vanishedOther, gTotals.elsewhere, gTotals.again2, hook.calls, hook.fromEvent, hook.withheld,
-        vr::test_request::JsonString(gLastPass));
+        vr::test_request::JsonString(gLastPass), walk::StatusJson());
 }
 
 void LogStats() {
