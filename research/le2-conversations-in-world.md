@@ -382,6 +382,35 @@ ME1's constant is the same measure on ME1 (`eyeFromHead` 8.9, 1.7, 29.3).
 **Check:** a snapshot of a held conversation's eyes (Tali's on ME2, an ME3 one): no dark shapes in the bottom corners; the
 opening line's `the eyes from the view on foot (x, y, z from his pawn)` or `his head bone (...)`.
 
+**In the game (fake headset, 2026-11-20 03:15-03:34; ME2 stretch `20261120-031526-824-LE2-fpc3`, ME3 `...-LE3-fpc3-le3`):**
+
+1. **The "shoulders" of 6.6 were Shepard's own hands.** The runner's replays (`tools/steer-common.ps1`'s `Steer-Play`, every
+   `conversation-world.ps1` run) hold the tracked hands up in view (`make-walk-recording.py --hands view`: 0.25 m ahead of the eyes,
+   0.08 m under them, 0.09 m to each side), so arm IK draws Shepard's armoured fists in the bottom corners. Tali's conversation with
+   the same replay (snapshot `2026-11-20_03-17-23-352-left.png`) shows them as FPC2's did; the same conversation with the hands at the
+   chest (`--hands chest`, `2026-11-20_03-18-45-612-left.png`) has clear corners: Tali, Prazza, the quarians and the room; looking
+   down 55 degrees (`2026-11-20_03-19-09-957-left.png`) shows the carbon-weave forearms and gloves that filled the corners. A check
+   of the eyes needs `--hands chest` (or no replay).
+2. **ME2, Tali's reintroduction** (the moment, then the conversation): `opening stay ... the eyes from the view on foot (0, -35, 85
+   from his pawn)`, held at (-9619, 14809, -11972) against the slice's (-9621, 14835, -11979): 26 units further forward, 7 up; the
+   eye height brought 0.02 m. The learned eyes on foot: `29.4 forward, -2.2 right, 23.1 up` (1 sample at Freedom's Progress), then
+   `16.7 forward, -0.6 right, 14.5 up` (145 samples on the Normandy).
+3. **ME2, Samara's starter** (`normw_starter_h`, fired from the Normandy's corridor: a Cut 15.4 m away): `the eyes from his head
+   bone (the eyes as learned on foot) (-4, -8, 78 from his pawn)`, `the drawn eyes are 1.66 m over the floor under Shepard, the
+   player's 1.75 m: the view goes up by 0.09 m`. The view faced the observation window (his pawn's facing): ME1 faces the owner,
+   now on the sequels too (commit "a Cut opening faces the conversation's owner"); with it the view turned to -13.9 degrees, toward
+   Samara 2.9 m away, but **Samara was not drawn** (snapshot `2026-11-20_03-21-30-434-left.png`: the window and stars, nobody) [verify
+   culling or hiding: the sequels have no `person-not-drawn` rule yet; ME1 reads `PrimitiveComponent.LastRenderTime`].
+4. **ME3, the docking officer** (Save_0090 loads into it): `citprs_citadel_docking_v_D.citprs_citadel_docking_v_dlg` stayed on the
+   3D screen **by the load rule, not the presence table**: the table has `tempsf_citadel_docking_v` but not this one, because every
+   line's `Conversation` group names `Player` (his VO element and gesture tracks: Shepard speaks, off screen) though the scene is a
+   comm call staged in a void (held by hand with `mevr convo world on`: `2026-11-20_03-29-24-446-left.png`, the officer seated in
+   black space, the wheel below). The criterion "a line acts on the player" counts the player's own voice: ME3's video calls (`_v_`)
+   need another rule (question 3 of the lane's report). Held by hand: `opening cut ... the eyes from his head bone (the game's
+   measure) (10, 3, 79 from his pawn)`, height +0.09 m. ME3 never stood on foot in the run (the save loads into the call and our
+   menu's first-run guide kept the input): no ME3 measure of the eyes from the head bone yet (the fallback stays the slice's 8, 0, 4
+   until one).
+
 ### 7.2 Rides (item 4, part)
 
 ME1's `RideBase` (research/69 item 42) on both sequels: each camera update before the pin, each conversation tick and each moment
