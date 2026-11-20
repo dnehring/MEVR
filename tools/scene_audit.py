@@ -275,8 +275,9 @@ def findings(records):
                 continue
             first_at.setdefault(p['name'], p['at'])
             walk = p.get('walk') or {}
-            if p.get('owner') and walk.get('kind') in ('circle', 'squad') and math.dist(p['at'][:2], first_at[p['name']][:2]) >= OWNER_WALKED_M * 100:
-                add('owner-walked', st, p['name'], f"{math.dist(p['at'][:2], first_at[p['name']][:2]) / 100:.1f} m from its first place "
+            start = walk.get('from') or first_at[p['name']]  # where the walk began (a walk before the first record too)
+            if p.get('owner') and walk.get('kind') in ('circle', 'squad') and math.dist(p['at'][:2], start[:2]) >= OWNER_WALKED_M * 100:
+                add('owner-walked', st, p['name'], f"{math.dist(p['at'][:2], start[:2]) / 100:.1f} m from where it stood "
                     f"by a walk into the {walk['kind']}")
     last_walk = records[-1].get('walkAlong') or {}
     if moment and last_walk.get('pauses', 0) >= WALK_PAUSES:

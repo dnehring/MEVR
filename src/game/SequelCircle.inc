@@ -153,6 +153,7 @@ struct CircleWalker {
     std::string name;
     char const* kind = "circle";   // "circle" or "squad" (the records' walk.kind)
     ue3::Vector to{};
+    ue3::Vector from{};            // where it stood when the walk was asked (the records' walk.from)
     double faceYawDeg = 0.0;
     std::uint64_t startAtMs = 0;   // the stagger: it sets off then
     std::optional<ai_walk::Walk> walk;
@@ -303,10 +304,50 @@ void QueueWalk(ue3::Object* actor, std::string const& name, char const* kind, ue
     w.name = name;
     w.kind = kind;
     w.to = to;
+    w.from = player::Location(actor).value_or(to);
     w.faceYawDeg = faceYawDeg;
     w.startAtMs = startAtMs;
     gCircle.walkers.push_back(std::move(w));
 }
+
+#if defined(MEVR_GAME_LE2)
+// ME2's walk goes to an actor (SFXAI_Core.MoveToGoal): a goal of ours at each walker's place (a BioLookAtTarget, the eyes stand-in's
+// class, spawned once and moved), so the walk ends on the place and not at the level's navigation point nearest it.
+std::vector<ue3::Kept> gWalkGoals;
+ue3::Object* WalkGoal(std::size_t index, ue3::Vector const& at) {
+    while (gWalkGoals.size() <= index) gWalkGoals.emplace_back();
+    ue3::Object* goal = gWalkGoals[index].Live();
+    if (goal == nullptr) {
+        ue3::Class* const cls = gEyesClass.Get();
+        ue3::Function* const spawn = gActorSpawn.Get();
+        ue3::Object* const controller = player::Controller();
+        if (cls == nullptr || spawn == nullptr || controller == nullptr) return nullptr;
+        ue3::Reflection& r = ue3::runtime::Get();
+        ue3::Object* defaults = nullptr;
+        for (std::int32_t i = 0, n = r.ObjectCount(); i < n && defaults == nullptr; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o != nullptr && r.ClassOf(o) == cls && (r.FlagsOf(o) & 0x200) != 0) defaults = o;  // RF_ClassDefaultObject
+        }
+        bool const wasStatic = defaults != nullptr && gActorStatic.ReadBool(defaults).value_or(false);
+        bool const wasNoDelete = defaults != nullptr && gActorNoDelete.ReadBool(defaults).value_or(false);
+        if (wasStatic) gActorStatic.WriteBool(defaults, false);  // journalled by FieldRef; put back right after the spawn
+        if (wasNoDelete) gActorNoDelete.WriteBool(defaults, false);
+        ue3::Params p(r, spawn);
+        p.Set("SpawnClass", cls);
+        p.Set("SpawnOwner", controller);
+        p.Set("SpawnLocation", at);
+        p.SetBool("bNoCollisionFail", true);
+        ue3::runtime::Call(controller, spawn, p);
+        if (wasStatic) gActorStatic.WriteBool(defaults, true);
+        if (wasNoDelete) gActorNoDelete.WriteBool(defaults, true);
+        goal = p.Return<ue3::Object*>().value_or(nullptr);
+        if (goal == nullptr || !ue3::IsA(goal, gEyesClass)) return nullptr;
+        gWalkGoals[index] = ue3::Kept(goal);
+        log::Info("conversation world: circle: a walk goal made ({})", ue3::runtime::FullName(goal));
+    }
+    return PutEyesAt(goal, ik::Vec3{at.x, at.y, at.z}) ? goal : nullptr;
+}
+#endif
 
 void StepWalkers(std::uint64_t now) {
     for (CircleWalker& w : gCircle.walkers) {
@@ -320,7 +361,12 @@ void StepWalkers(std::uint64_t now) {
         if (!w.walk) {
             if (now < w.startAtMs) continue;
             std::string why;
+#if defined(MEVR_GAME_LE2)
+            ue3::Object* const goal = WalkGoal(static_cast<std::size_t>(&w - gCircle.walkers.data()), w.to);  // one per walker
+            w.walk = goal != nullptr ? ai_walk::StartToGoal(w.actor, w.to, goal, why) : ai_walk::Start(w.actor, w.to, why);
+#else
             w.walk = ai_walk::Start(w.actor, w.to, why);
+#endif
             if (!w.walk) {
                 w.done = true;
                 w.phase = "refused";
@@ -627,11 +673,19 @@ void CircleEnd(char const* why) {
 std::string CircleWalkJson(ue3::Object const* actor) {
     for (auto it = gCircle.walkers.rbegin(); it != gCircle.walkers.rend(); ++it) {
         if (it->actor == actor) {
-            return std::format("{{\"phase\": \"{}\", \"to\": [{:.0f}, {:.0f}, {:.0f}], \"kind\": \"{}\"}}", it->phase, it->to.x, it->to.y,
-                it->to.z, it->kind);
+            return std::format("{{\"phase\": \"{}\", \"to\": [{:.0f}, {:.0f}, {:.0f}], \"from\": [{:.0f}, {:.0f}, {:.0f}], \"kind\": \"{}\"}}",
+                it->phase, it->to.x, it->to.y, it->to.z, it->from.x, it->from.y, it->from.z, it->kind);
         }
     }
     return "null";
+}
+
+// The squad's formation is still being composed (not asked yet, or a squadmate on its way): the records' opening waits for it.
+bool CircleComposing() {
+    if (!SquadWanted() || gCircle.serial != gC.serial) return false;
+    if (!gCircle.squadDone) return true;
+    return std::any_of(gCircle.walkers.begin(), gCircle.walkers.end(),
+        [](CircleWalker const& w) { return !w.done && std::string_view(w.kind) == "squad"; });
 }
 
 // The records' `walks`: whether the game's AI could walk this person.

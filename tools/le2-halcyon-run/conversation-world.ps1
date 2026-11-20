@@ -23,6 +23,7 @@
 #                          circle ownerwalks on`); `sleep:<s>` waits that long. -Finally lines run at the end (the switch off).
 # -Pick <position>         each snapshot's wait, the wheel's reply at that position when a wheel is up (`mevr convo pick`), so
 #                          the conversation goes on by itself (0: never).
+# -Pitch <deg>             the replayed head pitched that far (negative: down; the wheel in front sits 26 degrees down).
 # Results: the stretch's session folder, convo-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the mod's
 # `conversation world:` lines and the renderer's [VRSTATE] lines since the start).
 param(
@@ -40,7 +41,8 @@ param(
     [ValidateSet('view', 'chest')][string]$Hands = 'view',
     [string[]]$Before = @(),
     [string[]]$Finally = @(),
-    [int]$Pick = 0
+    [int]$Pick = 0,
+    [double]$Pitch = 0
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -52,7 +54,7 @@ $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
 if ($open.holder -ne $Holder) { throw "the open $name stretch is held by '$($open.holder)', not '$Holder'" }
 if (-not (Get-Process ('MassEffect' + $Game.Substring(2)) -ErrorAction SilentlyContinue)) { throw "$name is not running" }
 $out = Join-Path $open.session ('convo-' + $Tag + '-' + (Get-Date -Format 'HHmmss'))
-Steer-Init -Out $out -Hands $Hands
+Steer-Init -Out $out -Hands $Hands -Pitch $Pitch
 $bin = Get-MELEBinDir (Find-MELEInstall).Root $Game
 $log = Join-Path $bin ('Logs\{0}MEVR.log' -f $Game)
 $halcyonLog = Join-Path $env:LOCALAPPDATA ('{0}\{0}_Log.txt' -f $(if ($Game -eq 'LE3') { 'MELE3VR' } else { 'MELE2VR' }))

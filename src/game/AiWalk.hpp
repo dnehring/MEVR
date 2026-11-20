@@ -63,6 +63,10 @@ void End(Walk& walk, char const* why, bool tearingDown = false);
 // Walks begun and the movement-ban answers given, for status lines.
 std::string StatusJson();
 #if defined(MEVR_GAME_LE2)
+// ME2's walk to an exact place (the circle's and the squad's, lane FPC5): MoveToGoal takes an actor, and the navigation point
+// nearest a place was 1.4-1.8 m off the formation's places in Tali's room (2026-11-20), so the caller's `goal` (an actor it put
+// at the place: a BioLookAtTarget) is the goal instead. Else as Start.
+std::optional<Walk> StartToGoal(ue3::Object* pawn, ue3::Vector const& to, ue3::Object* goal, std::string& why);
 // ME2's move for the next walks (`mevr convo exit walkby goal|precise`, an A/B): "goal" (the default) or "precise"; anything
 // else only asks. The answer names the move in use.
 char const* SetLe2Move(std::string const& how);

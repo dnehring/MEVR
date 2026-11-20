@@ -202,6 +202,9 @@ owner_walks = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0))]), 'LE2'
                sequel(record(2.0, 'tick', 0.05, [owner((150.0, 120.0), into)]), 'LE2'),
                sequel(record(4.0, 'tick', 0.05, [owner((150.0, 200.0), dict(into, phase='arrived'))]), 'LE2')]
 check('owner-walked' in rules(owner_walks), "the owner walked 2 m into the circle is owner-walked")
+walked_before = [sequel(record(2.0, 'opening', 0.05, [owner((150.0, 200.0), dict(into, phase='arrived', **{'from': [150.0, 0.0, 0.0]}))]),
+                        'LE2')]
+check('owner-walked' in rules(walked_before), "the owner's walk over before the first record is owner-walked by its walk.from")
 authored = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0))]), 'LE2'),
             sequel(record(4.0, 'tick', 0.05, [owner((150.0, 200.0))]), 'LE2')]
 check('owner-walked' not in rules(authored), "the owner's own authored walk (no kind) is no finding")

@@ -1171,6 +1171,7 @@ void FaceOnFoot(ue3::Rotator const& facing, std::uint32_t serial) {
 std::string WriteStance(std::string const& tag, bool moment);
 void CircleEnd(char const* why);              // (game/SequelCircle.inc)
 bool CircleWalking(void const* actor);
+bool CircleComposing();
 bool StancesOn();
 void ShowTestHidden();
 
@@ -1755,6 +1756,7 @@ void StanceStep(std::vector<ue3::Object*> const& people) {
     char const* tag = nullptr;
     if (!gStances.opening) {
         if (now - gC.placedMs < 1500) return;  // the opening settles (ME1: after its first drawn frames)
+        if (CircleComposing() && now - gC.placedMs < 6000) return;  // ... and the squad's formation (game/SequelCircle.inc)
         gStances.opening = true;
         gStances.cut = gCutSerial;
         gStances.entry = gEntryNow.Read<std::int32_t>(gC.controller).value_or(-1);
