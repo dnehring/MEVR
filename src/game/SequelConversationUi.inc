@@ -56,9 +56,71 @@ void ReadConversationUiSettings() {
 ue3::Object* gUiSpeaker = nullptr;
 std::uint32_t gUiSpeakerSerial = 0;
 
+#if defined(MEVR_GAME_LE3)
+// What ME3's own subtitle list holds in a held conversation (lane FPC6: ME3 showed no subtitle on its quad nor on the panel in
+// six snapshots of the Prothean's moment): BioWorldInfo.m_pSubtitles (SFXGame.BioSubtitles), its entries (the line's render mode:
+// 0 none, 1 default, 2 top, 3 bottom, 4 above the wheel), whether one is visible, and the controller's m_bHideCurrentSubtitle.
+// Logged at each change, never written.
+ue3::FieldRef gWorldSubtitles{"SFXGame.BioWorldInfo", "m_pSubtitles", ue3::kEveryGame};
+ue3::FieldRef gSubtitleList{"SFXGame.BioSubtitles", "m_aSubtitles", ue3::kEveryGame};
+ue3::FieldRef gSubtitleMode{gSubtitleList, "eRenderMode"};
+ue3::FieldRef gSubtitleRemaining{gSubtitleList, "fTimeRemaining"};
+ue3::FieldRef gSubtitleText{gSubtitleList, "sSubtitle"};
+ue3::FieldRef gSubtitleVisible{"SFXGame.BioSubtitles", "m_bSubtitleVisible", ue3::kEveryGame};
+ue3::FieldRef gHideCurrentSubtitle{kController, "m_bHideCurrentSubtitle", ue3::kEveryGame};
+ue3::FieldRef gProfileSettings{"SFXGame.BioPlayerController", "ProfileSettings", ue3::kEveryGame};
+ue3::FunctionRef gSubtitleOption{"SFXGame.SFXProfileSettings.GetSubtitleConfigOption", ue3::kEveryGame};
+std::string gSubtitleProbe;
+
+// The player's subtitle option (the game's own question), "?" when it can't be asked.
+std::string SubtitleOption(ue3::Object* controller) {
+    ue3::Object* const profile = controller != nullptr ? gProfileSettings.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    if (profile == nullptr || !ue3::runtime::IsAlive(profile) || gSubtitleOption.Get() == nullptr) return "?";
+    ue3::Params p(ue3::runtime::Get(), gSubtitleOption.Get());
+    if (!p.Valid() || !ue3::runtime::Call(profile, gSubtitleOption.Get(), p)) return "?";
+    return p.ReturnBool().value_or(false) ? "on" : "off";
+}
+
+std::string GameSubtitles(ue3::Object* controller) {
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    ue3::Object* const subtitles = world != nullptr ? gWorldSubtitles.Read<ue3::Object*>(world).value_or(nullptr) : nullptr;
+    if (subtitles == nullptr || !ue3::runtime::IsAlive(subtitles)) return "no BioSubtitles";
+    std::string out = std::format("the option {}, visible {}", SubtitleOption(controller),
+        gSubtitleVisible.ReadBool(subtitles).value_or(false) ? 1 : 0);
+    if (gC.controller != nullptr && ue3::runtime::IsAlive(gC.controller)) {
+        out += std::format(", the conversation hides its line {}", gHideCurrentSubtitle.ReadBool(gC.controller).value_or(false) ? 1 : 0);
+    }
+    auto const list = gSubtitleList.ElementsOf(subtitles, 16);
+    out += std::format(", {} entries", list ? list->count : -1);
+    if (list) {
+        for (std::int32_t i = 0; i < list->count; ++i) {
+            void const* entry = list->At(i);
+            auto const text = gSubtitleText.Read<ue3::FString>(entry);
+            out += std::format(" [mode {}, {} chars{}]", static_cast<int>(gSubtitleMode.Read<std::uint8_t>(entry).value_or(255)),
+                text ? text->count : -1, gSubtitleRemaining.Read<float>(entry).value_or(0.0f) > 0.0f ? ", running" : "");
+        }
+    }
+    return out;
+}
+
+void ProbeGameSubtitles(ue3::Object* controller) {
+    static std::uint64_t s_ms = 0;
+    std::uint64_t const t = GetTickCount64();
+    if (t - s_ms < 250) return;
+    s_ms = t;
+    std::string const now = GameSubtitles(controller);
+    if (now == gSubtitleProbe) return;
+    gSubtitleProbe = now;
+    log::Info("conversation world: the game's subtitles: {}", now);
+}
+#endif
+
 // A held conversation's subtitle and wheel facts into the host's state.
 void FillConversationUi(ue3::Object* controller, cw::State& s) {
     ReadConversationUiSettings();
+#if defined(MEVR_GAME_LE3)
+    ProbeGameSubtitles(controller);
+#endif
     s.wheel = WheelUp(controller) ? 1 : 0;
     s.wheelHand = static_cast<std::uint8_t>(gUiSettings.wheelHand);
     s.wheelWidthM = gUiSettings.wheelWidthM;

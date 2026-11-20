@@ -244,6 +244,7 @@ struct Conversation {
     bool byHand = false;  // held in the world by `mevr convo world on` (the presence rules then only log)
     bool placed = false;         // the player's place taken
     bool early = false;          // held at the view on foot while the opening settles (published, not placed yet)
+    bool headWait = false;       // the opening waits for his mesh to follow the stage's teleport (logged once)
     std::uint32_t serial = 0;
     ue3::Object* controller = nullptr;
     std::uint64_t startMs = 0;
@@ -1648,6 +1649,9 @@ std::string WriteStance(std::string const& tag, bool moment) {
     std::string people;
     for (ue3::Object* const actor : who) {
         if (actor == nullptr || !ue3::runtime::IsAlive(actor)) continue;
+        // People only: ME3's speaker list also names its stage and cameras (a CameraActor 0.29 m from the eyes was judged
+        // too-close in the refugee leader's scene, lane FPC6).
+        if (actor != pawn && !IsPerson(actor)) continue;
         auto const at = player::Location(actor);
         auto const rot = player::Rotation(actor);
         if (!at || !rot) continue;
@@ -2398,10 +2402,45 @@ void Tick(conversation_world::Link const& link) {
     // His head as the scene animates it (arm IK's animated head when fresh, else the bone: before our writes, the same), the
     // measure the eyes from it were learned against.
     std::optional<ik::Vec3> const sceneHead = ShepardSceneHead(pawn);
-    auto const head = sceneHead ? std::optional<engine::UnrealVector>(engine::UnrealVector{sceneHead->x, sceneHead->y, sceneHead->z}) : HeadOf(pawn);
+    auto head = sceneHead ? std::optional<engine::UnrealVector>(engine::UnrealVector{sceneHead->x, sceneHead->y, sceneHead->z}) : HeadOf(pawn);
     auto const rotation = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     if (!gC.placed) {
-        if (static_cast<double>(now - gC.startMs) < gSettings.settleS * 1000.0) {
+        // His head must stand over his pawn before a Cut's eyes are taken from it: the stage's teleport at the opening moves the
+        // pawn at once and his posed mesh a tick or more later (ME3's refugee leader, lane FPC6: the eyes taken 4 m behind his
+        // pawn from the head bone's old place, the body 4 m off the eyes all scene). ME1's openings wait 1.5 s for the mesh after
+        // putting him back; here the opening waits as long, then takes his head over his pawn.
+        double const settleMs = gSettings.settleS * 1000.0;
+        constexpr double kHeadOffPawnUnits = 80.0;   // ME2's and ME3's standing head bone is within 35 units of the pawn (flat)
+        constexpr double kHeadWaitMs = 1500.0;
+        constexpr double kHeadOverPawnUnits = 76.0;  // the standing head over the pawn's place (ME3's records: 0.75 m)
+        auto const pawnNow = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        double const headOff = head && pawnNow ? std::hypot(head->x - pawnNow->x, head->y - pawnNow->y) : 0.0;
+        bool const headAway = headOff > kHeadOffPawnUnits;
+        if (headAway && static_cast<double>(now - gC.startMs) >= settleMs) {
+            if (static_cast<double>(now - gC.startMs) < settleMs + kHeadWaitMs) {
+                if (!gC.headWait) {
+                    gC.headWait = true;
+                    log::Info("conversation world: conversation {}: his head bone stands {:.0f} units from his pawn (the stage's teleport, "
+                              "the mesh not posed there yet): the opening waits for it", gC.serial, headOff);
+                }
+                if (gFootPov.valid) {
+                    gC.held = gFootPov.location;
+                    gC.facing = ue3::Rotator{0, gFootPov.rotation.yaw, 0};
+                    gC.fov = gFootPov.fov;
+                    gC.early = true;
+                    Publish(link, controller);
+                }
+                return;
+            }
+            log::Info("conversation world: conversation {}: his head bone still {:.0f} units from his pawn after {:.1f} s: the eyes from "
+                      "his head over his pawn", gC.serial, headOff, (settleMs + kHeadWaitMs) / 1000.0);
+            head = engine::UnrealVector{pawnNow->x, pawnNow->y, pawnNow->z + kHeadOverPawnUnits};
+        } else if (gC.headWait && !headAway && static_cast<double>(now - gC.startMs) >= settleMs) {
+            log::Info("conversation world: conversation {}: his head bone over his pawn after {:.2f} s ({:.0f} units)", gC.serial,
+                static_cast<double>(now - gC.startMs) / 1000.0, headOff);
+            gC.headWait = false;
+        }
+        if (static_cast<double>(now - gC.startMs) < settleMs) {
             // The stage's first placements settle; meanwhile the view on foot is held (ME1's armed opening: no frame of the
             // director's first shot, no 3D screen).
             if (gFootPov.valid) {
@@ -2748,6 +2787,26 @@ std::string Console(std::string_view args) {
             gEyesOverride ? "mevr convo eyes" : "[Cinematics] worldLookEyes", gEyesState.on ? "standing in for Shepard's body" : "not needed",
             gEyesState.gapUnits / 100.0, gEyesState.swapped, gEyesState.refused);
     }
+#if defined(MEVR_GAME_LE3)
+    if (a == "subtitles") return "conversation world: the game's subtitles: " + GameSubtitles(player::Controller());
+    if (a == "subtitles on" || a == "subtitles off") {
+        // A test aid: the player's subtitle option for this session, set as the options screen sets it (the profile's setting 30:
+        // 0 on, 1 off; SFXProfileSettings.GetSubtitleConfigOption), then the controller's cache of it updated. The runner's
+        // restore puts the profile file back if the game writes it.
+        static ue3::FunctionRef setValue{"Engine.OnlinePlayerStorage.SetProfileSettingValueId", ue3::kEveryGame};
+        static ue3::FunctionRef updateCache{"SFXGame.BioPlayerController.UpdateLocalProfileSettingsCache", ue3::kEveryGame};
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const profile = controller != nullptr ? gProfileSettings.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+        if (profile == nullptr || setValue.Get() == nullptr || updateCache.Get() == nullptr) return "conversation world: no profile settings";
+        ue3::Params p(ue3::runtime::Get(), setValue.Get());
+        bool const set = p.Valid() && p.Set("ProfileSettingId", static_cast<std::int32_t>(30)) &&
+            p.Set("Value", static_cast<std::int32_t>(a == "subtitles on" ? 0 : 1)) && ue3::runtime::Call(profile, setValue.Get(), p);
+        ue3::Params u(ue3::runtime::Get(), updateCache.Get());
+        bool const updated = u.Valid() && ue3::runtime::Call(controller, updateCache.Get(), u);
+        log::Info("conversation world: the subtitle option set {} (a test's): set {}, cache updated {}", a.substr(10), set, updated);
+        return std::format("conversation world: subtitle option {}: set {}, cache {}; now {}", a.substr(10), set, updated, SubtitleOption(controller));
+    }
+#endif
     if (a == "people") {
         // What the reader and the world's pawn list give now (a diagnostic): the conversation's people, then every pawn within 20 m.
         ue3::Object* const controller = player::Controller();

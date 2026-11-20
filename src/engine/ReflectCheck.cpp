@@ -4593,6 +4593,18 @@ void CheckSequelConversationExit() {
     CheckField("SFXGame.BioConversationController", "m_aAllFoundActors", SDK_FIELD(UBioConversationController, m_aAllFoundActors));
     CheckPath("SFXGame.BioConversationController", {"m_aAllFoundActors", "pSpeakerActor"}, SDK_AT(offsetof(FBioSpeakerData, pSpeakerActor), 8));
     CheckField("SFXGame.BioConversationController", "m_aExtraParticipants", SDK_FIELD(UBioConversationController, m_aExtraParticipants));
+    // ... and the game's own subtitle list in a held conversation (game/SequelConversationUi.inc's probe, lane FPC6).
+    CheckField("SFXGame.BioWorldInfo", "m_pSubtitles", SDK_FIELD(ABioWorldInfo, m_pSubtitles));
+    CheckField("SFXGame.BioSubtitles", "m_aSubtitles", SDK_FIELD(UBioSubtitles, m_aSubtitles));
+    CheckField("SFXGame.BioSubtitles", "m_bSubtitleVisible", SDK_BOOL(UBioSubtitles, m_bSubtitleVisible));
+    CheckPath("SFXGame.BioSubtitles", {"m_aSubtitles", "eRenderMode"}, SDK_AT(offsetof(FSFXSubtitleEntry, eRenderMode), 1));
+    CheckPath("SFXGame.BioSubtitles", {"m_aSubtitles", "fTimeRemaining"}, SDK_AT(offsetof(FSFXSubtitleEntry, fTimeRemaining), 4));
+    CheckPath("SFXGame.BioSubtitles", {"m_aSubtitles", "sSubtitle"}, SDK_AT(offsetof(FSFXSubtitleEntry, sSubtitle), 16));
+    CheckField("SFXGame.BioConversationController", "m_bHideCurrentSubtitle", SDK_BOOL(UBioConversationController, m_bHideCurrentSubtitle));
+    CheckField("SFXGame.BioPlayerController", "ProfileSettings", SDK_FIELD(ABioPlayerController, ProfileSettings));
+    CheckFunction("SFXGame.SFXProfileSettings.GetSubtitleConfigOption");
+    CheckFunction("Engine.OnlinePlayerStorage.SetProfileSettingValueId");  // `mevr convo subtitles on|off` (a test aid)
+    CheckFunction("SFXGame.BioPlayerController.UpdateLocalProfileSettingsCache");
     CheckFunction("SFXGame.BioSeqAct_SetActive.Activated");
     CheckField("SFXGame.BioSeqAct_SetActive", "bSetActive", SDK_BOOL(UBioSeqAct_SetActive, bSetActive));
 #endif
