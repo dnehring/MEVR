@@ -194,6 +194,7 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
+    "game/WorldDrawn",
     "game/WorldUi",
     "game/ZoomedShots"
    ],
@@ -464,6 +465,7 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
+    "game/WorldDrawn",
     "game/WorldUi",
     "game/ZoomedShots"
    ],
@@ -737,6 +739,7 @@
     "game/Voice",
     "game/VrCover",
     "game/Weapon",
+    "game/WorldDrawn",
     "game/WorldUi",
     "game/ZoomedShots"
    ],
@@ -3470,6 +3473,29 @@
     }
    },
    "namespace": "game::weapon"
+  },
+  "game/WorldDrawn": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::world_drawn"
   },
   "game/WorldUi": {
    "games": {

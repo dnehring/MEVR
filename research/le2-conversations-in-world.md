@@ -808,6 +808,136 @@ SFXSeqAct_StartConversation_0 -Pitch -25`):
   by eye-height and opening-off-mark, the dark walk by dark-view and eye-flat, the popped-out person by vanished-in-view, and the
   rest of the set's).
 
+## 11. Lane FPC-ME3 (2026-11-20): the presence rules at the opening, the cab-ride hang, ME3's checks
+
+ME3's checks of lanes FPC to FPC4's work, and the owner's new presence rule. Numbers only from the code and the logs.
+
+### 11.1 Everyone but Shepard hidden: the 3D screen (item 0, the owner's rule (a), 2026-11-20)
+
+**The owner's decision** ("Yes, by rule (a)"): a conversation where every speaker except Shepard is hidden at the opening (ME3's
+Khalisah interview `citprs_khalisah2_d_dlg`, the video calls) goes to the 3D screen at its start; a run-time rule in the spirit
+of ME1's presence rules, not a hand list, not first person.
+
+**The rule** (`core/vr/ConversationWorld`: `cw::PresenceFacts`, `cw::PresenceAtOpening`, `cw::Name(Presence)`; unit-tested in
+`tests/ConversationWorldTests.cpp`): the facts read from the live scene once the stage has placed everyone decide, in ME1's order,
+
+1. `ShepardHidden`: his pawn hidden by the script (ME1's first rule);
+2. `ShepardAbsent`: farther than `worldAbsentM` (15 m) from the conversation's owner and no line between them (ME1's second);
+3. `OthersHidden` (new): the conversation's people but Shepard (the owner, the speakers, the listener, ME3's found actors and
+   extra participants: the reader's `Speakers`, persons only) found, and every one of them hidden (the actor's `bHidden` or its
+   body's `HiddenGame`). Nobody found but Shepard (a terminal, a hologram that isn't a person) keeps its place.
+
+**Where it acts:** `game/SequelConversationWorld`, at the end of the opening's settle (0.35 s, when the place would be taken), on
+ME2 and ME3 alike, under ME1's keys: `[Cinematics] worldAutoScreen` (`on`, the default: the 3D screen; `log`: logged only, held in
+the world; `off`), `worldAbsentM`. The verdict is logged at every opening (`conversation world: conversation N: the presence rules
+at the opening: a place for the player (its people: SFXStuntActor_0 shown)`, or `... no place for the player in this scene
+(everyone of the scene but Shepard is hidden: the presence rules at the opening; its people: ...; the owner 1.8 m away, in
+sight): on the 3D screen (worldAutoScreen = on)`); `mevr convo world` counts them (`N conversations with no place for the player
+on the 3D screen (M by the presence rules at the opening)`). A conversation held by hand (`mevr convo world on`) only logs the
+verdict and stays held.
+
+**ME1:** its own presence rules (`game/ConversationWorld`'s `Begin`) are the first two only; they don't cover the new case (the
+Khalisah shape: the speaker 1.8 m from Shepard, hidden, Shepard shown). ME1 is not changed (its compiled code: `game/
+ConversationWorld` 19,796 sections, 0 changed; `core/vr/ConversationWorld` 0 changed, the new function's 6 sections new).
+Moving ME1's two rules onto `cw::PresenceAtOpening` is a no-op refactor left for an ME1 batch; adding the third to ME1 is the
+owner's call.
+
+**The docking officer's comm call** (`citprs_citadel_docking_v_dlg`, Save_0090's opening conversation, held by hand): its owner is
+a point of interest (no person), its listener the officer, a stunt actor shown and drawn (`SFXStuntActor_0 hidden=0`, drawn 0.0 s
+ago, 3.7 m away in its void): **the rule does not catch it** (a place for the player). It stays on the 3D screen only because the
+game opens it around a load (the load rule). A comm call staged as a person in a void is not "everyone hidden".
+
+### 11.2 The cab ride's hang: no scale set while the world isn't drawn
+
+**What happened** (fake headset, 2026-11-20 11:15-11:28, stretch `<session>-LE3-fpcme3`): Save_0090 loads into the docking
+officer's wheel (the rapid transit: Presidium Commons, Refugee Camp, Embassies, Purgatory, Hospital). Held in the world by hand
+(`mevr convo world on`, twice: the first set the override, the second held the conversation the module had begun), the module
+switched the engine's depth of field off at the opening (11:20:55): the slice's rule "only for a conversation begun after 3 s on
+foot" assumed such a conversation is never placed. `mevr convo pick 2` (Embassies, wheel location 5); the officer's lines played,
+the conversation ended at 11:22:14 in game mode 0; game/SystemSettings' menu-return `scale set DynamicShadows ...
+LightEnvironmentShadows` at 11:22:14.7; the module's `depth of field on again (after 3 s on foot)` at 11:22:17.6. **ME3's cab ride
+loads in game mode 0**, GWorld unchanged: both fell into the load, which never finished (the Citadel loading picture, snapshot
+`2026-11-20_11-24-29-776`, `render levers: scene renders per frame 0` and `objects=135284` for six minutes). The same hang as the
+slice's at the Citadel's arrival (2026-11-19 20:56, commit `950abe3f`). FPC4 and EXIT3 took the same ride without holding the
+conversation (no depth of field switch) and it finished.
+
+**The fix** (gotchas/me2-scale-set-during-load, its "Fix in place"):
+
+1. `game/WorldDrawn` (`world_drawn::Tick` once a game tick from `Mod.cpp`, the sequels' for now; `world_drawn::Now(withinMs =
+   500)`): the world drawn just now, the player's body drawn within the last 0.5 s of wall time (its mesh's
+   `PrimitiveComponent.LastRenderTime` moving; a loading screen draws no scene and the world's clock may stand still).
+2. Every `scale set` the mod sends on the sequels waits for it, retried, never dropped: `game/SystemSettings`' `Poll` (a new
+   level, a return to gameplay, the shadows, an edit, the first apply; `#if` LE2/LE3, tests `mevr-le2-system-settings`,
+   `mevr-le3-system-settings`); `game/DepthOfFieldHold` (`Off`/`Back` say what is wanted, `Step` sends it each tick: the sequels'
+   conversations and ME2's galaxy projector flow). Logs `system settings: a scale set waits: the world isn't drawn just now`,
+   `conversation world: the depth of field back on waits: the world isn't drawn just now (...)`.
+3. A conversation opened around a load and held by hand never switches the depth of field.
+
+**Check:** hold the docking officer's conversation by hand, pick a ride: the ride's load finishes (`mevr state` at the
+destination, `tools/game-watch.ps1 -UntilWorld` exit 0), the log has the waits and the switch back after the load.
+
+**The scale set was not the whole cause** (the stretches `...-LE3-fpcme3c` and `-fpcme3d`, 2026-11-20 13:05-13:18, the gate
+built): with the docking officer's conversation held by hand the cab ride hung again although nothing was sent during the load
+(`system settings: a scale set waits: the world isn't drawn just now` at the conversation's end); the same with the end's turn off
+(`mevr convo endfacing off`), and the source hooks had no call at all (`placement 0 calls`). With the world mode off (`mevr convo
+world off`) the same pick loaded in about 15 s (`-fpcme3d` 13:14, `-fpcme3e` 13:22; `tools/game-watch.ps1`/the lane's watch: drawn
+on foot at the embassies). So **holding a conversation the game opened around a load stops the load that follows**: the ME3 slice
+at the Citadel's arrival (2026-11-19), the cab ride twice (2026-11-20). The mechanism is [verify] (Save_0090 loads into this
+conversation while the hub may still stream; the held main view is the suspect, as at the arrival). Players never hold such a
+conversation (the load rule leaves it on the 3D screen); `mevr convo world on` now refuses it with a line (`conversation N not held
+by hand: the game opened it around a load ...`) unless `mevr convo world on force`. Not reached: a conversation begun on foot that
+ends into a cab ride (the docking start isn't loaded at the embassies), the player's own path; the rapid transit after arrival is
+a GUI screen, not a conversation [verify].
+
+**Khalisah's interview** (`-fpcme3e`, 13:22, fired from foot 9 s after the ride): `conversation 1: no place for the player in this
+scene (everyone of the scene but Shepard is hidden: the presence rules at the opening; its people: SFXStuntActor_4 hidden; the owner
+1.8 m away, in sight): on the 3D screen (worldAutoScreen = on)`; snapshot `2026-11-20_13-22-41-001-left.png` shows the 3D screen
+(the director's shot of Shepard against a door). Before it, 0.35 s of the view on foot while the opening settled.
+
+**Unexplained (2026-11-20 11:44:11):** the next stretch's game (`20261120-114240-*-LE3-fpcme3b`, Save_0090 loaded into the
+docking officer's wheel on the 3D screen, mode 7) vanished while `load.ps1` polled it: both logs stop mid-stream, no crash report,
+nothing in Windows' Application log, SteamVR's `vrserver.txt` only "exited after 58.87 seconds"; nothing of the coordinator's
+stopped it. Not seen again yet.
+
+### 11.3 Moments: the game's black takes the view with him; the seat in a moment
+
+ME1's moment rules the sequels lacked (section 7.6 item 3): in a moment, a jump of Shepard's pawn past 30 units in a tick (ME1's
+`kJumpUnits`) while the camera's fade is black or was within 1.5 s (`gBlackMs`, read in each camera update) takes the view with him
+whatever the distance, at the same place relative to him, turned to his facing there, under a dip (`worldBlackMoves`; log
+`conversation world: moment N: under the game's fade to black the script moved Shepard X m: the view goes with him`). ME2's
+ANIMCUTSCENEs park his pawn at the world's origin: never followed there. Without the black, the view stays the player's and joins
+him at rest (`worldMoments = view`). While the view is with him (his pawn shown, within 0.4 m), the view sits with him (core
+`cw::StepSeat`, ME1's numbers, as in the conversations; the owner's "every sit-down in first person"). ME3's first fixture is
+Purgatory's bar (`BioD_CitHub_WardsFlux`, `Main_Sequence.Drinking`: used at `SFXPointOfInterest_1`; `SeqAct_Interp_0` at the bar,
+`SeqAct_Interp_2` walks him 1.5 m under a fade and a black-screen track, `SeqAct_Teleport_1` to a booth, `SeqAct_Interp_3` seats
+him there, `SeqAct_Teleport_2` back).
+
+### 11.4 The face axis
+
+The records give each head bone axis's angle to where the game's look-at chain aims (`axesToAimDeg`; `python -I
+scratch/.../faceaxis.py`: the median per axis over every record with an aim). **ME2: +X** (lane FPC4's Tali records: Tali +X 23,
+Prazza 33, Jacob 19, Miranda 18 degrees, the other axes 64-92): ME1's `kFaceAxis 0` holds. **ME3: +X too** (the Prothean's
+character moment below: Javik's and his double's heads `SFXStuntActor_1` 26, `SFXStuntActor_301` 26 degrees on +X, 92-116 on the
+others; the hanar `SFXStuntActor_2` 74 on +X, a head with no face axis, ME1's `faceAxisUnknown`). The records' `toYouDeg` judges
+heads on both sequels unchanged.
+
+### 11.5 ME3 in the game (stretch `20261120-133029-875-LE3-fpcme3f`, main 60a1ed15 merged)
+
+1. **A conversation whose lines walk Shepard** (item 1): the Prothean's character moment (`citprs_proth_char_moment_m_dlg`, from
+   Save_0090's embassies: its remote event, the teleport, the start's input 1; `conversation-world.ps1 -Before ... -StartInput 1`):
+   opening cut 11.3 m away, the eyes from his head bone as learned on foot (32.8 forward, 9.4 up), **2,220 of Shepard's track moves
+   withheld at the source** in 35 s (ME1's `trackHeld`: the player's place is the player's), 7 people kept, 21 records from above,
+   `0 findings` (session folder `convo-proth-133223`, its sheet). The owner's `citprs_miranda_talk1_m_dlg` (the docks) was not
+   reached: the docking officer's ride to the Refugee Camp, the other routes and Purgatory's moments are the next stretch's.
+2. **The wheel's picture** (FPC5's placement, asked by the coordinator): snapshot `2026-11-20_13-33-11-443-left.png`: the wheel in
+   front, low in the centre, readable, Javik 2 m ahead at the window. **No subtitle in any of the six snapshots**, and the module
+   still logs `wheel and subtitles fixed in the room 0.9 m ahead, 0.25 m below the eyes` on ME3: FPC5's subtitle under the speaker
+   doesn't show there yet (reported to lane FPC5's owner; not changed here).
+3. **Not reached on ME3:** Joker seated (`citprs_joker_talk1_d_dlg`, Presidium Commons: the ride and its start), a scene that
+   seats Shepard (the hospital's Ashley/Kaidan, Purgatory's Aria), a level cutscene that walks him (Purgatory's bar, section 11.3),
+   rides, the black move, the handover, the end facing on the Prothean fixture (the runner turned the world mode off before its
+   end). Moments this lane: ME3 0 held, 0 to the screen (none reached); ME2 none run.
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,

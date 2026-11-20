@@ -25,6 +25,9 @@ bool Protection() { ++protectionQueries; return protectedNow; }
 namespace mevr::log { void Write(std::string_view, std::string_view) {} }
 namespace mevr::engine { void const* World() { return nullptr; } }
 namespace mevr::game::head_tracking { std::optional<unsigned char> GameMode() { return std::nullopt; } }
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+namespace mevr::game::world_drawn { bool Now(std::uint64_t) { return true; } }
+#endif
 namespace mevr::game::console_request {
 bool RunCommand(std::string const& command, std::string*) {
     if (!playerReady) return false;
@@ -303,6 +306,30 @@ int main() {
         commands.clear();
         settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
         CHECK(commands.empty());
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        // The sequels: a return to gameplay while the world isn't drawn (ME3's cab ride loads in mode 0, 2026-11-20) waits,
+        // every poll, and goes once it is drawn: never dropped. The same for a new level.
+        settings::ObserveMode(away);
+        settings::Poll(1.0f, away, true, file, world, false);
+        settings::ObserveMode(static_cast<unsigned char>(0));
+        settings::gWorldDrawn = false;
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.empty());
+        settings::gWorldDrawn = true;
+        settings::Poll(1.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands == again);
+        commands.clear();
+        int loadingWorld = 7;
+        world = &loadingWorld;
+        settings::gWorldDrawn = false;
+        settings::Poll(4.0f, static_cast<unsigned char>(0), true, file, world, false);
+        CHECK(commands.empty());
+        settings::gWorldDrawn = true;
+        settings::Poll(3.0f, static_cast<unsigned char>(0), true, file, world, false);  // 3 s: ME2's new level held that long
+        CHECK(commands.size() == fullApply);
+        commands.clear();
+#endif
     }
     write("[SystemSettings]\napply=0\n");
     poll(0, true); poll(0, false); poll(7, false); poll(0, false);

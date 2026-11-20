@@ -790,6 +790,23 @@ bool NoPlaceForPlayer(std::string_view name, int game) {
     return false;
 }
 
+Presence PresenceAtOpening(PresenceFacts const& facts, double absentUnits) {
+    if (facts.shepardHidden) return Presence::ShepardHidden;
+    if (absentUnits > 0.0 && facts.ownerUnits > absentUnits && !facts.ownerInSight) return Presence::ShepardAbsent;
+    if (facts.others > 0 && facts.othersHidden >= facts.others) return Presence::OthersHidden;
+    return Presence::Here;
+}
+
+char const* Name(Presence presence) {
+    switch (presence) {
+    case Presence::Here: return "a place for the player";
+    case Presence::ShepardHidden: return "Shepard's pawn is hidden";
+    case Presence::ShepardAbsent: return "Shepard is far from the owner and out of its sight";
+    case Presence::OthersHidden: return "everyone of the scene but Shepard is hidden";
+    }
+    return "?";
+}
+
 bool IsSeatedScene(std::string_view name) {
     // The scan's SEATED_IN_WORLD (tools/conversation-scan.py). The dancer's seat at Chora's Den: the game fades, sits Shepard in
     // front of the dancer (a gesture track) and lets him get up again.

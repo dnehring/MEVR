@@ -7,6 +7,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "game/ConsoleRequest.hpp"
+#include "game/WorldDrawn.hpp"
 
 #include <filesystem>
 
@@ -25,31 +26,52 @@ bool InIni() {
 } // namespace
 
 void Hold::Off(char const* why) {
-    if (off_) {
-        return;
+    if (!off_) {
+        off_ = true;
+        why_ = why;
+        told_ = false;
     }
-    off_ = true;
-    was_ = InIni();
-    std::string ignored;
-    bool const ok = console_request::RunCommand("scale set DepthOfField True", &ignored) &&
-                    console_request::RunCommand("scale set DepthOfField False", &ignored);
-    log::Info("{}: depth of field off ({}){}", owner_, why, ok ? "" : " (the console wasn't there: it stays as it is)");
+    Send();
 }
 
 void Hold::Back(char const* why) {
-    if (!off_) {
+    if (off_) {
+        off_ = false;
+        why_ = why;
+        told_ = false;
+    }
+    Send();
+}
+
+void Hold::Step() {
+    Send();
+}
+
+void Hold::Send() {
+    if (off_ == sentOff_) return;
+    if (!world_drawn::Now()) {
+        if (!told_) {
+            told_ = true;
+            log::Info("{}: the depth of field {} waits: the world isn't drawn just now ({})", owner_, off_ ? "off" : "back on", why_);
+        }
+        return;
+    }
+    std::string ignored;
+    if (off_) {
+        was_ = InIni();
+        bool const ok = console_request::RunCommand("scale set DepthOfField True", &ignored) &&
+                        console_request::RunCommand("scale set DepthOfField False", &ignored);
+        sentOff_ = true;  // a console not there yet: it stays as it is (as before)
+        log::Info("{}: depth of field off ({}){}", owner_, why_, ok ? "" : " (the console wasn't there: it stays as it is)");
         return;
     }
     if (was_) {
-        std::string ignored;
         bool const ok = console_request::RunCommand("scale set DepthOfField False", &ignored) &&
                         console_request::RunCommand("scale set DepthOfField True", &ignored);
-        if (!ok) {
-            return;  // owed: tried again on the next call
-        }
-        log::Info("{}: depth of field on again ({}; BIOEngine.ini's [SystemSettings])", owner_, why);
+        if (!ok) return;  // owed: tried again by the next call or Step
+        log::Info("{}: depth of field on again ({}; BIOEngine.ini's [SystemSettings])", owner_, why_);
     }
-    off_ = false;
+    sentOff_ = false;
 }
 
 } // namespace mevr::game::depth_of_field

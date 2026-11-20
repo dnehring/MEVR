@@ -158,6 +158,35 @@ void TestSetPieces() {
     CHECK(!cw::NoPlaceForPlayer("normw_starter_h.normw_starter_h_dlg", 2));
     CHECK(!cw::NoPlaceForPlayer("pronor_illusive_c_d.pronor_illusive_c_dlg", 3) && !cw::NoPlaceForPlayer("pronor_illusive_c", 1));
     CHECK(!cw::NoPlaceForPlayer("", 2));
+    // The run-time presence rules at the opening (ME1's two, the owner's rule (a) of 2026-11-20 for the sequels).
+    {
+        cw::PresenceFacts f;
+        f.ownerUnits = 180.0;
+        f.others = 1;
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::Here);
+        f.othersHidden = 1;  // Khalisah's interview: its one speaker hidden 1.8 m ahead
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::OthersHidden);
+        f.others = 3;
+        f.othersHidden = 2;  // one of three shown: a place for the player
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::Here);
+        f.othersHidden = 3;
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::OthersHidden);
+        f = {};  // nobody found but Shepard (a terminal, a hologram that isn't a person): not "everyone hidden"
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::Here);
+        f.shepardHidden = true;  // ME1's first rule wins over the others
+        f.others = 1;
+        f.othersHidden = 1;
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::ShepardHidden);
+        f = {};
+        f.ownerUnits = 1600.0;
+        f.ownerInSight = false;
+        f.others = 1;
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::ShepardAbsent);
+        CHECK(cw::PresenceAtOpening(f, 0.0) == cw::Presence::Here);  // worldAbsentM 0: that rule off
+        f.ownerInSight = true;  // far but in sight: ME1 keeps it in the world
+        CHECK(cw::PresenceAtOpening(f, 1500.0) == cw::Presence::Here);
+        CHECK(std::string(cw::Name(cw::Presence::OthersHidden)).find("hidden") != std::string::npos);
+    }
     CHECK(cw::IsStagedScene("sta90_council_saren") && cw::IsStagedScene("sta90_council_spectre_induction"));
     // The council shown as the walk with Anderson begins (research/69 item 36): by the moment's move track, its own matinee only.
     {
