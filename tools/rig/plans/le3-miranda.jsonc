@@ -53,6 +53,30 @@
         { "bone": "GluteLeft", "center": [-9.0, -7.0, 94.0], "radius": [7.0, 8.0, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] },
         { "bone": "GluteRight", "center": [-9.0, 7.0, 94.0], "radius": [7.0, 8.0, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] }
       ]
+    },
+    {
+      "id": "underwear",
+      // The female underwear body of ME3's romance and cabin scenes (HMF_ARM_NKDc_MDL, the same skeleton), for judging the
+      // soft tissue on the anatomy rather than an outfit (the owner, 2026-11-19); put on by hand: `mevr hair body`. Its
+      // materials aren't loaded on the Citadel: copied. Placed from its surface: breasts peak at x 13.9 around z 132-136, y
+      // +-6 (a cleavage between them, x 10.9 at the middle); the back peaks at x -14.8 around z 96-98, y +-4..6.
+      "source": "{LE3}/CookedPCConsole/BioD_Nor_100CabinConv.pcc",
+      "mesh": "HMF_ARM_NKDc_MDL",
+      "name": "HMF_ARM_NKDc_MEVR",
+      "materials": "copy",
+      "bonesOf": ["hair"],
+      "bones": [
+        { "name": "BreastLeft", "parent": "Chest2", "at": [6.5, -6.5, 133.5], "yaw": 0 },
+        { "name": "BreastRight", "parent": "Chest2", "at": [6.5, 6.5, 133.5], "yaw": 0 },
+        { "name": "GluteLeft", "parent": "Pelvis", "at": [-7.0, -6.5, 96.0], "yaw": 180 },
+        { "name": "GluteRight", "parent": "Pelvis", "at": [-7.0, 6.5, 96.0], "yaw": 180 }
+      ],
+      "regions": [
+        { "bone": "BreastLeft", "center": [10.0, -6.5, 134.0], "radius": [6.5, 7.0, 8.0], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "BreastRight", "center": [10.0, 6.5, 134.0], "radius": [6.5, 7.0, 8.0], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "GluteLeft", "center": [-10.0, -6.5, 95.5], "radius": [7.0, 7.5, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] },
+        { "bone": "GluteRight", "center": [-10.0, 6.5, 95.5], "radius": [7.0, 7.5, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] }
+      ]
     }
   ]
 }

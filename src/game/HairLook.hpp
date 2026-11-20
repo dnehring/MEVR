@@ -27,5 +27,8 @@ bool Apply(ue3::Object* component, std::string const& look);
 void PutBack(ue3::Object* component);
 // A level change: every remembered component and instance forgotten (their memory may be reused).
 void Forget();
+// The component's material in slot 0 (its override, else its mesh's), and setting the override (null: the mesh's own).
+ue3::Object* Material(ue3::Object* component);
+bool SetMaterial(ue3::Object* component, ue3::Object* material);
 
 } // namespace mevr::game::hair_look

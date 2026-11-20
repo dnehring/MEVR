@@ -223,6 +223,7 @@ struct Swapped {
     ue3::Object* standIn = nullptr;
 };
 std::vector<Swapped> gSwapped;
+std::unordered_map<ue3::Object*, ue3::Object*> gBodyMaterial;  // `mevr hair body`: a body component's material before
 std::unordered_map<std::string, ue3::Object*> gStandInObjects;  // rigged path -> object (this level)
 std::unordered_map<std::string, bool> gStandInMissing;          // logged once per level
 
@@ -364,6 +365,10 @@ void PutBackStandIns(char const* why) {
     for (Swapped const& s : gSwapped) {
         if (ue3::runtime::IsAlive(s.component)) {
             hair_look::PutBack(s.component);  // its own material instance dropped: the mesh's material again
+            auto kept = gBodyMaterial.find(s.component);
+            if (kept != gBodyMaterial.end() && ue3::runtime::IsAlive(kept->second)) {
+                hair_look::SetMaterial(s.component, kept->second);  // the outfit's own material back (`mevr hair body`)
+            }
         }
         if (ue3::runtime::IsAlive(s.component) && ue3::runtime::IsAlive(s.original) && player::SkeletalMesh(s.component) == s.standIn) {
             put += SetMesh(s.component, s.original) ? 1 : 0;
@@ -373,7 +378,7 @@ void PutBackStandIns(char const* why) {
     if (!gSwapped.empty()) {
         log::Info("hair: {} of {} rigged stand-in(s) put back ({})", put, gSwapped.size(), why);
     }
-    gSwapped.clear();
+    gSwapped.clear(); gBodyMaterial.clear();
 }
 
 // ---- The people near ---------------------------------------------------------------------------------------------------
@@ -865,7 +870,7 @@ void Tick(double /*deltaSeconds*/) {
     if (world != gWorld) {
         gWorld = world;  // a new level: its objects may sit where freed ones were
         gParts.clear();
-        gSwapped.clear();
+        gSwapped.clear(); gBodyMaterial.clear();
         gStandInObjects.clear();
         gStandInMissing.clear();
         hair_look::Forget();
@@ -1061,6 +1066,46 @@ std::string Command(std::string const& args) {
             return "not loaded and couldn't be loaded: " + path;
         }
         return SetMesh(gPeople[static_cast<std::size_t>(n)].hair, mesh) ? "set " + PathOf(mesh) : "SetSkeletalMesh failed";
+    }
+    if (verb == "body") {
+        // mevr hair body <n> <object path>: another body on person n (ME3: MEVR_Miranda.HMF_ARM_NKDc_MEVR, the underwear
+        // body, to judge the soft tissue on the anatomy); her head and hair re-attached; `mevr hair standins off` puts the
+        // game's back.
+        int n = -1;
+        std::string path;
+        words >> n >> path;
+        if (n < 0 || n >= static_cast<int>(gPeople.size()) || path.empty()) {
+            return "mevr hair body <n> <object path> (mevr hair people)";
+        }
+        Person const& p = gPeople[static_cast<std::size_t>(n)];
+        if (p.body == nullptr) {
+            return "that person has no body component";
+        }
+        ue3::Object* const mesh = StandInFor(Lower(path));
+        if (mesh == nullptr) {
+            return "not loaded and couldn't be loaded: " + path;
+        }
+        ue3::Object* const before = player::SkeletalMesh(p.body);
+        // The character's own material override (her outfit's instance) would paint the new body: dropped for it, kept to
+        // put back with the outfit.
+        if (gBodyMaterial.find(p.body) == gBodyMaterial.end()) {
+            gBodyMaterial[p.body] = hair_look::Material(p.body);
+        }
+        if (!SetMesh(p.body, mesh)) {
+            return "SetSkeletalMesh failed";
+        }
+        hair_look::SetMaterial(p.body, nullptr);
+        ue3::Object* original = before;
+        for (auto it = gSwapped.begin(); it != gSwapped.end(); ++it) {
+            if (it->component == p.body) {
+                original = it->original;  // putting back restores the game's own
+                gSwapped.erase(it);
+                break;
+            }
+        }
+        gSwapped.push_back({p.body, original, mesh});
+        Reattach(p.body, {p.head, p.hair});
+        return std::format("[{}] wears {} (was {})", n, PathOf(mesh), PathOf(before));
     }
     if (verb == "stream") {
         std::string package, onOff;

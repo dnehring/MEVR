@@ -340,4 +340,17 @@ void Forget() {
     gApplied.clear();
 }
 
+ue3::Object* Material(ue3::Object* component) {
+    return MaterialOf(component);
+}
+
+bool SetMaterial(ue3::Object* component, ue3::Object* material) {
+    if (component == nullptr || gSetMaterial.Get() == nullptr) {
+        return false;
+    }
+    ue3::Params p(ue3::runtime::Get(), gSetMaterial.Get());
+    return p.Valid() && p.Set<std::int32_t>("ElementIndex", 0) && p.Set<ue3::Object*>("Material", material) &&
+           ue3::runtime::Call(component, gSetMaterial.Get(), p);
+}
+
 } // namespace mevr::game::hair_look

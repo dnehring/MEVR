@@ -59,6 +59,7 @@ internal sealed class StepPlan
     public List<RegionPlan> Regions { get; set; } = new();
     public HairPlan Hair { get; set; }
     public List<string> BonesOf { get; set; } = new();
+    public string Materials { get; set; } = "import";  // "copy": the materials and what they need into the package
 }
 
 internal static class Rigging
@@ -89,7 +90,14 @@ internal static class Rigging
             var report = new Report();
             var export = Port.Mesh(sourceMesh, pcc, step.Name, report);
             var mesh = ObjectBinary.From<SkeletalMesh>(export);
-            Port.Materials(sourceMesh, pcc, mesh, report);
+            if (string.Equals(step.Materials, "copy", StringComparison.OrdinalIgnoreCase))
+            {
+                Port.CopyMaterials(sourceMesh, pcc, mesh, report);
+            }
+            else
+            {
+                Port.Materials(sourceMesh, pcc, mesh, report);
+            }
 
             Skeleton.Check(mesh, report);
             var bones = new List<BonePlan>(step.Bones);

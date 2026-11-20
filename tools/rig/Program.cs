@@ -72,6 +72,7 @@ internal static class Program
             "inspect" => Inspect.Run(args),
             "rig" => Rigging.Run(args),
             "contents" => Contents.Run(args),
+            "find" => Contents.Find(args),
             _ => Usage(),
         };
     }

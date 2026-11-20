@@ -54,6 +54,25 @@ internal static class Port
         return mesh;
     }
 
+    // A material copied with what it needs, as cooked level packages carry their shared assets (forced exports at their
+    // original paths: an object already loaded is used, else ours loads). For a mesh whose materials aren't loaded where
+    // the mod puts it on (ME3's underwear body on the Citadel).
+    public static void CopyMaterials(ExportEntry source, IMEPackage pcc, SkeletalMesh mesh, Report report)
+    {
+        var original = ObjectBinary.From<SkeletalMesh>(source);
+        for (int i = 0; i < original.Materials.Length; ++i)
+        {
+            if (source.FileRef.GetEntry(original.Materials[i]) is not ExportEntry m)
+            {
+                mesh.Materials[i] = 0;
+                continue;
+            }
+            var issues = EntryExporter.ExportExportToPackage(m, pcc, out IEntry copied);
+            mesh.Materials[i] = copied.UIndex;
+            report.Line($"material {i}: copied {copied.InstancedFullPath} ({issues.Count} porting note(s); the package now has {pcc.ExportCount} exports)");
+        }
+    }
+
     // Each material slot an import with the original's full path (its outer packages as package imports).
     public static void Materials(ExportEntry source, IMEPackage pcc, SkeletalMesh mesh, Report report)
     {

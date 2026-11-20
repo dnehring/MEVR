@@ -32,4 +32,26 @@ internal static class Contents
         }
         return 0;
     }
+
+    // mevr-rig find <folder> <file pattern> <mesh name regex>: every SkeletalMesh whose name matches, per package.
+    public static int Find(string[] args)
+    {
+        var regex = new System.Text.RegularExpressions.Regex(args[3], System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        foreach (var file in System.IO.Directory.EnumerateFiles(args[1], args[2], System.IO.SearchOption.AllDirectories))
+        {
+            try
+            {
+                using var package = MEPackageHandler.OpenMEPackage(file, forceLoadFromDisk: true);
+                foreach (var e in package.Exports.Where(e => e.ClassName == "SkeletalMesh" && regex.IsMatch(e.ObjectName.Instanced)))
+                {
+                    Console.WriteLine($"{System.IO.Path.GetFileName(file)}: {e.InstancedFullPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{System.IO.Path.GetFileName(file)}: {ex.Message}");
+            }
+        }
+        return 0;
+    }
 }
