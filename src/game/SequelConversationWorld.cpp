@@ -248,6 +248,13 @@ struct Conversation {
     vr::comfort::SnapTurn snap;
     double turnedDeg = 0.0;
     unsigned wheelHeld = 0;      // ticks the wheel kept the left stick
+    // The floor marker's black-move source (cw::StepMarker, MarkerNeed::BlackMove; the owner's yes of 2026-11-19, need (c)):
+    // where the game's fade to black wanted Shepard and the player was not moved (a curated walk, or a step within "where he
+    // stands", which ME1 walks by the stick and the sequels leave to the player), on the floor; until the player stands in it.
+    std::optional<ue3::Vector> blackMarker;
+    cw::MarkerState marker;
+    unsigned markers = 0;
+    std::uint64_t markerMs = 0;
 };
 Conversation gC;
 bool gMomentHeld = false;  // a moment holds the view (the camera update's letterbox and near plane; set by TickMoment)
@@ -955,8 +962,8 @@ void PublishHeld(conversation_world::Link const& link, ue3::Object* controller, 
     link.publish(&s);
 }
 
-void Publish(conversation_world::Link const& link, ue3::Object* controller) {
-    PublishHeld(link, controller, gC.serial, gCutSerial, gC.held, gC.facing, gC.fov);
+void Publish(conversation_world::Link const& link, ue3::Object* controller, MarkerOut const& marker = {}) {
+    PublishHeld(link, controller, gC.serial, gCutSerial, gC.held, gC.facing, gC.fov, marker);
 }
 
 // On foot with the world mode wanted (and 3 s on foot: never around a load), the host is told a conversation may begin this
@@ -1040,6 +1047,7 @@ void End(conversation_world::Link const& link, char const* why) {
         gLast += std::format("; the player rode {:.2f} m with what Shepard stood on", gRide.units / 100.0);
     }
     if (gC.blackMoves > 0) gLast += std::format("; moved with Shepard under the game's fade to black {} times", gC.blackMoves);
+    if (gC.markers > 0) gLast += std::format("; {} floor marker{}", gC.markers, gC.markers == 1 ? "" : "s");
     gRide.units = 0.0;
     gRide.logged = false;
     log::Info("conversation world: {}", gLast);
@@ -1106,9 +1114,18 @@ void RideBase(ue3::Object* pawn) {
 void StepBlackMove(std::uint64_t now) {
     if (gC.sceneAsks == gC.sceneAsksTaken) return;
     gC.sceneAsksTaken = gC.sceneAsks;
-    if (!gSettings.blackMoves || gC.curated || !gC.sceneWantsShepard || gBlackMs == 0 || now - gBlackMs > 1500) return;
+    if (!gC.sceneWantsShepard || gBlackMs == 0 || now - gBlackMs > 1500) return;
     double const away = std::hypot(gC.sceneWants.x - gC.pin.x, gC.sceneWants.y - gC.pin.y);
-    if (away <= cw::OpeningLimits{}.stayUnits) return;
+    if (away <= cw::MarkerLimits{}.inUnits) return;  // he is there already
+    if (!gSettings.blackMoves || gC.curated || away <= cw::OpeningLimits{}.stayUnits) {
+        // Not moved (a curated walk keeps its walk, worldBlackMoves = 0, or a step within where he stands): the floor marker shows
+        // where the black wanted him (need (c)), for the player to step to.
+        gC.blackMarker = gC.sceneWants;
+        log::Info("convo: marker: conversation {}: under the game's fade to black the scene wants Shepard {:.2f} m away and the player "
+                  "stays ({}): a marker there", gC.serial, away / 100.0,
+            gC.curated ? "a curated walk" : !gSettings.blackMoves ? "worldBlackMoves = 0" : "within where he stands");
+        return;
+    }
     log::Info("conversation world: conversation {}: under the game's fade to black the scene wants Shepard {:.2f} m away: the player "
               "goes with him under a dip (ME1's worldBlackMoves)", gC.serial, away / 100.0);
     gC.pin = gC.sceneWants;  // the eyes keep their offset over his place; StepEyeHeight brings them to the new floor
@@ -2028,7 +2045,35 @@ void Tick(conversation_world::Link const& link) {
     }
     gC.eyeMs = now;
     gC.held = {gC.pin.x + gC.eyeOffset.x, gC.pin.y + gC.eyeOffset.y, gC.pin.z + gC.eyeOffset.z};
-    Publish(link, controller);
+    MarkerOut marker;
+    if (gC.placed) {
+        // The floor marker (cw::StepMarker): the black-move source above; the player's feet are the pin's floor.
+        ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+        auto const half = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+        double const h = half && *half > 0.0f && *half < 300.0f ? *half : 90.0;
+        cw::MarkerFacts facts;
+        facts.scene = true;
+        if (gC.blackMarker) facts.blackMove = cw::Vec3{gC.blackMarker->x, gC.blackMarker->y, gC.blackMarker->z - h};
+        facts.player = cw::Vec3{gC.pin.x, gC.pin.y, gC.pin.z - h};
+        double const dt = gC.markerMs != 0 ? std::clamp(static_cast<double>(now - gC.markerMs) / 1000.0, 0.0, 0.1) : 0.0;
+        gC.markerMs = now;
+        cw::Marker const m = cw::StepMarker(gC.marker, facts, dt);
+        if (m.changed) {
+            ++gC.markers;
+            log::Info("convo: marker: conversation {}: {} ({:.0f}, {:.0f}, {:.0f}), {:.2f} m from the player", gC.serial, cw::Name(m.need),
+                m.at.x, m.at.y, m.at.z, std::hypot(m.at.x - facts.player.x, m.at.y - facts.player.y) / 100.0);
+        }
+        if (gC.marker.stoodIn && gC.blackMarker) gC.blackMarker.reset();  // reached: the need passes (it fades out)
+        if (m.alpha > 0.0) {
+            if (auto const markerFrame = HeldFrame()) {
+                marker.on = true;
+                marker.need = m.need;
+                marker.at = engine::ToTracking(*markerFrame, engine::UnrealVector{m.at.x, m.at.y, m.at.z});
+                marker.alpha = static_cast<float>(m.alpha);
+            }
+        }
+    }
+    Publish(link, controller, marker);
     // Arm IK in the held frame once the host's view is the held one (a head-tracked view; nothing while it is still cinematic).
     auto const frame = HeldFrame();
     if (frame) view_anchor::Hold(frame, vr::host_view::Latest());
