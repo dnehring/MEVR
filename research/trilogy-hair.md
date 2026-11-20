@@ -288,3 +288,5 @@ out, the strands swung 15-30 cm and never settled), pushing out by the full radi
 normal (no better). Her suit (MIRa) keeps the capsules: its high collar's inside held the nape's hair against the spheres (the
 walk 8.7 mm deeper against 7.1 without, never settled); a suit with a collar needs its own rule. [verify] in the headset: the
 underwear body walking, jumping and dancing side-on and from behind.
+
+In the headset after the fixes (2026-11-19, late): the front strand at the collarbone fixed by the hair's 3 cm thickness against the surface (`surfaceRadiusM`). With `followBody` 1 for the session the hair around her neck moved "almost like a large blob" in one direction (its lower half carried by the chest, its upper by the head); back at the shipped 0.7 the owner: "that looks better". `followBody` stays 0.7.
