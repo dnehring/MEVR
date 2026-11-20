@@ -35,8 +35,10 @@ or establish campaign/headset acceptance.
 Explicit scope decisions:
 
 - Reuse ME1 behavior and ME2 adaptations after auditing their implementations.
-- First-person conversations in the world remain deferred. Keep the supported
-  cinema/native conversation route and head tracking; authored seated scenes
+- First-person conversations in the world are release scope since 2026-11-19
+  (the owner changed priorities; T49, `game/SequelConversationWorld`, experimental
+  and off by default). The cinema/native conversation route and head tracking stay
+  the default; authored seated scenes
   must reject traversal. Do not implement free walking inside shuttle scenes.
 - The Hammerhead is outside the requested current work.
 - ME3 melee, its custom-action traversal, weight/cooldown behavior, weapon mods,
@@ -392,6 +394,6 @@ policy. Do not restart the game, Steam or VR merely because this document exists
 > First finish the pending galaxy capture correction and CIC presentation; then
 > obtain coherent combat fixtures and finish/validate powers, squad, weapons,
 > optics, melee, traversal and UI. Reuse existing scripts and mod systems. Keep
-> first-person world conversations deferred and authored seated traversal blocked.
+> authored seated traversal blocked (first-person world conversations: release scope since 2026-11-19, T49).
 > Do not call the port complete until the milestone acceptance gates and release
 > matrix pass. Update the ledger with concrete evidence and remaining limitations.

@@ -1972,8 +1972,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::galaxy_map::Tick(GalaxyMapLink());
 #endif
         game::world_ui::Tick(WorldUiLink());
-#if defined(MEVR_GAME_LE3)
-        // ME3's slice of ME1's conversations in the world (T49, the owner 2026-11-19): after world_ui, its Hold is ours in mode 7.
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        // The sequels' conversations in the world, ME1's rules (T49): after world_ui, its Hold is ours in mode 5 (ME2) or 7 (ME3).
         game::sequel_conversation_world::Tick(ConversationWorldLink());
 #endif
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
@@ -2144,7 +2144,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::screen_reticle::Shutdown(exiting);
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
-#if defined(MEVR_GAME_LE3)
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     game::sequel_conversation_world::Shutdown(ConversationWorldLink());
 #endif
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back

@@ -353,7 +353,8 @@ void Settings::Read(menu::Values& v) {
     namespace cw = mevr::vr::conversation_world;
     auto const convo = cw::ParseMode(ini.Text("Cinematics", "conversations", "").c_str(),
         cineDefaults.conversations ? cw::Mode::Screen : cw::Mode::Vr);
-    v.texts["cine_convo"] = convo == cw::Mode::Vr ? "flat" : "screen";
+    // First person in the world (the sequels' game/SequelConversationWorld, T49): ME1's word, `conversations = world`.
+    v.texts["cine_convo"] = convo == cw::Mode::World ? "world" : convo == cw::Mode::Vr ? "flat" : "screen";
     v.texts["cine_cut"] = ini.Num("Cinematics", "cutscenes", cineDefaults.cutscenes ? 1.0f : 0.0f) != 0.0f ? "screen" : "flat";
 #endif
     v.numbers["cine_width"] = std::clamp(ini.Num("Cinematics", "widthM", 2.9f), 1.5f, 8.0f);
@@ -947,8 +948,8 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
             Put("Cinematics", convo ? "conversations" : "cutscenes", view == "world" && convo ? "world" : view == "screen" ? "1" : "0", true);
         }
 #else
-        if (view == "screen" || view == "flat") {
-            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "screen" ? "1" : "0", true);
+        if (view == "screen" || view == "flat" || (convo && view == "world")) {
+            Put("Cinematics", convo ? "conversations" : "cutscenes", view == "world" ? "world" : view == "screen" ? "1" : "0", true);
         }
 #endif
     } else if (key == "cine_width") {

@@ -106,7 +106,7 @@ Strict compilation passed for both sequel bridges and all linked squad draw tran
 
 LE3 now runs the same `Voice::OnPresent` request/key/listen maintenance as LE2; the coordinator owns the matching attach `Init`, unload `Shutdown`, cancellation and HostServices wiring. VoiceModel's optional local llama dependency is available to all three hosts and still reports unavailable when absent. This supplies microphone and recognizer machinery without changing native dialogue playback.
 
-The current game-side Thespian adapter has LE1 and LE2 branches only. LE3 must not inherit LE1's ISACT muting/skip path or the first-person ConversationWorld reader. Native LE3 reply text/queue/handler/ownership evidence and an independent live conversation reader are still required before enabling spoken dialogue selection. First-person world conversations remain deferred; authored seated scenes retain native traversal locks.
+The current game-side Thespian adapter has LE1 and LE2 branches only. LE3 must not inherit LE1's ISACT muting/skip path or the first-person ConversationWorld reader. Native LE3 reply text/queue/handler/ownership evidence and an independent live conversation reader are still required before enabling spoken dialogue selection. First-person world conversations are release scope since 2026-11-19 (the owner changed priorities; ME1's rules through `game/SequelConversationWorld`, experimental and off by default: docs/trilogy-plan.md T49); authored seated scenes retain native traversal locks.
 
 ## Interaction-label consumer
 

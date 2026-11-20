@@ -262,7 +262,9 @@ powers, squad controls, voice and cinema experience through LE3-native adapters.
 deliberate light/heavy melee and class actions, ladder/evade handling, aim-mode/attachment/loadout-aware weapons,
 and galaxy scanning with Reaper pursuit. Preserve native damage, resource accounting, cooldowns, AI and progression.
 
-First-person world conversations remain deferred. Use the shared cinema presentation and native interrupt windows.
+First-person world conversations are release scope since 2026-11-19 (the owner changed priorities; docs/trilogy-plan.md T49):
+ME1's, through `game/SequelConversationWorld`, experimental and off by default. The default stays the shared cinema presentation,
+with native interrupt windows.
 Authored seated or restrained scenes, including shuttle rides, prohibit player traversal and combat gestures while
 preserving tracked head orientation and dialogue controls. Determine this from native scene/context state; ordinary
 physically seated gameplay must retain movement and combat. An upstream first-person conversation feature is not
@@ -410,7 +412,7 @@ synthetic generators once that bridge exists. A tool filename or accepted `-Game
 | Natural hostile checkpoint | Damage and shields/armor/barriers, targeted powers, squad behavior, combat interruption | All classes or all weapon families |
 | Six legal class fixtures | Light/heavy/class melee, powers and class effects | A class-name-only edit that leaves incompatible powers/actions behind |
 | Ladder/vault/evade and blocked comparison | Admission, destination, collision, completion and recovery | Comfortable HMD behavior without headset review |
-| Dialogue/interrupt/seated scene | Native choices and plot effects, timed interrupts, no traversal during authored seating | First-person world-conversation acceptance, which is deferred |
+| Dialogue/interrupt/seated scene | Native choices and plot effects, timed interrupts, no traversal during authored seating | First-person world-conversation acceptance (release scope since 2026-11-19, T49; experimental, off by default) |
 | Galaxy/search/pursuit/retrieval | Scan cadence, steering, resources/discoveries/alert and save persistence | Full stereo hologram/CIC presentation |
 | Special actor and DLC checkpoints | Atlas/mounted weapons, forced equipment, tutorials, exceptions and return to Shepard | Blanket campaign support from one successful base-game mission |
 

@@ -491,6 +491,12 @@ below; read only, level names read from the files): `AutoSave`, `QuickSave`, `Le
 
 ## 9. Questions for the owner
 
+**Answered by the owner, 2026-11-19: (a) to all three, on all three games**, as the defaults of the first-person mode (which
+itself stays experimental and off by default): ME1's sticks; ME1's moment rule with its current defaults (`worldMoments = view`,
+walk-along, `worldBlackMoves` with curated walks excepted; never an automatic guided walk to a mark: ME1's `worldWalkInS = -1`);
+scenes with no place for the player on the 3D screen from a table generated from the scan (presence-based). Recorded in
+docs/trilogy-plan.md T49 and research/le2-conversations-in-world.md.
+
 1. **The sticks in a conversation held in the world.** ME1: the left stick walks only while the wheel is down and steers the wheel
    when it is up (the stick latched after a pick); the right stick turns (`[Comfort] turn`). The ME3 slice (after the owner's run):
    the left stick always walks, the right stick steers the wheel, no turning. Options: (a) ME1's rule on all three games; (b) the

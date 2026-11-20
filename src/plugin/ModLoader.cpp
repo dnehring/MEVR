@@ -32,6 +32,9 @@
 #include "plugin/TestLoop.hpp"
 #include "plugin/XrHost.hpp"
 #endif
+#if defined(MEVR_WITH_HALCYON_LE2)
+#include "core/vr/ConversationWorld.hpp"  // v33 for the sequels' first-person conversations (T49)
+#endif
 #if defined(MEVR_WITH_HALCYON) || defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
 #include "core/vr/AimRay.hpp"
 #include "core/vr/Controllers.hpp"
@@ -646,9 +649,9 @@ HostServices BuildServices() {
         else vr::interact::Reset();
     };
 #endif
-#if defined(MEVR_WITH_HALCYON_LE3)
-    // v33's conversations in the world (ME1's research/59): ME3's slice of T49 (the owner, 2026-11-19); the renderer reads it
-    // through MevrSeams::ConversationInWorld and WorldViewHoldBegin (plugin/WorldUi).
+#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
+    // v33's conversations in the world (ME1's research/59): the sequels' T49 (ME3 the owner's 2026-11-19 slice, ME2 lane FPC); the
+    // renderer reads it through MevrSeams::ConversationInWorld and WorldViewHoldBegin (plugin/WorldUi).
     services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));
     services.setConversationWorld = [](vr::conversation_world::State const* state) {
         if (state != nullptr && state->size == sizeof(vr::conversation_world::State)) vr::conversation_world::Publish(*state);

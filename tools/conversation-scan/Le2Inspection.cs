@@ -83,4 +83,70 @@ internal static class Le2Inspection
             ["scope"] = "authored visibility keys; runtime window and input acceptance unverified",
         };
     }
+
+    internal static bool IsShepardGroup(string name) =>
+        name != null && System.Text.RegularExpressions.Regex.IsMatch(name, @"^(pc_|hm[mf]_pc|shep|player$|pc$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    // ME2 moves people inside a conversation two ways (research/le2-conversations-in-world.md "How ME2 moves people"): a move
+    // track on an actor's group (InterpTrackMove, "where to": its first and last key), and a gesture track whose animation walks
+    // with root motion (BioEvtSysTrackGesture: WalktoNode_Forward, Wander_LongWalkEnter, DL_EnterWalk5p_Turn90R ...). Names only.
+    static readonly System.Text.RegularExpressions.Regex WalkAnim =
+        new(@"walk|step|wander|pace|stroll|run_|_run|turn", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    internal static void ExtendGroup(IMEPackage pcc, Dictionary<string, object> group, PropertyCollection groupProps)
+    {
+        var walks = new List<Dictionary<string, object>>();
+        var moves = new List<Dictionary<string, object>>();
+        foreach (ObjectProperty t in groupProps.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks"))
+        {
+            if (pcc.GetEntry(t.Value) is not ExportEntry track)
+                continue;
+            PropertyCollection tp = track.GetProperties();
+            if (track.ClassName == "BioEvtSysTrackGesture")
+            {
+                var anims = new List<string>();
+                foreach (StructProperty g in tp.GetProp<ArrayProperty<StructProperty>>("m_aGestures") ?? new ArrayProperty<StructProperty>("m_aGestures"))
+                {
+                    foreach (string field in new[] { "nmGestureAnim", "nmTransitionAnim", "nmPoseAnim" })
+                    {
+                        string name = g.GetProp<NameProperty>(field)?.Value.Instanced;
+                        if (name != null && name != "None" && WalkAnim.IsMatch(name) && !anims.Contains(name))
+                            anims.Add(name);
+                    }
+                }
+                if (anims.Count > 0)
+                    walks.Add(new Dictionary<string, object> { ["actor"] = tp.GetProp<NameProperty>("m_nmFindActor")?.Value.Instanced, ["anims"] = anims });
+            }
+            else if (track.ClassName is "InterpTrackMove" or "BioInterpTrackMove")
+            {
+                var points = tp.GetProp<StructProperty>("PosTrack")?.GetProp<ArrayProperty<StructProperty>>("Points");
+                if (points == null || points.Count == 0)
+                    continue;
+                float[] At(StructProperty point)
+                {
+                    var v = point.GetProp<StructProperty>("OutVal");
+                    return new[] { v?.GetProp<FloatProperty>("X")?.Value ?? 0, v?.GetProp<FloatProperty>("Y")?.Value ?? 0, v?.GetProp<FloatProperty>("Z")?.Value ?? 0 };
+                }
+                float[] a = At(points[0]), b = At(points[points.Count - 1]);
+                double span = 0;
+                for (int i = 1; i < points.Count; ++i)
+                {
+                    float[] p0 = At(points[i - 1]), p1 = At(points[i]);
+                    span += Math.Sqrt((p1[0] - p0[0]) * (p1[0] - p0[0]) + (p1[1] - p0[1]) * (p1[1] - p0[1]) + (p1[2] - p0[2]) * (p1[2] - p0[2]));
+                }
+                moves.Add(new Dictionary<string, object>
+                {
+                    ["keys"] = points.Count,
+                    ["from"] = a, ["to"] = b,
+                    ["netUnits"] = Math.Round(Math.Sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]) + (b[2] - a[2]) * (b[2] - a[2])), 1),
+                    ["pathUnits"] = Math.Round(span, 1),
+                    ["frame"] = tp.GetProp<EnumProperty>("MoveFrame")?.Value.Instanced,
+                });
+            }
+        }
+        if (walks.Count > 0)
+            group["walkGestures"] = walks;
+        if (moves.Count > 0)
+            group["moves"] = moves;
+    }
 }
