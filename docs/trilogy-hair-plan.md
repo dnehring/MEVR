@@ -485,11 +485,13 @@ Not Shepard (the owner, 2026-11-19): the player's pawn is never simulated (a fir
 the priority), so the sequels' modular armour pieces (breasts on the torso piece, glutes on the legs) need no work.
 Per character (the owner, 2026-11-19): EDI none (her robot body: no rigged body, no swap), Samara half, Kasumi a quarter,
 Jack full, Ashley in armour, Liara's combat outfits and Cerberus female armour a quarter (`[Hair] bodyJiggle = hmf_arm_ashc:1,
-asa_arm_liad:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, asa_arm_lia:0.25,
+asa_arm_liad:1, asa_arm_liab:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, asa_arm_lia:0.25,
 hmf_arm_crb:0.25`, the first match wins, before the armour rules). ME3's outfits are told apart by the packages that load them
 (lane A's census, `%LOCALAPPDATA%\MEVR\rig\census\LE3.csv`): `BioH_<name>_NN` is a squad appearance, so armour (Ashley's ASHa,
 ASHb, ASHf; Liara's LIAa, LIAe, LIAf, LIAh); Ashley's ASHc loads only in the hospital and her romance scene, Liara's LIAd only
-in hers (full). Left: the package's load
+in hers (full). ME2: Liara's dress for her visit to the cabin after Lair of the Shadow Broker is `ASA_ARM_CTHa_MDL` in the
+group `BIOG_ASA_ARM_LIAb_R` (only `BioD_Exp1Lvl5_200Cabin`), full; her Shadow Broker suit (`BIOG_ASA_ARM_LIAa_R.LGTa`) a
+quarter. ME3's Citadel DLC loads no Liara body but her usual LIAa. A swapped body's share is read from the game's own mesh. Left: the package's load
 cost at the first lookup per level [verify], and step 5.
 
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body

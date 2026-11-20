@@ -98,8 +98,8 @@ constexpr char kBlock[] =
     "; A character's own share, before the rules above (the owner, 2026-11-19): name part:share, comma-separated, the first\n"
     "; that matches wins. 0 leaves the body as the game made it (no rigged body, no jiggle: EDI's robot body); Samara's armour\n"
     "; keeps half; Kasumi's suit, Ashley's and Liara's combat outfits and Cerberus female armour a quarter; Jack all of it;\n"
-    "; Ashley's hospital and romance clothes (ASHc) and Liara's romance body (LIAd) all of it.\n"
-    "bodyJiggle = hmf_arm_ashc:1, asa_arm_liad:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, "
+    "; Ashley's hospital and romance clothes (ASHc), Liara's romance body (LIAd) and her dress on ME2's Normandy (LIAb) all of it.\n"
+    "bodyJiggle = hmf_arm_ashc:1, asa_arm_liad:1, asa_arm_liab:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, "
     "asa_arm_lia:0.25, hmf_arm_crb:0.25\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
@@ -120,7 +120,7 @@ struct Settings {
     std::vector<std::string> armourBodies;
     std::vector<std::string> fullBodies{"hmf_mir_"};
     // A character's own share (name part, share; the first match wins), before the armour rules (the owner, 2026-11-19).
-    std::vector<std::pair<std::string, double>> bodyJiggle{{"hmf_arm_ashc", 1.0}, {"asa_arm_liad", 1.0}, {"_edi", 0.0},
+    std::vector<std::pair<std::string, double>> bodyJiggle{{"hmf_arm_ashc", 1.0}, {"asa_arm_liad", 1.0}, {"asa_arm_liab", 1.0}, {"_edi", 0.0},
         {"asa_spr_", 0.5}, {"asa_arm_sam", 0.5}, {"_ksm", 0.25}, {"hmf_jck_", 1.0}, {"hmf_arm_ash", 0.25},
         {"asa_arm_lia", 0.25}, {"hmf_arm_crb", 0.25}};
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
@@ -681,7 +681,15 @@ bool SoftTissueOrRigged(ue3::Object* body) {
 // named like armour but a bodysuit) wins over the armour rules. The rigged body keeps its source mesh's name.
 double OutfitJiggle(ue3::Object* body) {
     if (body == nullptr) return 1.0;
-    return ShareForPath(Lower(PathOf(player::SkeletalMesh(body))));
+    // A swapped body is judged by the game's own mesh (its path names the character's outfit; the rig's name may not).
+    ue3::Object* mesh = player::SkeletalMesh(body);
+    for (Swapped const& s : gSwapped) {
+        if (s.component == body && s.standIn == mesh && ue3::runtime::IsAlive(s.original)) {
+            mesh = s.original;
+            break;
+        }
+    }
+    return ShareForPath(Lower(PathOf(mesh)));
 }
 
 std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world) {
