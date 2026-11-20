@@ -51,6 +51,27 @@ metres, 20 fps. Its rest pose has identity rotations (BVH style), so a rest bone
    scales by the pelvis heights; the root carries the travel.
 4. Checks: every mapped bone's direction against Core's, every frame (0.00 degrees on Miranda), and the render.
 
+### CMU takes
+
+ARDY does movement, not dance (2026-11-19: five dance prompts swung the hips 1.2-4.9 cm). Dances come from the CMU Graphics
+Lab Motion Capture Database (http://mocap.cs.cmu.edu): a subject's `.asf` skeleton and a take's `.amc` motion (the site's
+`.avi` files are previews, not motion). `import-cmu` turns a take into the same `.npz` as ARDY's (Core's 27 joints, ARDY axes,
+metres; the dancer turned to face +Z, 120 fps thinned to `--fps`, default 30), so `retarget` and every option apply:
+
+```powershell
+& $py tools/motion/ardy-clip.py import-cmu --name cmu-05-10 --asf <05.asf> --amc <05_10.amc>
+& $py tools/motion/ardy-clip.py retarget --name cmu-05-10 --skeleton HMF_ARM_MIRa_MDL --loop none --posture 0
+```
+
+The forward kinematics are the ASF/AMC standard (a bone's world rotation: its parent's times C M C^-1, C its `axis`, M its
+`dof` angles, both extrinsic x, y, z; its end: its start plus that rotation applied to `direction` times `length`; lengths in
+inches times the `:units length`). Each Core joint is the CMU bone that starts there (`CMU_MAP`); Spine3 sits half way up the
+thorax; the Head point is the lower neck's end (CMU's neck is two jointed segments, and the retarget needs each pair carried
+rigidly by its joint). Take 05_10 (subject 5, modern dance): 6.8 s, hips 14.7 cm of sway, every bone at 0.00 degrees. CMU asks
+that work using the data credit it ("The data used in this project was obtained from mocap.cs.cmu.edu. The database was created
+with funding from NSF EIA-0196217."; `generate.json` records it); takes stay local like every clip, and a clip that ships
+names its source in `NOTICE.md` after its terms are checked again.
+
 ### Posture
 
 ARDY's walks lean back from the hips with the head pushed forward (the hip-swaying walk: trunk 10 degrees back, head 4 cm

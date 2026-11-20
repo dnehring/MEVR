@@ -426,6 +426,141 @@ def cmd_retarget(a) -> int:
 
 # ---- metrics -----------------------------------------------------------------------------------------------------------
 
+# ---- CMU motion capture (README "CMU takes") -----------------------------------------------------------------------------
+# A CMU take (http://mocap.cs.cmu.edu: a subject's .asf skeleton and a take's .amc motion) turned into the same .npz the
+# retarget reads (Core's 27 joints: world rotations and positions, ARDY axes and units), so every option applies.
+
+# Each Core joint from the CMU bone that starts there (its world rotation and start point); "mid" a point half way along it,
+# "end" its end. Spine3 is half way up the thorax (Core has four spine joints, CMU three segments below the neck).
+CMU_MAP = {"Hips": ("root", "start"), "Spine": ("lowerback", "start"), "Spine1": ("upperback", "start"),
+           "Spine2": ("thorax", "start"), "Spine3": ("thorax", "mid"), "Neck": ("lowerneck", "start"),
+           "Head": ("head", "start"), "RightShoulder": ("rclavicle", "start"), "RightArm": ("rhumerus", "start"),
+           "RightForeArm": ("rradius", "start"), "RightHand": ("rhand", "start"), "RightHandEnd": ("rhand", "end"),
+           "RightHandThumb1": ("rthumb", "end"), "LeftShoulder": ("lclavicle", "start"), "LeftArm": ("lhumerus", "start"),
+           "LeftForeArm": ("lradius", "start"), "LeftHand": ("lhand", "start"), "LeftHandEnd": ("lhand", "end"),
+           "LeftHandThumb1": ("lthumb", "end"), "RightUpLeg": ("rfemur", "start"), "RightLeg": ("rtibia", "start"),
+           "RightFoot": ("rfoot", "start"), "RightToeBase": ("rtoes", "start"), "LeftUpLeg": ("lfemur", "start"),
+           "LeftLeg": ("ltibia", "start"), "LeftFoot": ("lfoot", "start"), "LeftToeBase": ("ltoes", "start")}
+
+
+def parse_asf(text):
+    """Bones (name -> direction, length, axis degrees, dof list), the hierarchy (child -> parent), the root's order, the
+    length unit."""
+    bones, parent, root_order, unit = {}, {}, [], 1.0
+    section = None
+    current = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith(":"):
+            section = line.split()[0]
+            continue
+        words = line.split()
+        if section == ":units" and words[0] == "length":
+            unit = float(words[1])
+        elif section == ":root" and words[0] == "order":
+            root_order = [w.lower() for w in words[1:]]
+        elif section == ":bonedata":
+            if words[0] == "begin":
+                current = {"dof": []}
+            elif words[0] == "end":
+                bones[current["name"]] = current
+                current = None
+            elif words[0] == "name":
+                current["name"] = words[1]
+            elif words[0] == "direction":
+                current["direction"] = [float(x) for x in words[1:4]]
+            elif words[0] == "length":
+                current["length"] = float(words[1])
+            elif words[0] == "axis":
+                current["axis"] = [float(x) for x in words[1:4]]
+            elif words[0] == "dof":
+                current["dof"] = [w.lower() for w in words[1:]]
+        elif section == ":hierarchy" and words[0] not in ("begin", "end"):
+            for child in words[1:]:
+                parent[child] = words[0]
+    return bones, parent, root_order, unit
+
+
+def parse_amc(text):
+    """Frames: each {bone: [values]}."""
+    frames, current = [], None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith(":"):
+            continue
+        words = line.split()
+        if len(words) == 1 and words[0].isdigit():
+            current = {}
+            frames.append(current)
+        elif current is not None:
+            current[words[0]] = [float(x) for x in words[1:]]
+    return frames
+
+
+def cmd_import_cmu(a) -> int:
+    import numpy as np
+    from scipy.spatial.transform import Rotation as R
+    asf, amc = Path(a.asf), Path(a.amc)
+    bones, parent, root_order, unit = parse_asf(asf.read_text(encoding="utf-8", errors="replace"))
+    takes = parse_amc(amc.read_text(encoding="utf-8", errors="replace"))
+    step = max(1, int(round(a.source_fps / a.fps)))
+    takes = takes[::step]
+    metres = 0.0254 / unit  # CMU lengths are inches times `unit`
+    # Each bone's axis rotation C (ASF "axis X Y Z XYZ": extrinsic x, y, z) and its children, parents first.
+    C = {b: R.from_euler("xyz", bones[b]["axis"], degrees=True) for b in bones}
+    order = []
+    def visit(b):
+        order.append(b)
+        for child, p in parent.items():
+            if p == b:
+                visit(child)
+    visit("root")
+    T = len(takes)
+    G = np.zeros((T, 27, 3, 3)); P = np.zeros((T, 27, 3))
+    for t, values in enumerate(takes):
+        world, start, end = {}, {}, {}
+        root = dict(zip(root_order, values["root"]))
+        rot = R.from_euler("xyz", [root.get("rx", 0.0), root.get("ry", 0.0), root.get("rz", 0.0)], degrees=True)
+        world["root"] = rot  # the root's axis is zero in CMU's skeletons
+        start["root"] = end["root"] = np.array([root.get("tx", 0.0), root.get("ty", 0.0), root.get("tz", 0.0)]) * metres
+        for b in order[1:]:
+            dof = dict(zip(bones[b]["dof"], values.get(b, [])))
+            M = R.from_euler("xyz", [dof.get("rx", 0.0), dof.get("ry", 0.0), dof.get("rz", 0.0)], degrees=True)
+            world[b] = world[parent[b]] * C[b] * M * C[b].inv()
+            start[b] = end[parent[b]]
+            end[b] = start[b] + world[b].apply(np.array(bones[b]["direction"]) * bones[b]["length"] * metres)
+        for j, (name, _) in enumerate(CORE):
+            bone, where = CMU_MAP[name]
+            G[t, j] = world[bone].as_matrix()
+            P[t, j] = {"start": start[bone], "end": end[bone], "mid": (start[bone] + end[bone]) / 2}[where]
+        # CMU's neck is two jointed segments: the Head point the neck's direction is read to is the lower one's end (the
+        # retarget needs each pair carried rigidly by its joint's rotation); the head keeps its own rotation.
+        P[t, CI["Head"]] = end["lowerneck"]
+    # ARDY's frame: Y up, facing +Z with the right side at -X, the first frame's hips over the origin.
+    right = P[0, CI["RightUpLeg"]] - P[0, CI["LeftUpLeg"]]
+    forward = np.cross([0.0, 1.0, 0.0], right)
+    turn = R.from_euler("y", np.arctan2(forward[0], forward[2]), degrees=False).inv()
+    origin = P[0, CI["Hips"]].copy(); origin[1] = 0.0
+    for t in range(T):
+        for j in range(27):
+            G[t, j] = turn.as_matrix() @ G[t, j]
+            P[t, j] = turn.apply(P[t, j] - origin)
+    L = np.zeros_like(G)
+    for j, (name, p) in enumerate(CORE):
+        L[:, j] = G[:, j] if p is None else np.einsum("tji,tjk->tik", G[:, CI[p]], G[:, j])
+    folder = clip_dir(a.name); folder.mkdir(parents=True, exist_ok=True)
+    np.savez(folder / f"{a.name}.npz", global_rot_mats=G, posed_joints=P, local_rot_mats=L, fps=np.float64(a.source_fps / step))
+    meta = {"generator": "CMU Graphics Lab Motion Capture Database", "source": "http://mocap.cs.cmu.edu",
+            "files": [asf.name, amc.name], "credit": "The data used in this project was obtained from mocap.cs.cmu.edu. "
+            "The database was created with funding from NSF EIA-0196217.", "license": "CMU's terms (README 'CMU takes')",
+            "frames": T, "fps": a.source_fps / step, "imported": datetime.datetime.now().isoformat(timespec="seconds")}
+    (folder / "generate.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    print(f"{amc.name}: {T} frames at {a.source_fps / step:g} fps -> {folder / (a.name + '.npz')}")
+    return 0
+
+
 def cmd_metrics(a) -> int:
     import numpy as np
     from scipy.spatial.transform import Rotation as R
@@ -593,10 +728,13 @@ def main(argv=None) -> int:
     r.add_argument("--posture-window", help="<start>:<end> frames the posture is measured over (default the loop; a jump: "
                    "its standing frames before the take-off)")
     m = sub.add_parser("metrics"); m.add_argument("--name"); m.add_argument("--npz")
+    c = sub.add_parser("import-cmu"); c.add_argument("--name", required=True); c.add_argument("--asf", required=True)
+    c.add_argument("--amc", required=True); c.add_argument("--fps", type=float, default=30.0)
+    c.add_argument("--source-fps", type=float, default=120.0)
     sub.add_parser("self-test")
     a = ap.parse_args(argv)
     return {"generate": cmd_generate, "skeleton": cmd_skeleton, "retarget": cmd_retarget, "metrics": cmd_metrics,
-            "self-test": cmd_self_test}[a.cmd](a)
+            "import-cmu": cmd_import_cmu, "self-test": cmd_self_test}[a.cmd](a)
 
 
 if __name__ == "__main__":
