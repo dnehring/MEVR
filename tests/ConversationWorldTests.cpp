@@ -1170,6 +1170,14 @@ void TestEyes() {
     CHECK(cw::NoteEyeFromHead(e, {34.0, -1.0, 23.0}, 0.0));                  // later ones smoothed
     CHECK(std::abs(e.eye.x - 24.5) < 1e-9 && std::abs(e.eye.z - 13.5) < 1e-9);
     CHECK(cw::EyeFromHeadOr(e, {8.9, 1.7, 29.3}).x == e.eye.x);
+
+    // The eyes stand-in (ME1's 50 units on, 35 off): his body under the player (0.07-0.17 m) never; a walk or lean away does.
+    CHECK(!cw::EyesStandIn(false, 17.0));
+    CHECK(!cw::EyesStandIn(false, 50.0));
+    CHECK(cw::EyesStandIn(false, 51.0));
+    CHECK(cw::EyesStandIn(true, 40.0));   // hysteresis: still away
+    CHECK(!cw::EyesStandIn(true, 35.0));  // with him again
+    CHECK(!cw::EyesStandIn(true, std::nan("")));
 }
 
 int RunConversationWorldTests() {

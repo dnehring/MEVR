@@ -836,6 +836,17 @@ bool NoteEyeFromHead(EyeFromHead& state, Vec3 const& sample, double leanUnits, E
 // The eyes from his head bone: the learned place, else `fallback` (each game's measure).
 Vec3 EyeFromHeadOr(EyeFromHead const& state, Vec3 const& fallback);
 
+// The eyes stand-in (ME1's worldLookEyes, research/69 "Heads that look past the player" and "Heads at the drawn eyes"): while
+// Shepard's head as the scene animates it stands away from where the player's eyes are drawn (flat; `onUnits` to switch on,
+// under `offUnits` to switch off again), a look-at target at the drawn eyes takes his place, so a look the game aims at him
+// reaches the player. With his body under the player his head bone is 0.07-0.17 m from the eyes (ME1's measure). `on` is the
+// stand-in's state before this step; the result is its state after it.
+struct EyesStandInLimits {
+    double onUnits = 50.0;
+    double offUnits = 35.0;
+};
+bool EyesStandIn(bool on, double flatUnits, EyesStandInLimits const& limits = {});
+
 // The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
 // or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those
 // held longer than maxAgeMs are dropped first (into `expired`).

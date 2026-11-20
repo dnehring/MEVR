@@ -971,6 +971,22 @@ mevr::game::thespian::Link ThespianLink() {
             (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr &&
                 (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0);
     };
+    link.otherUiWhy = []() -> char const* {
+#if defined(MEVR_GAME_LE3)
+        if (!gHostOwnsVr) return "the host owns no VR session";
+        if (HostBlocksThespian(gHost)) {
+            return "the host's spoken-input lease is not held: no input focus in the XR session, a menu, the calibration, or no "
+                   "conversation panel context this frame";
+        }
+#endif
+        if (game::body_calibration::Calibrating()) return "the calibration runs";
+        if (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr) {
+            unsigned const bits = gHost->mainMenu();
+            if ((bits & kMainMenuOpen) != 0) return "our menu is open";
+            if ((bits & kOmniRailOpen) != 0) return "the omni-tool's rail is open";
+        }
+        return nullptr;
+    };
     if (MEVR_HOST_HAS(setThespian) && gHost->setThespian != nullptr && gHost->thespianPanelSize == sizeof(vr::thespian::Panel)) {
         link.setPanel = gHost->setThespian;
     }

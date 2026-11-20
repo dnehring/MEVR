@@ -5,7 +5,7 @@
 # module's and the renderer's lines collected, the setting given back.
 #
 #   tools\le2-halcyon-run\conversation-world.ps1 -Holder <you> [-Game LE2|LE3] [-World on|off] [-Start a|fire:<Class>:<text>]
-#       [-FaceYaw <deg>] [-Seconds 40] [-Every 6] [-Walk 0] [-Tag what]
+#       [-FaceYaw <deg>] [-Seconds 40] [-Every 6] [-Walk 0] [-Tag what] [-Stances] [-Hide body|person] [-Hands view|chest]
 #
 # -Start a                 the tracked hands stand still and A is pressed (the game's use of what the head looks at: the
 #                          mod's interact line names it first); -FaceYaw turns the view there before (Steer-Face).
@@ -13,6 +13,12 @@
 #                          (SFXSeqAct_StartConversation / BioSeqAct_StartConversation, as ME1's conversation-launch fires it).
 # -Walk <s>                during the conversation the left stick pushed forward that long (a player walking, never an
 #                          automatic walk), once the first snapshot is taken.
+# -Stances                 the scene's records from above (`mevr convo stances on`, ME1's records), judged at the end by
+#                          tools/conversation-stance.py --findings and --heads (findings.txt; tools/scene_audit.py's rules).
+# -Hide body|person        a broken run (`mevr convo hide ... on`): the player's body or the owner's mesh hidden while held; the
+#                          findings must name body-not-drawn / person-not-drawn (the canary of those rules on the sequels).
+# -Hands view|chest        where the replayed hands are held (view: up in front of the eyes, the drawn-body checks; chest: out of
+#                          the eye snapshots, research/le2-conversations-in-world.md 7.1).
 # Results: the stretch's session folder, convo-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the mod's
 # `conversation world:` lines and the renderer's [VRSTATE] lines since the start).
 param(
@@ -24,7 +30,10 @@ param(
     [double]$Seconds = 40,
     [double]$Every = 6,
     [double]$Walk = 0,
-    [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'convo'
+    [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'convo',
+    [switch]$Stances,
+    [ValidateSet('', 'body', 'person')][string]$Hide = '',
+    [ValidateSet('view', 'chest')][string]$Hands = 'view'
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -36,7 +45,7 @@ $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
 if ($open.holder -ne $Holder) { throw "the open $name stretch is held by '$($open.holder)', not '$Holder'" }
 if (-not (Get-Process ('MassEffect' + $Game.Substring(2)) -ErrorAction SilentlyContinue)) { throw "$name is not running" }
 $out = Join-Path $open.session ('convo-' + $Tag + '-' + (Get-Date -Format 'HHmmss'))
-Steer-Init -Out $out
+Steer-Init -Out $out -Hands $Hands
 $bin = Get-MELEBinDir (Find-MELEInstall).Root $Game
 $log = Join-Path $bin ('Logs\{0}MEVR.log' -f $Game)
 $halcyonLog = Join-Path $env:LOCALAPPDATA ('{0}\{0}_Log.txt' -f $(if ($Game -eq 'LE3') { 'MELE3VR' } else { 'MELE2VR' }))
@@ -52,6 +61,8 @@ $started = Get-Date
 Steer-Note ("conversation world on {0}: world {1}, start {2}" -f $name, $World, $Start)
 Steer-Note ('state: ' + (Steer-Ask 'mevr state').Trim())
 Steer-Note ('world: ' + (Steer-Ask "mevr convo world $World").Trim())
+if ($Stances) { Steer-Note ('stances: ' + (Steer-Ask 'mevr convo stances on').Trim()) }
+if ($Hide) { Steer-Note ('broken run: ' + (Steer-Ask "mevr convo hide $Hide on").Trim()) }
 Steer-Hold
 Start-Sleep -Seconds 1
 try {
@@ -82,6 +93,8 @@ try {
     }
 } finally {
     Steer-Stop
+    if ($Hide) { Steer-Note ('broken run off: ' + (Steer-Ask "mevr convo hide $Hide off").Trim()) }
+    if ($Stances) { Steer-Note ('stances back: ' + (Steer-Ask 'mevr convo stances auto').Trim()) }
     Steer-Note ('world back: ' + (Steer-Ask 'mevr convo world auto').Trim())
     $lines = @(ReadLines $log | Select-Object -Skip $from | Select-String 'conversation world:|halcyon bridge: (a conversation|the conversation)|depth of field|letterbox') |
         ForEach-Object { $_.Line }
@@ -90,4 +103,13 @@ try {
     Set-Content -LiteralPath (Join-Path $out 'lines.txt') -Value $lines -Encoding utf8
     Steer-Snapshots -Since $started | Out-Null
     Steer-Note ("lines: {0} -> {1}" -f $lines.Count, (Join-Path $out 'lines.txt'))
+    if ($Stances) {
+        # The records since the start, judged by ME1's rules (tools/scene_audit.py) and listed head by head.
+        $since = $started.ToString('yyyy-MM-ddTHH:mm:ss')
+        $stance = Join-Path $script:SteerRoot 'tools\conversation-stance.py'
+        $judged = @(& python -I $stance --findings --since $since 2>&1) + '--- heads' + @(& python -I $stance --heads --since $since 2>&1)
+        Set-Content -LiteralPath (Join-Path $out 'findings.txt') -Value $judged -Encoding utf8
+        $sheets = @(& python -I $stance --since $since --out $out 2>&1)
+        Steer-Note ("findings: {0}; sheets: {1}" -f (($judged | Select-String 'findings$' | Select-Object -Last 1) -join ''), ($sheets -join '; '))
+    }
 }

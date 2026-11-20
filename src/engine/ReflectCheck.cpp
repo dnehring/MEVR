@@ -4562,6 +4562,45 @@ void CheckSequelConversationExit() {
     CheckFunction("Engine.Actor.SetLocation");
     CheckFunction("Engine.Actor.SetRotation");
 }
+
+// game/SequelConversationWorld's looks at the player's drawn eyes and its records from above (lane FPC4; ME1's worldLookEyes and
+// stances): each game's look-at chain (SequelLook.inc), the eyes' stand-in, what was drawn, the broken runs' hides.
+void CheckSequelConversationLooks() {
+    CheckClass<ABioLookAtTarget>("SFXGame.BioLookAtTarget");
+    CheckField("Engine.SkelControlLookAt", "TargetLocation", SDK_FIELD(USkelControlLookAt, TargetLocation));
+    CheckField("Engine.PrimitiveComponent", "LastRenderTime", SDK_FIELD(UPrimitiveComponent, LastRenderTime));
+    CheckField("Engine.WorldInfo", "TimeSeconds", SDK_FIELD(AWorldInfo, TimeSeconds));
+    CheckFunction("Engine.PrimitiveComponent.SetHidden");
+    PARAM(UPrimitiveComponent_execSetHidden_Parms, "Engine.PrimitiveComponent.SetHidden", NewHidden);
+    CheckFunction("Engine.Actor.Spawn");
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnClass);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnOwner);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnLocation);
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", bNoCollisionFail);
+    CheckField("Engine.Actor", "bStatic", SDK_BOOL(AActor, bStatic));
+    CheckField("Engine.Actor", "bNoDelete", SDK_BOOL(AActor, bNoDelete));
+#if defined(MEVR_GAME_LE2)
+    CheckField("SFXGame.BioPawn", "m_oLookAtData", SDK_FIELD(ABioPawn, m_oLookAtData));
+    CheckField("SFXGame.BioLookAt", "m_oTarget", SDK_FIELD(UBioLookAt, m_oTarget));
+    CheckField("SFXGame.BioLookAt", "m_nRank", SDK_FIELD(UBioLookAt, m_nRank));
+    CheckField("SFXGame.BioLookAt", "m_Controllers", SDK_FIELD(UBioLookAt, m_Controllers));
+    CheckFunction("SFXGame.BioPawn.SetLookAtTarget");
+    PARAM(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget", oTarget);
+    PARAM(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget", a_eTransition);
+    PARAM(ABioPawn_execSetLookAtTarget_Parms, "SFXGame.BioPawn.SetLookAtTarget", nRank);
+#else
+    CheckField("Engine.Actor", "Modules", SDK_FIELD(AActor, Modules));
+    CheckClass<USFXModule_LookAt>("SFXGame.SFXModule_LookAt");
+    CheckField("SFXGame.SFXModule_LookAt", "m_pTarget", SDK_FIELD(USFXModule_LookAt, m_pTarget));
+    CheckField("SFXGame.SFXModule_LookAt", "m_nRank", SDK_FIELD(USFXModule_LookAt, m_nRank));
+    CheckField("SFXGame.SFXModule_LookAt", "m_Controllers", SDK_FIELD(USFXModule_LookAt, m_Controllers));
+    CheckFunction("SFXGame.SFXModule_LookAt.ChangeTarget");
+    PARAM(USFXModule_LookAt_execChangeTarget_Parms, "SFXGame.SFXModule_LookAt.ChangeTarget", Target);
+    PARAM(USFXModule_LookAt_execChangeTarget_Parms, "SFXGame.SFXModule_LookAt.ChangeTarget", a_eTransition);
+    PARAM(USFXModule_LookAt_execChangeTarget_Parms, "SFXGame.SFXModule_LookAt.ChangeTarget", nRank);
+    CheckField("SFXGame.BioConversationController", "m_pListener", SDK_FIELD(UBioConversationController, m_pListener));
+#endif
+}
 #endif
 
 std::filesystem::path OutputPath() {
@@ -4651,6 +4690,7 @@ bool Run(hook::Context& context) {
     CheckSequelWalk();
     CheckSequelSquadAck();
     CheckSequelConversationExit();
+    CheckSequelConversationLooks();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();

@@ -647,7 +647,9 @@ function Get-PreviewModConfig {
     # [Display] eyeSizeSet = 1: the host's first-VR-start rule (the render target from the headset, written into MELE3VR.ini
     # for the next launch) stands down, so the renderer file stays the exact preview text and -PreviewRenderSize decides.
     # [Debug] shared = 0: this file alone, never the three games' settings.ini (research/25 section 20).
-    "[Debug]`r`nshared = 0`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n[Display]`r`neyeSizeSet = 1`r`n"
+    # [Menu] controlsShown = 1: our menu's first-run controller guide (plugin/MainMenu) never opens by itself in a run, so it never
+    # holds the input a scripted run sends (lane FPC4, 2026-11-20).
+    "[Debug]`r`nshared = 0`r`nrequests = 1`r`ndumpNatives = 1`r`nopenxrRuntime = C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json`r`n[Pointer]`r`nsetCursor = 0`r`n[Display]`r`neyeSizeSet = 1`r`n[Menu]`r`ncontrolsShown = 1`r`n"
 }
 function Assert-PreviewConfig([string]$Bin, [ValidateSet(0, 2, 4)][int]$Mode = 4, [bool]$Diagnostics = $false,
     [ValidateSet(1, 2, 4, 8)][int]$MirrorEvery = 8, [bool]$EyeFrustum = $true, [string]$RenderSize = '3072x2216') {

@@ -1457,6 +1457,11 @@ Vec3 EyeFromHeadOr(EyeFromHead const& state, Vec3 const& fallback) {
     return state.learned ? state.eye : fallback;
 }
 
+bool EyesStandIn(bool on, double flatUnits, EyesStandInLimits const& limits) {
+    if (!std::isfinite(flatUnits)) return false;
+    return flatUnits > (on ? limits.offUnits : limits.onUnits);
+}
+
 bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {
     if (movedUnits > limits.maxUnits) {
         state.count = 0;

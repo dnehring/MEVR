@@ -174,5 +174,21 @@ check('near-plane' in rules([drawn(record(t, 'line', 0.05, [ahead(10)]), 0.01, n
 check('near-plane' not in rules([drawn(record(t, 'line', 0.05, [ahead(10)]), 0.01, near=10.0) for t in (0.0, 2.0, 4.0)]),
       "the on-foot near plane is no finding")
 
+# The sequels write ME1's records (game/SequelConversationWorld, lane FPC4: `game` LE2 or LE3, no wall scan, no circle): the same
+# rules judge them (Samara on ME2's Normandy, in sight 2.9 m away and never drawn, 2026-11-20), and a scene of each game is its own.
+def sequel(st, game):
+    st['game'] = game
+    st['_file'] = st['_file'].replace('test_dlg', f'{game}_dlg')
+    return st
+
+
+samara = [sequel(drawn(record(t, 'tick', 0.12, [seen(ahead(10), 9.0)]), 0.01), 'LE2') for t in (0.0, 2.0, 4.0)]
+check('person-not-drawn' in rules(samara), "a sequel's record: someone in sight never drawn is person-not-drawn")
+body_gone = [sequel(drawn(record(t, 'tick', 0.12, [ahead(10)]), 5.0), 'LE3') for t in (0.0, 2.0, 4.0)]
+check('body-not-drawn' in rules(body_gone), "a sequel's record: the body in view undrawn is body-not-drawn")
+mixed = [sequel(record(0.0, 'opening', 0.05, [ahead(10)]), 'LE2'), sequel(record(0.5, 'opening', 0.05, [ahead(10)]), 'LE3')]
+check(len(sa.group(mixed)) == 2, 'an ME2 and an ME3 scene with the same number are two scenes')
+check(sa.scene_key([mixed[0]]) == 'LE2:test_dlg' and sa.scene_key(clean) == 'test_dlg', "a sequel's scene key names its game; ME1's not")
+
 print(f"scene audit tests: {'ok' if not failures else f'{len(failures)} FAILED'}")
 sys.exit(1 if failures else 0)
