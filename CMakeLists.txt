@@ -583,6 +583,8 @@ set(MEVR_MOD_SOURCES
     src/game/AnimDriver.hpp
     src/game/Hair.cpp
     src/game/Hair.hpp
+    src/game/HairLook.cpp
+    src/game/HairLook.hpp
     src/game/HandContact.cpp
     src/game/HandContact.hpp
     src/game/HandAim.cpp

@@ -3776,6 +3776,25 @@ void CheckFields() {
     CheckField("SFXGame.SFXStuntActor", "HeadMesh", SDK_FIELD(ASFXStuntActor, HeadMesh));  // game/Hair: rigged bodies' followers
     CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
+    // game/HairLook: a hair's own material instance and its master material's parameters.
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ReturnValue);
+    PARAM(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial", Material);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ElementIndex);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ReturnValue);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", Value);
+    PARAM(UMaterialInstanceConstant_execSetVectorParameterValue_Parms, "Engine.MaterialInstanceConstant.SetVectorParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetVectorParameterValue_Parms, "Engine.MaterialInstanceConstant.SetVectorParameterValue", Value);
+    PARAM(UMaterialInterface_execGetScalarParameterValue_Parms, "Engine.MaterialInterface.GetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInterface_execGetScalarParameterValue_Parms, "Engine.MaterialInterface.GetScalarParameterValue", OutValue);
+    PARAM(UMaterialInterface_execGetVectorParameterValue_Parms, "Engine.MaterialInterface.GetVectorParameterValue", ParameterName);
+    PARAM(UMaterialInterface_execGetVectorParameterValue_Parms, "Engine.MaterialInterface.GetVectorParameterValue", OutValue);
+    CheckField("Engine.MaterialInstance", "Parent", SDK_FIELD(UMaterialInstance, Parent));
+    CheckField("Engine.MaterialExpressionParameter", "ParameterName", SDK_FIELD(UMaterialExpressionParameter, ParameterName));
+    CheckField("Engine.MaterialExpressionScalarParameter", "DefaultValue", SDK_FIELD(UMaterialExpressionScalarParameter, DefaultValue));
+    CheckField("Engine.MaterialExpressionVectorParameter", "DefaultValue", SDK_FIELD(UMaterialExpressionVectorParameter, DefaultValue));
     // game/AnimDriver: a cutscene's way of animating a stunt actor (its body's MatineeAnim node), for the hair and jiggle bench.
     CheckClass<USFXModule_Gestures>("SFXGame.SFXModule_Gestures");
     CheckField("SFXGame.SFXModule_Gestures", "m_bInMatinee", SDK_BOOL(USFXModule_Gestures, m_bInMatinee));

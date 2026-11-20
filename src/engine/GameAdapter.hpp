@@ -505,17 +505,23 @@ struct HairStandIn {
     char const* used;            // the mesh the game puts on
     char const* rigged;          // a mesh of the same look with the bones we drive (hair chains, soft tissue)
     char const* needs = nullptr; // loaded before `rigged` (its materials' package)
+    char const* look = nullptr;  // its material's look (game/HairLook: "Name=value; Name=r,g,b"), unless [Hair] look says
 };
 #if defined(MEVR_GAME_LE3)
 // research/trilogy-hair.md: the shipped hair mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair
 // bones; tools/rig/plans/le3-miranda-*.jsonc add hair chains and soft-tissue bones (MEVR_Miranda.pcc, built on the player's
 // machine from their own game files).
+inline constexpr char kMirandaLook[] =
+    "Highlight2Color=1.3,0.85,0.35; Highlight1Color=0.40,0.27,0.11; Hightlight1Intensity=2; Hightlight2Intensity=2.8; "
+    "Highlight2SpecExp_Scalar=200; Highlight1SpecExp_Scalar=90";
 inline constexpr HairStandIn kHairStandIns[] = {
     {"BIOG_HMF_ARM_MIR_R.MIRa.HMF_ARM_MIRa_MDL", "MEVR_Miranda.HMF_ARM_MIRa_MEVR"},
+    // Her look: a warm blond highlight on her dark hair (the owner's "likely blondish", 2026-11-19; picked from the same-pose
+    // sheet in research/trilogy-hair.md "Her look": both lobes tighter than the game's broad, plastic 50, warmer, stronger).
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR",
-     "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
+     "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", kMirandaLook},
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
-    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR"},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR", nullptr, kMirandaLook},
 };
 #else
 inline constexpr HairStandIn kHairStandIns[] = {{nullptr, nullptr}};

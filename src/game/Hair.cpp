@@ -18,6 +18,8 @@
 #include "ue3/Params.hpp"
 #include "ue3/Runtime.hpp"
 
+#include "game/HairLook.hpp"
+
 #include <Windows.h>
 
 #include <algorithm>
@@ -92,6 +94,7 @@ struct Settings {
     bool standIns = true;
     bool jiggle = true;
     double jiggleIntensity = 0.5;
+    std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
 Settings gSettings;
 std::optional<double> gJiggleOverride;  // `mevr hair jiggle <0..1|off>`
@@ -136,6 +139,7 @@ void RefreshSettings() {
     if (auto v = num("standIns")) s.standIns = *v != 0.0;
     if (auto v = num("jiggle")) s.jiggle = *v != 0.0;
     if (auto v = num("jiggleIntensity")) s.jiggleIntensity = std::clamp(*v, 0.0, 1.0);
+    s.look = ini::Get(loaded.file, "Hair", "look");
     s.sim.windMS = {s.wind, 0.0, 0.0};
     if (gOverride) s.on = *gOverride;
     if (gStandInOverride) s.standIns = *gStandInOverride;
@@ -358,6 +362,9 @@ void ReattachEveryone();
 void PutBackStandIns(char const* why) {
     int put = 0;
     for (Swapped const& s : gSwapped) {
+        if (ue3::runtime::IsAlive(s.component)) {
+            hair_look::PutBack(s.component);  // its own material instance dropped: the mesh's material again
+        }
         if (ue3::runtime::IsAlive(s.component) && ue3::runtime::IsAlive(s.original) && player::SkeletalMesh(s.component) == s.standIn) {
             put += SetMesh(s.component, s.original) ? 1 : 0;
         }
@@ -861,6 +868,7 @@ void Tick(double /*deltaSeconds*/) {
         gSwapped.clear();
         gStandInObjects.clear();
         gStandInMissing.clear();
+        hair_look::Forget();
         hp::Clear();
         gPublished = 0;
     }
@@ -891,6 +899,25 @@ void Tick(double /*deltaSeconds*/) {
         ue3::Object* const asset = player::SkeletalMesh(person.hair);
         if (ApplyStandIn(person.hair, asset)) {
             Reattach(person.body, {person.hair});
+        }
+        // The hair's look (game/HairLook): [Hair] look, else the rigged stand-in's own from the table; only on a hair we
+        // simulate (a stand-in or a rigged hairstyle), once per component and look.
+        if (!gSwapped.empty()) {
+            std::string look = gSettings.look.value_or("");
+            if (!gSettings.look) {
+                std::string const worn = PathOf(player::SkeletalMesh(person.hair));
+                for (engine::adapter::HairStandIn const& entry : engine::adapter::kHairStandIns) {
+                    if (entry.rigged != nullptr && entry.look != nullptr && Lower(entry.rigged) == worn) {
+                        look = entry.look;
+                        break;
+                    }
+                }
+            }
+            for (Swapped const& s : gSwapped) {
+                if (s.component == person.hair) {
+                    hair_look::Apply(person.hair, look);
+                }
+            }
         }
         hp::Target t;
         // A hair that follows a body is drawn with the body's matrix for every bone the body has (UE3's follower rule; ME3's
@@ -989,6 +1016,35 @@ std::string Command(std::string const& args) {
         }
         return hp::Kick(SimulatedOn(gPeople[static_cast<std::size_t>(n)]), {x, y, z}) ? std::format("kicked [{}]'s hair at ({}, {}, {}) m/s", n, x, y, z)
                                                                               : "that hair isn't simulated (no hair bones, or not posed yet)";
+    }
+    if (verb == "material" || verb == "param") {
+        // mevr hair material [n]; mevr hair param [n] <name> <value | r g b [a]>
+        std::vector<std::string> rest;
+        for (std::string w; words >> w;) {
+            rest.push_back(w);
+        }
+        int n = 0;
+        if (!rest.empty() && !rest.front().empty() && std::isdigit(static_cast<unsigned char>(rest.front()[0])) && (verb == "material" || rest.size() >= 3)) {
+            n = std::stoi(rest.front());
+            rest.erase(rest.begin());
+        }
+        if (n < 0 || n >= static_cast<int>(gPeople.size())) {
+            return std::format("no person [{}] (mevr hair people)", n);
+        }
+        ue3::Object* const component = gPeople[static_cast<std::size_t>(n)].hair;
+        if (verb == "material") {
+            return hair_look::Describe(component);
+        }
+        if (rest.size() < 2) {
+            return "mevr hair param [n] <name> <value | r g b [a]>";
+        }
+        std::vector<double> values;
+        for (std::size_t i = 1; i < rest.size(); ++i) {
+            if (auto v = ini::Number(rest[i])) {
+                values.push_back(*v);
+            }
+        }
+        return hair_look::Set(component, rest[0], values);
     }
     if (verb == "mesh") {
         int n = -1;
@@ -1143,6 +1199,7 @@ void Shutdown() {
     gParts.clear();
     gStandInObjects.clear();
     gStandInMissing.clear();
+    hair_look::Forget();
     gWorld = nullptr;
     gPublished = 0;
 }
