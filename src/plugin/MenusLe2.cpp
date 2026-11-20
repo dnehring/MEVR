@@ -549,12 +549,15 @@ std::string SystemName() {
 namespace MevrSeams {
 
 bool WorldUiOwnsGui(int mode) noexcept {
+    // ME1's handover (research/69 item 38, xr_session.cpp's `gameMode == 7 && ConversationHandover()`): a GUI screen the game
+    // opens as a conversation shown in the world ends (Opold's shop) keeps the world's presentation, not a frame of the flat
+    // panel, until the mod puts the screen in the room or the 150 ms pass (research/le2-conversations-in-world.md 7.4).
+    bool const handover = mevr::engine::adapter::GameMode(mode) == mevr::engine::adapter::Mode::Gui && ConversationHandover();
 #if defined(MEVR_WITH_MAIN_MENU)
     // LE1's xr_session.cpp decision: active (bit 0) or an eligible reservation in the GUI mode (bit 1) keeps it live.
-    return (mevr::host::world_ui::Ownership(mode) & 3u) != 0;
+    return handover || (mevr::host::world_ui::Ownership(mode) & 3u) != 0;
 #else
-    (void)mode;
-    return false;
+    return handover;
 #endif
 }
 
