@@ -449,6 +449,10 @@ void* PlayerTrackInstance() {
     return const_cast<void*>(gTrackInstSeen.load(std::memory_order_relaxed));
 }
 
+void const* PlayerTrack() {
+    return gTrackSeen.load(std::memory_order_relaxed);
+}
+
 std::string PlayerTrackPath() {
     return gM.matinee == "?" ? std::string() : gM.matinee;
 }

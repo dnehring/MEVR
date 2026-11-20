@@ -6180,7 +6180,10 @@ void EndShownEarly(bool conversationBegan) {
     gEarly = {};
 }
 
+void ForgetMomentMarker();  // the floor marker's (below, with MomentState)
+
 void EndMomentView(Link const& link, char const* why, bool stopWorld) {
+    ForgetMomentMarker();
     if (gMoment.provisional) {
         // Never a moment: the cinematic mode began and no track moved Shepard. No summary (nothing was shown as one).
         log::Info("moment: the cinematic mode began on foot but no track moved Shepard ({}): not a moment; the view was held {:.2f} s",
@@ -6292,6 +6295,64 @@ void BeginMomentView(ik::Vec3 const& pawnAt, std::uint64_t now, bool provisional
         // kilometre away (2026-11-11).
         gMoment.pawnAt = V(gFoot.pawn);
     }
+}
+
+// The floor marker (cw::StepMarker; the owner's yes, 2026-11-19, their wish of 2026-11-11 in research/69 item 8): in a moment,
+// where the script's walk of Shepard ends (its move track's last key, engine/ConversationHooks' MoveTrackEnd) while the player
+// follows it: a quiet ring on the floor there, gone once the player stands in it. Drawn by the host in squad placement's layer.
+cw::MarkerState gMomentMarker;
+void const* gMomentEndTrack = nullptr;
+std::optional<ik::Vec3> gMomentWalkEnd;  // on the floor
+unsigned gMomentMarkers = 0;
+
+void StepMomentMarker(cw::State& state, ue3::Object* pawn, std::optional<engine::TrackingFrame> const& frame, double dtS) {
+    if (gMoment.provisional) {
+        return;
+    }
+    vr::floor_lock::PawnSample const sample = player::FloorLockSample();
+    auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+    double const half = at && sample.floorValid && sample.floorZ < at->z ? at->z - sample.floorZ : 90.0;
+    void const* const track = authored_moment::PlayerTrack();
+    if (track != nullptr && track != gMomentEndTrack && authored_moment::TrackMoves(pawn, 500)) {
+        gMomentEndTrack = track;
+        float end[3];
+        if (engine::conversation_hooks::MoveTrackEnd(track, authored_moment::PlayerTrackInstance(), end)) {
+            gMomentWalkEnd = ik::Vec3{end[0], end[1], end[2] - half};
+        }
+    }
+    ik::Vec3 const feet = gC.detached ? gC.detachedAt : gMoment.pawnAt;
+    cw::MarkerFacts facts;
+    facts.scene = true;
+    if (gMomentWalkEnd) {
+        facts.walkEnd = cw::Vec3{gMomentWalkEnd->x, gMomentWalkEnd->y, gMomentWalkEnd->z};
+    }
+    facts.player = cw::Vec3{feet.x, feet.y, feet.z - half};
+    cw::Marker const m = cw::StepMarker(gMomentMarker, facts, dtS);
+    if (m.changed) {
+        ++gMomentMarkers;
+        log::Info("convo: marker: moment: {} ({:.0f}, {:.0f}, {:.0f}), {:.2f} m from the player", cw::Name(m.need), m.at.x, m.at.y, m.at.z,
+            std::hypot(m.at.x - facts.player.x, m.at.y - facts.player.y) / kUnitsPerMeter);
+    }
+    if (m.alpha > 0.0 && frame) {
+        XrVector3f const p = engine::ToTracking(*frame, engine::UnrealVector{m.at.x, m.at.y, m.at.z});
+        state.marker = 1;
+        state.markerNeed = static_cast<std::uint8_t>(m.need);
+        state.markerAt[0] = p.x;
+        state.markerAt[1] = p.y;
+        state.markerAt[2] = p.z;
+        state.markerAlpha = static_cast<float>(m.alpha);
+        state.markerRadiusM = 0.30f;
+    }
+}
+
+void ForgetMomentMarker() {
+    if (gMomentMarkers > 0) {
+        log::Info("convo: marker: the moment showed {} floor marker{}", gMomentMarkers, gMomentMarkers == 1 ? "" : "s");
+        gMomentMarkers = 0;
+    }
+    gMomentMarker = {};
+    gMomentEndTrack = nullptr;
+    gMomentWalkEnd.reset();
 }
 
 // What the host is told of a moment's view: held at gC.hold, the game's camera too.
@@ -6819,7 +6880,8 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
             }
         }
     }
-    cw::State const state = MomentState(now);
+    cw::State state = MomentState(now);
+    StepMomentMarker(state, pawn, frame, deltaSeconds);  // the floor marker where Shepard's walk ends (cw::StepMarker)
     link.publish(&state);
     gPublished = true;
     ++gWorldTicks;

@@ -19,6 +19,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   below: in the first-person conversation mode, someone the game takes away at a scene's end while you can see them (Tali
   and her people after you meet her on Freedom's Progress) walks away with the game's own walk first and is gone once out
   of your sight, or when you look away. Same settings (`[Cinematics] worldExit`).
+- **A floor marker where a scripted walk ends (first-person conversations, experimental).** When a scene walks Shepard
+  somewhere while you stay where you stood (the walk with Anderson to the council), a small pale ring on the floor shows where
+  his walk ends, and fades once you stand in it. Nothing pauses or walks you there.
 - **People leave a first-person conversation instead of vanishing (Mass Effect 1, experimental).** In the first-person
   conversation mode, when the game takes someone away at a scene's end while you can see them (Udina after the council
   hearing's aftermath), they now walk away with the game's own walk first and are gone once out of your sight; with nowhere
