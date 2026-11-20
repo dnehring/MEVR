@@ -42,14 +42,23 @@ internal sealed class RegionPlan
 
 internal sealed class Plan
 {
+    public string Out { get; set; }
+    public List<StepPlan> Steps { get; set; } = new();
+}
+
+// One mesh of a plan: copied from `source` into the plan's package as `name`, its bones added, its soft regions or hair
+// chains weighted. `bonesOf` adds an earlier step's generated hair-chain bones too, unweighted (the body a hair follows
+// must carry the bones the hair stage writes: game/Hair simulates on the body, ME3's follower rule).
+internal sealed class StepPlan
+{
+    public string Id { get; set; }
     public string Source { get; set; }
     public string Mesh { get; set; }
-    public string Out { get; set; }
     public string Name { get; set; }
     public List<BonePlan> Bones { get; set; } = new();
     public List<RegionPlan> Regions { get; set; } = new();
     public HairPlan Hair { get; set; }
-    public bool BonesOnly { get; set; }     // add the bones but weight nothing (the body under a hair mesh's chains)
+    public List<string> BonesOf { get; set; } = new();
 }
 
 internal static class Rigging
@@ -69,30 +78,40 @@ internal static class Rigging
             return Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(baseDir, p));
         }
         string outPath = Resolve(plan.Out);
-        bool append = File.Exists(outPath) && args.Contains("--append");
-        if (!append)
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath));
+        File.Delete(outPath);
+        using IMEPackage pcc = MEPackageHandler.CreateAndOpenPackage(outPath, Lex.Game, forceLoadFromDisk: true);
+        var done = new Dictionary<string, StepPlan>(StringComparer.OrdinalIgnoreCase);
+        foreach (var step in plan.Steps)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(outPath));
-            File.Delete(outPath);
-        }
+            using var source = MEPackageHandler.OpenMEPackage(Resolve(step.Source), forceLoadFromDisk: true);
+            var sourceMesh = Lex.FindMesh(source, step.Mesh);
+            var report = new Report();
+            var export = Port.Mesh(sourceMesh, pcc, step.Name, report);
+            var mesh = ObjectBinary.From<SkeletalMesh>(export);
+            Port.Materials(sourceMesh, pcc, mesh, report);
 
-        using var source = MEPackageHandler.OpenMEPackage(Resolve(plan.Source), forceLoadFromDisk: true);
-        var sourceMesh = Lex.FindMesh(source, plan.Mesh);
-        using IMEPackage pcc = append ? MEPackageHandler.OpenMEPackage(outPath, forceLoadFromDisk: true) : MEPackageHandler.CreateAndOpenPackage(outPath, Lex.Game, forceLoadFromDisk: true);
-        var report = new Report();
-        var export = Port.Mesh(sourceMesh, pcc, plan.Name, report);
-        var mesh = ObjectBinary.From<SkeletalMesh>(export);
-        Port.Materials(sourceMesh, pcc, mesh, report);
-
-        Skeleton.Check(mesh, report);
-        var added = AddBones(pcc, mesh, plan, report);
-        if (plan.Hair != null)
-        {
-            HairChains.Build(mesh, plan.Hair, added, report);
-        }
-        if (!plan.BonesOnly)
-        {
-            foreach (var region in plan.Regions)
+            Skeleton.Check(mesh, report);
+            var bones = new List<BonePlan>(step.Bones);
+            if (step.Hair != null)
+            {
+                HairChains.Plan(mesh, step.Hair, report);
+                bones.AddRange(step.Hair.Generated);
+            }
+            foreach (string id in step.BonesOf)
+            {
+                if (!done.TryGetValue(id, out var earlier) || earlier.Hair == null)
+                {
+                    throw new InvalidOperationException($"step {step.Id}: bonesOf '{id}' isn't an earlier step with hair chains");
+                }
+                bones.AddRange(earlier.Hair.Generated);
+            }
+            var added = AddBones(pcc, mesh, bones, report);
+            if (step.Hair != null)
+            {
+                HairChains.Weight(mesh, step.Hair, report);
+            }
+            foreach (var region in step.Regions)
             {
                 int bone = Array.FindIndex(mesh.RefSkeleton, b => b.Name.Instanced.Equals(region.Bone, StringComparison.OrdinalIgnoreCase));
                 if (bone < 0)
@@ -101,13 +120,17 @@ internal static class Rigging
                 }
                 Weights.ApplyRegion(mesh, region, bone, report);
             }
+            Skeleton.UpdateLodBones(mesh, added, report);
+            Skeleton.Check(mesh, report);
+            export.WriteBinary(mesh);
+            Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{step.Name}: {mesh.RefSkeleton.Length} bones ({added.Count} added)");
+            report.Print();
+            if (step.Id != null)
+            {
+                done[step.Id] = step;
+            }
         }
-        Skeleton.UpdateLodBones(mesh, added, report);
-        Skeleton.Check(mesh, report);
-        export.WriteBinary(mesh);
         pcc.Save();
-        Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{plan.Name}: {mesh.RefSkeleton.Length} bones ({added.Count} added)");
-        report.Print();
         return 0;
     }
 
@@ -120,11 +143,11 @@ internal static class Rigging
         return Path.Combine(root, "Game", folder, "BioGame");
     }
 
-    public static List<int> AddBones(IMEPackage pcc, SkeletalMesh mesh, Plan plan, Report report)
+    public static List<int> AddBones(IMEPackage pcc, SkeletalMesh mesh, IEnumerable<BonePlan> bonePlans, Report report)
     {
         var added = new List<int>();
         var rest = Skeleton.Rest(mesh);
-        foreach (var b in plan.Bones.Concat(plan.Hair?.Bones() ?? Enumerable.Empty<BonePlan>()))
+        foreach (var b in bonePlans)
         {
             if (mesh.RefSkeleton.Any(x => x.Name.Instanced.Equals(b.Name, StringComparison.OrdinalIgnoreCase)))
             {

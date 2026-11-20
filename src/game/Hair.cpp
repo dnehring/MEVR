@@ -77,7 +77,10 @@ constexpr char kBlock[] =
     "; lag, bounce and settle with the body's motion. jiggle = 0 holds them to the animation; jiggleIntensity 0..1 scales how\n"
     "; far they move (never how fast they settle).\n"
     "jiggle = 1\n"
-    "jiggleIntensity = 0.5\n";
+    "jiggleIntensity = 0.5\n"
+    "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
+    "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
+    "followBody = 0.7\n";
 
 struct Settings {
     bool on = true;
@@ -92,6 +95,7 @@ struct Settings {
 };
 Settings gSettings;
 std::optional<double> gJiggleOverride;  // `mevr hair jiggle <0..1|off>`
+std::optional<double> gFollowOverride;  // `mevr hair follow <0..1|auto>`
 std::optional<bool> gOverride;          // `mevr hair on|off`
 std::optional<bool> gStandInOverride;   // `mevr hair standins on|off`
 std::uint64_t gSettingsAtMs = 0;
@@ -122,6 +126,9 @@ void RefreshSettings() {
     if (auto v = num("damping")) s.sim.damping = std::clamp(*v, 0.0, 1.0);
     if (auto v = num("inertia")) s.sim.inertia = std::clamp(*v, 0.0, 1.0);
     if (auto v = num("maxBendDeg")) s.sim.maxBendDeg = std::clamp(*v, 0.0, 170.0);
+    s.sim.followBody = 0.7;
+    if (auto v = num("followBody")) s.sim.followBody = std::clamp(*v, 0.0, 1.0);
+    if (gFollowOverride) s.sim.followBody = *gFollowOverride;
     if (auto v = num("gravity")) s.sim.gravity = std::clamp(*v, 0.0, 30.0);
     if (auto v = num("radiusM")) s.sim.radiusM = std::clamp(*v, 0.0, 0.1);
     if (auto v = num("wind")) s.wind = std::clamp(*v, -20.0, 20.0);
@@ -139,6 +146,7 @@ void RefreshSettings() {
     static bool logged = false;
     bool const changed = s.on != gSettings.on || s.standIns != gSettings.standIns || s.hands != gSettings.hands ||
                          s.jiggle != gSettings.jiggle || s.jiggleIntensity != gSettings.jiggleIntensity ||
+                         s.sim.followBody != gSettings.sim.followBody ||
                          s.sim.stiffness != gSettings.sim.stiffness || s.sim.damping != gSettings.sim.damping ||
                          s.sim.inertia != gSettings.sim.inertia || s.sim.maxBendDeg != gSettings.sim.maxBendDeg ||
                          s.rangeM != gSettings.rangeM || s.maxPeople != gSettings.maxPeople || s.wind != gSettings.wind;
@@ -922,6 +930,18 @@ std::string Command(std::string const& args) {
         gSettingsAtMs = 0;
         RefreshSettings();
         return std::format("hair movement as [Hair] says: {}", gSettings.on ? "on" : "off");
+    }
+    if (verb == "follow") {
+        std::string v;
+        words >> v;
+        if (v == "auto") {
+            gFollowOverride.reset();
+        } else {
+            gFollowOverride = std::clamp(ini::Number(v).value_or(0.7), 0.0, 1.0);
+        }
+        gSettingsAtMs = 0;
+        return gFollowOverride ? std::format("long hair chains follow the shoulders by {:.2f} (until auto)", *gFollowOverride)
+                               : "long hair chains follow the shoulders as the settings say";
     }
     if (verb == "jiggle") {
         std::string v;

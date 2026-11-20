@@ -71,7 +71,13 @@ internal static class Port
             {
                 chain.Insert(0, e);
             }
+            // An ordinary (not forced) export's outermost package is its file: BIOG_HMF_HIR_PRO.pcc's Hair_PROMiranda.X is
+            // BIOG_HMF_HIR_PRO.Hair_PROMiranda.X in memory. A forced export (a level package's copy) names its own.
             IEntry parent = null;
+            if (chain[0] is ExportEntry top && !top.IsForcedExport)
+            {
+                parent = pcc.CreatePackageImport(System.IO.Path.GetFileNameWithoutExtension(source.FileRef.FilePath));
+            }
             foreach (var e in chain.Take(chain.Count - 1))
             {
                 parent = pcc.CreateImport(e.ClassName, e.ObjectName, parent);

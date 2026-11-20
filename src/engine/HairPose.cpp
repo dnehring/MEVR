@@ -25,6 +25,7 @@ namespace hair = ik::hair;
 namespace hc = ik::hand_contact;
 
 constexpr ULONGLONG kMaxRequestAgeMs = 500;
+constexpr double kUnitsPerMeterRest = 100.0;  // the reference skeleton's units (the games' meshes: 100 per metre)
 constexpr int kMaxBones = 512;
 
 std::array<std::atomic<ue3::Object const*>, kMaxTargets> gWanted{};
@@ -197,6 +198,25 @@ void Discover(ue3::Object* hairMesh, ue3::Object const* asset, int boneCount, Si
         return;
     }
     sim.chains = hair::Discover(skel->names, skel->parents);
+    // The bind pose (W_child = W_parent * L) for followBody: each long chain's bones relative to the body bone as modelled.
+    if (skel->local.size() == skel->names.size()) {
+        std::vector<ik::Transform> rest(skel->local.size());
+        for (std::size_t i = 0; i < rest.size(); ++i) {
+            int const p = skel->parents[i];
+            rest[i] = p >= 0 ? ik::Compose(skel->local[i], rest[static_cast<std::size_t>(p)]) : skel->local[i];
+        }
+        for (hair::Chain& c : sim.chains) {
+            if (c.body < 0 || c.bones.size() < 2) {
+                continue;
+            }
+            c.followRest.clear();
+            for (int b : c.bones) {
+                ik::Transform r = ik::Relative(rest[static_cast<std::size_t>(b)], rest[static_cast<std::size_t>(c.body)]);
+                r.translation = r.translation * (1.0 / kUnitsPerMeterRest);
+                c.followRest.push_back(r);
+            }
+        }
+    }
     for (hair::Chain const& c : sim.chains) {
         std::vector<std::uint64_t> keys;
         std::vector<std::string> names;

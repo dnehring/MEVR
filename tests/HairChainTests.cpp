@@ -353,6 +353,42 @@ void TestPose() {
 
 } // namespace
 
+// followBody: a three-bone chain hanging from the head; the head turns 60 degrees in 1-degree steps (no reset). With
+// followBody 1 the last bone's animated target stays where the chest carries it; with 0 it turns with the head.
+void TestFollowBody() {
+    Rig rig;
+    rig.names = {"Root", "Chest2", "Neck", "Head", "HairChainBack_1", "HairChainBack_2", "HairChainBack_3"};
+    rig.parents = {-1, 0, 1, 2, 3, 4, 5};
+    rig.local = {{0, 0, 0}, {0, 0, 1.3}, {0, 0, 0.2}, {0, 0, 0.12}, {-0.10, 0, 0.0}, {0, 0, -0.08}, {0, 0, -0.08}};
+    std::vector<hair::Chain> const found = hair::Discover(rig.names, rig.parents);
+    CHECK(found.size() == 1);
+    if (found.size() != 1) {
+        return;
+    }
+    CHECK(found[0].body == 1);  // Chest2
+    std::vector<ik::Transform> const rest = PoseOf(rig, {});
+    ik::Vec3 const restLast = rest[6].translation;
+    auto run = [&](double follow) {
+        hair::Chain chain = found[0];
+        hair::Settings s;
+        s.followBody = follow;
+        for (int step = 0; step <= 60; ++step) {
+            std::vector<ik::Transform> const pose = PoseOf(rig, Yaw(step * kPi / 180.0));
+            hair::Input in;
+            in.animated = pose;
+            in.dt = 1.0 / 60.0;
+            hair::Step(chain, s, in);
+        }
+        return chain.target.size() >= 3 ? ik::Length(chain.target[2] - restLast) : 1e9;
+    };
+    double const headRigid = run(0.0);
+    double const followed = run(1.0);
+    CHECK(headRigid > 0.08);   // turned 60 degrees with the head, 0.10 m behind its axis
+    CHECK(followed < 0.005);   // kept where the chest carries it
+    double const half = run(0.5);
+    CHECK(half > followed && half < headRigid);
+}
+
 int RunHairChainTests() {
     gFailures = 0;
     TestDiscover();
@@ -363,5 +399,6 @@ int RunHairChainTests() {
     TestFrameRates();
     TestResets();
     TestPose();
+    TestFollowBody();
     return gFailures;
 }

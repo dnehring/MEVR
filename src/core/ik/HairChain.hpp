@@ -29,6 +29,12 @@ struct Settings {
     double radiusM = 0.012;      // each point's collision sphere
     Vec3 windMS;                 // a steady wind, m/s (its force grows with the hair's speed through the air)
     double windDrag = 0.6;       // 1/s: how fast the hair takes the wind's speed
+    // How far a chain's lower joints rest with the upper body instead of the head (tools/rig's chains hang from the head:
+    // with the head turned, hair lying on the shoulders should stay on them, as the games' own rigs hang their lower hair
+    // bones from the neck and collars). Bone i of n: its animated target blends from the head-carried pose toward the pose
+    // the chain's body bone (Chain::body) carries, by followBody * i / (n - 1). 0: head-rigid targets (single-bone chains
+    // always are).
+    double followBody = 0.0;
 };
 
 // One chain of a skeleton: bones[0] hangs from `anchor` (a bone the animation poses), each next bone is the previous one's
@@ -45,6 +51,9 @@ struct Chain {
     bool started = false;
     double carry = 0.0;            // simulated time not yet stepped (s)
     int resets = 0;
+    int body = -1;                          // the upper-body bone lower joints follow (Settings::followBody); Discover sets it
+    std::vector<Transform> followRest;      // each bone relative to `body` (metres): the bind pose's, set by the caller; else
+                                            // recorded at the first step
 };
 
 // The chains in a skeleton (names and parents as its RefSkeleton has them): every bone whose name contains "hair" (any

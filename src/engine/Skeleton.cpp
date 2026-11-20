@@ -38,6 +38,8 @@ constexpr bool kSupported = false;
 #endif
 constexpr std::size_t kMeshBoneStride = 0x50;       // sizeof(FMeshBone)
 constexpr std::size_t kMeshBoneParentOffset = 0x40; // FMeshBone::ParentIndex
+constexpr std::size_t kMeshBoneOrientationOffset = 0x10;  // FMeshBone::BonePos.Orientation (FQuat, xyzw)
+constexpr std::size_t kMeshBonePositionOffset = 0x20;     // FMeshBone::BonePos.Position (FVector)
 constexpr unsigned kExNativeParm = 0x29;            // EExprToken
 constexpr unsigned kExLocalOutVariable = 0x48;
 
@@ -220,6 +222,16 @@ std::optional<RefSkeleton> ReadRefSkeleton(ue3::Object const* mesh) {
         // UE3 stores the root as its own parent (index 0).
         int const parent = ParentAt(bones, i);
         skeleton.parents.push_back(i == 0 ? -1 : parent);
+        // FMeshBone::BonePos (VJointPos): Orientation (FQuat) at +0x10, Position (FVector) at +0x20, as the package stores
+        // them (tools/rig and tools/motion compose W_child = W_parent * L with these).
+        float q[4]{};
+        float p[3]{};
+        std::memcpy(q, bones.data + static_cast<std::size_t>(i) * kMeshBoneStride + kMeshBoneOrientationOffset, sizeof q);
+        std::memcpy(p, bones.data + static_cast<std::size_t>(i) * kMeshBoneStride + kMeshBonePositionOffset, sizeof p);
+        ik::Transform t;
+        t.rotation = ik::Quat{q[0], q[1], q[2], q[3]};
+        t.translation = ik::Vec3{p[0], p[1], p[2]};
+        skeleton.local.push_back(t);
     }
     return skeleton;
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "core/ik/HairChain.hpp"
+#include "core/ik/TwoHand.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -136,21 +137,67 @@ std::vector<Chain> Discover(std::span<std::string const> names, std::span<int co
         }
         chains.push_back(std::move(chain));
     }
+    // The upper-body bone lower joints follow (Settings::followBody): the skeleton's upper chest (ME2/ME3: Chest2), never the
+    // chain's own anchor.
+    int chest = -1;
+    for (int i = 0; i < count; ++i) {
+        std::string const& n = names[static_cast<std::size_t>(i)];
+        if (n.size() == 6 && std::equal(n.begin(), n.end(), "Chest2", [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+            chest = i;
+            break;
+        }
+    }
+    for (Chain& c : chains) {
+        c.body = chest != c.anchor ? chest : -1;
+    }
     return chains;
 }
 
 StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
     StepStats stats;
-    std::vector<Vec3> target;
-    if (!TargetsOf(chain, input.animated, target)) {
-        return stats;  // the pose doesn't hold this chain's bones: leave it
+    int const count = static_cast<int>(input.animated.size());
+    if (chain.anchor < 0 || chain.anchor >= count) {
+        return stats;
     }
     Transform const anchor = input.animated[static_cast<std::size_t>(chain.anchor)];
-    bool reset = input.reset || !chain.started || chain.pos.size() != target.size();
+    bool reset = input.reset || !chain.started || chain.pos.size() != chain.bones.size() + 1;
     if (!reset) {
         double const jump = Length(anchor.translation - chain.lastAnchor.translation);
         double const turn = AngleBetween(anchor.rotation, chain.lastAnchor.rotation);
         reset = !(jump <= kResetJumpM) || !(turn <= kResetTurnRad);
+    }
+    // Lower joints resting with the upper body (Settings::followBody): their animated targets blended toward the pose the
+    // body bone carries, relative poses recorded at a reset.
+    std::span<Transform const> animated = input.animated;
+    std::vector<Transform> blended;
+    double const follow = std::clamp(settings.followBody, 0.0, 1.0);
+    if (follow > 0.0 && chain.body >= 0 && chain.body < count && chain.bones.size() >= 2) {
+        Transform const& body = input.animated[static_cast<std::size_t>(chain.body)];
+        bool const valid = std::all_of(chain.bones.begin(), chain.bones.end(), [&](int b) { return b >= 0 && b < count; });
+        if (valid) {
+            // The bind pose's relation when the caller gave it (engine/HairPose, from the mesh's reference skeleton); else the
+            // pose at the first step.
+            if (chain.followRest.size() != chain.bones.size()) {
+                chain.followRest.clear();
+                for (int b : chain.bones) {
+                    chain.followRest.push_back(Relative(input.animated[static_cast<std::size_t>(b)], body));
+                }
+            }
+            blended.assign(input.animated.begin(), input.animated.end());
+            std::size_t const n = chain.bones.size();
+            for (std::size_t i = 1; i < n; ++i) {
+                double const f = follow * static_cast<double>(i) / static_cast<double>(n - 1);
+                Transform const carried = Compose(chain.followRest[i], body);
+                Transform& t = blended[static_cast<std::size_t>(chain.bones[i])];
+                t.translation = t.translation + (carried.translation - t.translation) * f;
+                t.rotation = Slerp(t.rotation, carried.rotation, f);
+            }
+            animated = blended;
+        }
+    }
+    std::vector<Vec3> target;
+    if (!TargetsOf(chain, animated, target)) {
+        return stats;  // the pose doesn't hold this chain's bones: leave it
     }
     chain.lastAnchor = anchor;
     chain.target = target;
