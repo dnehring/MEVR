@@ -62,6 +62,7 @@ constexpr double kGoalNearUnits = 250.0;   // a navigation point this near the p
 constexpr double kGoalRiseUnits = 120.0;   // ... on the same floor
 constexpr double kGoalArriveUnits = 90.0;  // the AI stops at a goal's cylinder, not on its centre (once its state has ended)
 int gLe2Move = 0;                          // 0: the goal walk, PrecisionMoveTo without a goal; 1: PrecisionMoveTo (`walkby`)
+ue3::Object* gExactGoal = nullptr;         // StartToGoal's goal for the walk it starts (else the navigation point nearest)
 #else
 constexpr char kMoveName[] = "MoveToSlot";
 ue3::FunctionRef gMove{"SFXGame.BioAiController.MoveToSlot", ue3::kEveryGame};
@@ -185,7 +186,8 @@ char const* AskMove(Walk& w) {
     ue3::Reflection& r2 = ue3::runtime::Get();
     ue3::Function* const toGoal = gMove.Get() != nullptr && ue3::IsA(w.controller, gCoreAiClass)
         ? r2.FindFunction(r2.ClassOf(w.controller), kMoveName) : nullptr;
-    ue3::Object* const goal = gLe2Move == 0 && toGoal != nullptr ? NavPointNear(w.pawn, w.to) : nullptr;
+    ue3::Object* const goal = gLe2Move == 0 && toGoal != nullptr
+        ? (gExactGoal != nullptr && ue3::runtime::IsAlive(gExactGoal) ? gExactGoal : NavPointNear(w.pawn, w.to)) : nullptr;
     if (goal != nullptr) {
         ue3::Params p(r2, toGoal);
         if (p.Valid() && p.Set("NewMoveGoal", goal) && p.Set("NewMoveOffset", 0.0f) && p.SetBool("bIgnoreAIGoHere", true) &&
@@ -417,6 +419,13 @@ void End(Walk& w, char const* why, bool tearingDown) {
 }
 
 #if defined(MEVR_GAME_LE2)
+std::optional<Walk> StartToGoal(ue3::Object* pawn, ue3::Vector const& to, ue3::Object* goal, std::string& why) {
+    gExactGoal = goal;
+    std::optional<Walk> w = Start(pawn, to, why);
+    gExactGoal = nullptr;
+    return w;
+}
+
 char const* SetLe2Move(std::string const& how) {
     if (how == "goal") {
         gLe2Move = 0;

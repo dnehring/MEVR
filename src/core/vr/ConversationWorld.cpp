@@ -1423,6 +1423,25 @@ Marker StepMarker(MarkerState& state, MarkerFacts const& facts, double dtS, Mark
     return out;
 }
 
+bool Armed(WaitTrigger const& t) {
+    return t.enabled && t.maxTriggerCount > 0 && t.triggerCount < t.maxTriggerCount;
+}
+
+int WaitingTrigger(std::span<WaitTrigger const> triggers) {
+    for (std::size_t i = 0; i < triggers.size(); ++i) {
+        WaitTrigger const& t = triggers[i];
+        if (Armed(t) && t.wantedInside && !t.shepardInside && !t.playerInside) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+std::optional<double> FacingOnFoot(double heldYawDeg, double nowYawDeg, double toleranceDeg) {
+    if (!std::isfinite(heldYawDeg) || !std::isfinite(nowYawDeg)) return std::nullopt;
+    double const off = std::remainder(heldYawDeg - nowYawDeg, 360.0);
+    if (std::abs(off) <= toleranceDeg) return std::nullopt;
+    return std::remainder(heldYawDeg, 360.0);
+}
+
 double EyeHeightStep(EyeHeightFacts const& facts, EyeHeightLimits const& limits) {
     if (!(facts.eyeM >= limits.minEyeM && facts.eyeM <= limits.maxEyeM) || !std::isfinite(facts.floorZ) ||
         !std::isfinite(facts.drawnZ) || !(facts.unitsPerMeter > 0.0)) {

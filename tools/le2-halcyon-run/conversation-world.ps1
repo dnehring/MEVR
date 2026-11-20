@@ -19,6 +19,11 @@
 #                          findings must name body-not-drawn / person-not-drawn (the canary of those rules on the sequels).
 # -Hands view|chest        where the replayed hands are held (view: up in front of the eyes, the drawn-body checks; chest: out of
 #                          the eye snapshots, research/le2-conversations-in-world.md 7.1).
+# -Before 'line', ...      console lines run before the start (`god`, `mevr setloc ...`, a broken run's switch such as `mevr convo
+#                          circle ownerwalks on`); `sleep:<s>` waits that long. -Finally lines run at the end (the switch off).
+# -Pick <position>         each snapshot's wait, the wheel's reply at that position when a wheel is up (`mevr convo pick`), so
+#                          the conversation goes on by itself (0: never).
+# -Pitch <deg>             the replayed head pitched that far (negative: down; the wheel in front sits 26 degrees down).
 # Results: the stretch's session folder, convo-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the mod's
 # `conversation world:` lines and the renderer's [VRSTATE] lines since the start).
 param(
@@ -33,7 +38,11 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'convo',
     [switch]$Stances,
     [ValidateSet('', 'body', 'person')][string]$Hide = '',
-    [ValidateSet('view', 'chest')][string]$Hands = 'view'
+    [ValidateSet('view', 'chest')][string]$Hands = 'view',
+    [string[]]$Before = @(),
+    [string[]]$Finally = @(),
+    [int]$Pick = 0,
+    [double]$Pitch = 0
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -45,7 +54,7 @@ $open = Get-Content -LiteralPath $current -Raw | ConvertFrom-Json
 if ($open.holder -ne $Holder) { throw "the open $name stretch is held by '$($open.holder)', not '$Holder'" }
 if (-not (Get-Process ('MassEffect' + $Game.Substring(2)) -ErrorAction SilentlyContinue)) { throw "$name is not running" }
 $out = Join-Path $open.session ('convo-' + $Tag + '-' + (Get-Date -Format 'HHmmss'))
-Steer-Init -Out $out -Hands $Hands
+Steer-Init -Out $out -Hands $Hands -Pitch $Pitch
 $bin = Get-MELEBinDir (Find-MELEInstall).Root $Game
 $log = Join-Path $bin ('Logs\{0}MEVR.log' -f $Game)
 $halcyonLog = Join-Path $env:LOCALAPPDATA ('{0}\{0}_Log.txt' -f $(if ($Game -eq 'LE3') { 'MELE3VR' } else { 'MELE2VR' }))
@@ -66,6 +75,11 @@ if ($Hide) { Steer-Note ('broken run: ' + (Steer-Ask "mevr convo hide $Hide on")
 Steer-Hold
 Start-Sleep -Seconds 1
 try {
+    foreach ($line in $Before) {
+        if ($line -match '^sleep:(\d+)$') { Start-Sleep -Seconds ([int]$Matches[1]); continue }
+        Steer-Note ("before: {0}: {1}" -f $line, (Steer-Ask $line).Trim())
+        Start-Sleep -Milliseconds 1500
+    }
     if (-not [double]::IsNaN($FaceYaw)) { Steer-Face -Yaw $FaceYaw -NoCheck; Start-Sleep -Milliseconds 800 }
     if ($Start -eq 'a') {
         $selected = @(ReadLines $log | Select-Object -Skip $from | Select-String 'interact: (A would use|nothing to use)' | Select-Object -Last 1 |
@@ -86,6 +100,7 @@ try {
         ++$n
         Steer-Note ('state: ' + (Steer-Ask 'mevr state').Trim() + ' | ' + (Steer-Ask 'mevr convo world').Trim())
         Steer-Snapshot ("$Tag-$n")
+        if ($Pick -gt 0) { Start-Sleep -Seconds 2; Steer-Note ('pick: ' + (Steer-Ask "mevr convo pick $Pick").Trim()) }
         if (-not $walked) {
             $walked = $true
             $null = Steer-Push -Angle 0 -Seconds $Walk
@@ -93,6 +108,7 @@ try {
     }
 } finally {
     Steer-Stop
+    foreach ($line in $Finally) { Steer-Note ("finally: {0}: {1}" -f $line, (Steer-Ask $line).Trim()) }
     if ($Hide) { Steer-Note ('broken run off: ' + (Steer-Ask "mevr convo hide $Hide off").Trim()) }
     if ($Stances) { Steer-Note ('stances back: ' + (Steer-Ask 'mevr convo stances auto').Trim()) }
     Steer-Note ('world back: ' + (Steer-Ask 'mevr convo world auto').Trim())

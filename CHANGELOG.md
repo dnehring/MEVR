@@ -15,6 +15,13 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **First-person conversations on Mass Effect 2 and 3 (experimental): the circle, the squad, subtitles and the wheel as on
+  Mass Effect 1.** Whoever is about to speak with you and stands too far walks up into a loose circle around you (the one you
+  came to talk to stays put, people who can't walk or sit take part where they are, Mass Effect 3's hub characters keep their
+  places); your squad gathers beside you, a little behind. The speaker's line shows under their face and the dialogue wheel
+  in front of you where it opens, instead of both on one panel. A small ring on the floor marks a place a scene waits for you
+  at. On all three games, when a conversation ends you keep looking where you looked (Mass Effect 1 turned the view to Shepard's
+  old facing after a conversation that had turned you).
 - **First-person conversations on Mass Effect 2 and 3 (experimental): more of Mass Effect 1's rules.** People who look at
   Shepard look at your eyes when you step or lean away from where his body stands; your view sits down with Shepard when a
   scene seats him and the stick doesn't walk then; a cutscene that walks Shepard with someone beside him waits for you if you

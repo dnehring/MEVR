@@ -87,6 +87,9 @@ check('vanished-in-view' in rules(gone), 'someone in sight gone in the next reco
 hid = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'line-1', 0.08, [ahead(10), dict(udina(), hidden=True)])]
 check('vanished-in-view' in rules(hid), 'someone in sight hidden in the next record is vanished-in-view')
 dipped = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'after-dip', 0.08, [ahead(10)])]
+named = [record(0.0, 'begin', 0.08, [ahead(10), dict(udina(), name='BioPawn_7', id='BioPawn_7')]),
+         record(3.0, 'line-2', 0.08, [ahead(10), dict(udina(), name='Ambassador Udina', id='BioPawn_7')])]
+check('vanished-in-view' not in rules(named), 'someone the subtitles named between two records (the same id) did not vanish')
 check('vanished-in-view' not in rules(dipped), 'gone under a dip is no finding')
 unseen = [record(0.0, 'begin', 0.08, [ahead(10), dict(udina(), inSight=False)]), record(3.0, 'line-1', 0.08, [ahead(10)])]
 check('vanished-in-view' not in rules(unseen), 'gone while out of sight is no finding')
@@ -189,6 +192,29 @@ check('body-not-drawn' in rules(body_gone), "a sequel's record: the body in view
 mixed = [sequel(record(0.0, 'opening', 0.05, [ahead(10)]), 'LE2'), sequel(record(0.5, 'opening', 0.05, [ahead(10)]), 'LE3')]
 check(len(sa.group(mixed)) == 2, 'an ME2 and an ME3 scene with the same number are two scenes')
 check(sa.scene_key([mixed[0]]) == 'LE2:test_dlg' and sa.scene_key(clean) == 'test_dlg', "a sequel's scene key names its game; ME1's not")
+
+# The conversational circle on the sequels (game/SequelCircle.inc, lane FPC5): the owner stays put; someone else walks into the
+# circle. The owner walked 2 m by a walk of ours is owner-walked (the broken run `mevr convo circle ownerwalks on`); an authored
+# walk (no kind) or anyone else's walk into the circle is no finding.
+def owner(at, walk=None):
+    return dict(person('Tali', at, 10), owner=True, walk=walk)
+
+
+into = {'phase': 'walking', 'to': [150.0, 200.0, 0.0], 'kind': 'circle'}
+owner_walks = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0))]), 'LE2'),
+               sequel(record(2.0, 'tick', 0.05, [owner((150.0, 120.0), into)]), 'LE2'),
+               sequel(record(4.0, 'tick', 0.05, [owner((150.0, 200.0), dict(into, phase='arrived'))]), 'LE2')]
+check('owner-walked' in rules(owner_walks), "the owner walked 2 m into the circle is owner-walked")
+walked_before = [sequel(record(2.0, 'opening', 0.05, [owner((150.0, 200.0), dict(into, phase='arrived', **{'from': [150.0, 0.0, 0.0]}))]),
+                        'LE2')]
+check('owner-walked' in rules(walked_before), "the owner's walk over before the first record is owner-walked by its walk.from")
+authored = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0))]), 'LE2'),
+            sequel(record(4.0, 'tick', 0.05, [owner((150.0, 200.0))]), 'LE2')]
+check('owner-walked' not in rules(authored), "the owner's own authored walk (no kind) is no finding")
+joiner = lambda at, walk=None: dict(person('Prazza', at, 10, role='listener'), walk=walk)
+others_walk = [sequel(record(0.0, 'opening', 0.05, [owner((150.0, 0.0)), joiner((400.0, 300.0))]), 'LE2'),
+               sequel(record(4.0, 'tick', 0.05, [owner((150.0, 0.0)), joiner((120.0, 120.0), dict(into, phase='arrived'))]), 'LE2')]
+check(rules(others_walk) == set(), f"someone else's walk into the circle is no finding: {rules(others_walk)}")
 
 print(f"scene audit tests: {'ok' if not failures else f'{len(failures)} FAILED'}")
 sys.exit(1 if failures else 0)
