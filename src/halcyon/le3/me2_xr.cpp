@@ -1664,6 +1664,12 @@ void RunFrame() noexcept
         // its zoom, which is meant for director-framed shots. Applied last so the FOV hysteresis and
         // the mode-8 rule above cannot put it back. Exact class match, so nothing else is affected.
         if (ME2VR::EngineProbe::IsPhotoCamera()) cine = false;
+#if defined(MEVR_ASI)
+        // [MEVR] ME1's first-person conversations (research/69, T49's ME3 slice, the owner 2026-11-19): a conversation the mod
+        // shows in the world is no cinematic: the world in stereo as on foot, the view held at the player's place
+        // (MevrSeams::WorldViewHoldBegin), the director's camera serving the game only; its UI on our HUD panel.
+        if (::MevrSeams::ConversationInWorld()) cine = false;
+#endif
         s_fovCine = cine;
 
         // [CONVOLATCH] LE3 swaps the camera CLASS per shot (a Grissom close-up ran ~4.5s on a

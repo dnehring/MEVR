@@ -59,5 +59,11 @@ void HoldViewEnd() noexcept;
 // Any thread: whether HoldViewBegin would hold the view in `gameMode` now, for the renderer's mesh hides: 0 no, 1 for a screen
 // on the wrist, 2 for one standing in the room (MevrSeams::WorldViewHeld).
 int HoldsView(int gameMode) noexcept;
+// A conversation the mod shows in the world, first person (vr::conversation_world::State, HostServices v33; the sequels' slice of
+// ME1's research/59): fresh, with the view it holds at the player's place. HoldConversationBegin/End swap that view into the
+// player camera's POV around the main view's build, as HoldViewBegin/End do for a screen. Game thread (Begin/End), any (Shown).
+bool ConversationShown() noexcept;
+bool HoldConversationBegin() noexcept;
+void HoldConversationEnd() noexcept;
 
 } // namespace mevr::host::world_ui

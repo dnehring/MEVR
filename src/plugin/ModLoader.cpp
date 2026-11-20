@@ -18,6 +18,7 @@
 #if defined(MEVR_WITH_HALCYON_LE3)
 #include "plugin/HalcyonLe3.hpp"
 #include "plugin/MotionBlurGuard.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/Sights.hpp"
 #include "core/vr/ScopeCapture.hpp"
@@ -645,6 +646,15 @@ HostServices BuildServices() {
         else vr::interact::Reset();
     };
 #endif
+#if defined(MEVR_WITH_HALCYON_LE3)
+    // v33's conversations in the world (ME1's research/59): ME3's slice of T49 (the owner, 2026-11-19); the renderer reads it
+    // through MevrSeams::ConversationInWorld and WorldViewHoldBegin (plugin/WorldUi).
+    services.conversationWorldSize = static_cast<std::uint32_t>(sizeof(vr::conversation_world::State));
+    services.setConversationWorld = [](vr::conversation_world::State const* state) {
+        if (state != nullptr && state->size == sizeof(vr::conversation_world::State)) vr::conversation_world::Publish(*state);
+        else vr::conversation_world::Reset();
+    };
+#endif
 #if defined(MEVR_WITH_HALCYON)
     services = WithLe1ExtraUi(WithWorldUi(WithGalaxyHologram(WithGalaxyMap(WithSpectator(WithMakoControls(
         WithInteractLabel(WithScopeCapture(WithGameMenuRequest(WithLe1Modules(services))))))))));
@@ -673,6 +683,7 @@ void ForgetModState() {
 #endif
 #if defined(MEVR_WITH_HALCYON_LE3)
     vr::galaxy_holo::Forget();
+    vr::conversation_world::Reset();  // a conversation shown in the world by the mod that unloaded
 #endif
 #if (defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)) && defined(MEVR_WITH_MAIN_MENU)
     world_ui::Forget();  // ME2's screens and pending ownership go back to Halcyon's flat panel (M4.3)

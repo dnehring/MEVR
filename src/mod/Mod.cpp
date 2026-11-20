@@ -100,6 +100,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/SequelConversationWorld.hpp"
 #include "game/AuthoredMoment.hpp"
 #include "game/ConversationFlow.hpp"
 #include "game/SoundPlace.hpp"
@@ -1942,6 +1943,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::galaxy_map::Tick(GalaxyMapLink());
 #endif
         game::world_ui::Tick(WorldUiLink());
+#if defined(MEVR_GAME_LE3)
+        // ME3's slice of ME1's conversations in the world (T49, the owner 2026-11-19): after world_ui, its Hold is ours in mode 7.
+        game::sequel_conversation_world::Tick(ConversationWorldLink());
+#endif
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
 #if !defined(MEVR_GAME_LE3)
         // First-person world conversations and their LE1 audio/scene hooks are not LE3 adapters.
@@ -2110,6 +2115,9 @@ MEVR_MOD_API void MevrModShutdown() {
     game::screen_reticle::Shutdown(exiting);
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
+#if defined(MEVR_GAME_LE3)
+    game::sequel_conversation_world::Shutdown(ConversationWorldLink());
+#endif
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
     game::authored_moment::Shutdown();                            // the move track's question taken back
     game::thespian::Shutdown();                                   // Shepard's voice no longer silenced

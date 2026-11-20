@@ -5,6 +5,7 @@
 #include "game/CameraShake.hpp"
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/SequelConversationWorld.hpp"
 #include "game/ConversationFlow.hpp"
 #include "game/AuthoredMoment.hpp"
 
@@ -1060,6 +1061,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         std::string const trimmed = rest.substr(rest.find_first_not_of(' ') == std::string::npos ? rest.size() : rest.find_first_not_of(' '));
+#if defined(MEVR_GAME_LE3)
+        if (trimmed.rfind("world", 0) == 0) {
+            return sequel_conversation_world::Console(trimmed.substr(5));  // `mevr convo world [on|off|auto]`: ME3's slice (T49)
+        }
+#endif
         if (trimmed.rfind("flow", 0) == 0) {
             return conversation_flow::Command(trimmed.size() > 4 ? trimmed.substr(4) : std::string());  // `mevr convo flow [list|rescan|restore]`
         }

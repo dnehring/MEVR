@@ -4,6 +4,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "engine/GameAdapter.hpp"
 #include "halcyon/MevrSeams.h"
@@ -425,6 +426,55 @@ int HoldsView(int gameMode) noexcept {
     return static_cast<wu::Placement>(ui->placement) == wu::Placement::Room ? 2 : 1;
 }
 
+namespace {
+// The mod sends every tick; its word stands this long (plugin/ConversationWorld's kFreshMs on LE1: a stalled tick bridged).
+constexpr std::uint64_t kConversationFreshMs = 1500;
+HeldPov gConversationPov;
+std::atomic<std::uint64_t> gConversationViews{0};
+
+std::optional<vr::conversation_world::State> ConversationState() noexcept {
+    auto const s = vr::conversation_world::Latest(kConversationFreshMs);
+    if (!s || s->size != sizeof(vr::conversation_world::State) || s->active == 0) {
+        return std::nullopt;
+    }
+    return s;
+}
+} // namespace
+
+bool ConversationShown() noexcept {
+    return ConversationState().has_value();
+}
+
+bool HoldConversationBegin() noexcept {
+    HoldConversationEnd();
+    auto const s = ConversationState();
+    if (!s || s->holdRender == 0 || s->povLocationAddress == 0 || s->povRotationAddress == 0 || s->povFovAddress == 0) {
+        return false;
+    }
+    gConversationPov.location = reinterpret_cast<float*>(s->povLocationAddress);
+    gConversationPov.rotation = reinterpret_cast<std::int32_t*>(s->povRotationAddress);
+    gConversationPov.fov = reinterpret_cast<float*>(s->povFovAddress);
+    if (!SwapPovIn(gConversationPov, s->holdLocation, s->holdRotation, s->holdFov)) {
+        return false;
+    }
+    gConversationPov.active = true;
+    if (gConversationViews.fetch_add(1) == 0) {
+        float const dx = gConversationPov.savedLocation[0] - s->holdLocation[0];
+        float const dy = gConversationPov.savedLocation[1] - s->holdLocation[1];
+        float const dz = gConversationPov.savedLocation[2] - s->holdLocation[2];
+        log::Info("conversation world: the view held at the player's place for the main view's build only (the director's camera "
+                  "serves the game, {:.0f} units from the held eyes)", std::sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    return true;
+}
+
+void HoldConversationEnd() noexcept {
+    if (gConversationPov.active) {
+        SwapPovOut(gConversationPov);
+        gConversationPov.active = false;
+    }
+}
+
 } // namespace mevr::host::world_ui
 
 // ---- The held view's seams (src/halcyon/MevrSeams.h): ME3's renderer; LE1's GalaxyViewSwapBegin calls HoldViewBegin itself ----
@@ -469,11 +519,16 @@ bool WorldViewHoldBegin() noexcept {
     if (galaxyWanted) {
         return galaxyHeld;
     }
+    // A conversation in the world (LE1's GalaxyViewSwapBegin's second branch): the director's camera keeps serving the game.
+    if (mevr::host::world_ui::ConversationShown()) {
+        return mevr::host::world_ui::HoldConversationBegin();
+    }
     return mevr::host::world_ui::HoldViewBegin(mode);
 }
 
 void WorldViewHoldEnd() noexcept {
     mevr::host::galaxy_hologram::HoldViewEnd();
+    mevr::host::world_ui::HoldConversationEnd();
     mevr::host::world_ui::HoldViewEnd();
 }
 
@@ -482,7 +537,15 @@ int WorldViewHeld(int mode) noexcept {
     if (mevr::host::galaxy_hologram::Holds(mode)) {
         return 2;
     }
+    // A conversation in the world: the eyes at Shepard's head, first person's hides (his head hidden, his body under the player).
+    if (mevr::host::world_ui::ConversationShown()) {
+        return 1;
+    }
     return mevr::host::world_ui::HoldsView(mode);
+}
+
+bool ConversationInWorld() noexcept {
+    return mevr::host::world_ui::ConversationShown();
 }
 
 bool GalaxyOwnsPresentation(int mode) noexcept {
