@@ -87,6 +87,9 @@ bool gSurface = true;
 
 struct Run {
     double sinkMeanMm = 0, sinkPeakMm = 0, sinkSteps5mm = 0;  // --spheres: the deepest hair point inside the surface per step
+    std::vector<double> chainPeakMm;  // per chain, its deepest point (mm) over the run
+    std::vector<std::string> chainNames;  // per chain, its first bone
+    std::vector<std::string> chainWhere;  // per chain, where its deepest point was (point, sphere's bone, rest clearance)
     double meanSwingCm = 0, peakSwingCm = 0, settleS = -1, worstStretchMm = 0, jitterMm = 0;
     long long pushes = 0;
     std::vector<std::vector<ik::Vec3>> tips;  // per step, per chain: the tip's offset from the animation
@@ -210,7 +213,20 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
                     if (at >= restDistance[c].size()) continue;
                     double const restClear = restDistance[c][at] - sphere.radius;
                     if (restClear > 0.03) continue;
-                    sink = std::max(sink, restClear - (ik::Length(p - sphere.a) - sphere.radius));
+                    double const deeper = restClear - (ik::Length(p - sphere.a) - sphere.radius);
+                    sink = std::max(sink, deeper);
+                    if (run.chainPeakMm.size() != chains.size()) {
+                        run.chainPeakMm.assign(chains.size(), 0.0);
+                        run.chainWhere.assign(chains.size(), std::string());
+                    }
+                    if (deeper * 1000 > run.chainPeakMm[c]) {
+                        run.chainPeakMm[c] = deeper * 1000;
+                        char where[160];
+                        std::snprintf(where, sizeof(where), "point %zu of %zu, a sphere on %s (r %.1f cm), at rest %.1f cm clear, now %.1f, at %.2f s",
+                            i, chains[c].pos.size() - 1, sk.names[static_cast<std::size_t>(gSpheres[q].bone)].c_str(), sphere.radius * 100,
+                            restClear * 100, (ik::Length(p - sphere.a) - sphere.radius) * 100, t);
+                        run.chainWhere[c] = where;
+                    }
                 }
             }
         }
@@ -226,6 +242,7 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
     }
     run.sinkMeanMm /= (steps + 1);
     run.sinkSteps5mm /= (steps + 1);
+    for (hair::Chain const& ch : chains) run.chainNames.push_back(ch.bones.empty() ? std::string("?") : sk.names[static_cast<std::size_t>(ch.bones.front())]);
     run.meanSwingCm = swingCount ? swingSum / swingCount * 100 : 0;
     run.jitterMm = jitterCount ? jitterSum / jitterCount : 0;
     run.settleS = lastMovingT > 0 ? lastMovingT - seconds : 0.0;
@@ -505,6 +522,14 @@ int main(int argc, char** argv) {
                 if (!gSpheres.empty()) {
                     std::printf("%29s sink deeper than the pose into the body (%s): mean %.1f mm, peak %.1f mm, %.0f%% of steps past 5 mm\n", "",
                                 gSurface ? "collided" : "measured only", r.sinkMeanMm, r.sinkPeakMm, r.sinkSteps5mm * 100);
+                    // The strands that sink most.
+                    std::vector<std::size_t> order(r.chainPeakMm.size());
+                    for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+                    std::sort(order.begin(), order.end(), [&](std::size_t x, std::size_t y) { return r.chainPeakMm[x] > r.chainPeakMm[y]; });
+                    for (std::size_t i = 0; i < order.size() && i < 6; ++i) {
+                        std::printf("%29s   %-24s peak %.1f mm deeper than at rest: %s\n", "", r.chainNames[order[i]].c_str(), r.chainPeakMm[order[i]],
+                            order[i] < r.chainWhere.size() ? r.chainWhere[order[i]].c_str() : "");
+                    }
                 }
                 if (csv) {
                     csv << stiffness << ',' << damping << ',' << inertia << ',' << s.maxBendDeg << ',' << s.gravity << ','

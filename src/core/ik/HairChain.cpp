@@ -327,7 +327,7 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
                 // volume, 3-5 cm under Miranda's skin at rest, and the authored mesh doesn't clip there: what clips is a strand the
                 // simulation moves deeper than that (the bench's extra sink).
                 if (!input.surface.empty() && chain.surfaceRest.size() == n * input.surface.size()) {
-                    stats.collisions += CollideSurface(chain.pos[i], now[i], settings.radiusM, input.surface,
+                    stats.collisions += CollideSurface(chain.pos[i], now[i], settings.surfaceRadiusM, input.surface,
                         &chain.surfaceRest[i * input.surface.size()]);
                 }
                 stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.colliders, false, false);

@@ -56,6 +56,18 @@ internal static class Colliders
                 int best = 0;
                 for (int k = 1; k < 4; ++k) if (g.InfluenceWeights[k] > g.InfluenceWeights[best]) best = k;
                 int local = g.InfluenceBones[best];
+                // A vertex the breast moves by a sixth or more is carried by the breast bone: its sphere jiggles with her
+                // (on the chest bone, the jiggling breast went through the front strands: the owner, 2026-11-19).
+                for (int k = 0; k < 4; ++k)
+                {
+                    int b = g.InfluenceBones[k];
+                    if (g.InfluenceWeights[k] >= 40 && b < chunk.BoneMap.Length &&
+                        mesh.RefSkeleton[chunk.BoneMap[b]].Name.Instanced.StartsWith("Breast", StringComparison.OrdinalIgnoreCase))
+                    {
+                        local = b;
+                        break;
+                    }
+                }
                 bone[v] = local < chunk.BoneMap.Length ? chunk.BoneMap[local] : -1;
             }
         }
@@ -121,7 +133,7 @@ internal static class Colliders
         // Fewer spheres: the largest first, a candidate kept only away from those already kept (its centre further than 0.6 of
         // the smaller radius from theirs).
         var kept = new List<Sphere>();
-        foreach (var s in candidates.OrderByDescending(s => s.Radius))
+        foreach (var s in candidates.OrderByDescending(s => s.Bone.StartsWith("Breast", StringComparison.OrdinalIgnoreCase)).ThenByDescending(s => s.Radius))  // the jiggling breast first
         {
             bool near = false;
             foreach (var k in kept)

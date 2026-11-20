@@ -27,6 +27,10 @@ struct Settings {
     double inertia = 1.0;        // 0..1: how much of the head's own motion the hair feels (0: it rides the head rigidly)
     double maxBendDeg = 50.0;    // per joint, from the animated bend
     double radiusM = 0.012;      // each point's collision sphere
+    // The hair's thickness against the body's surface (Input::surface): a point keeps this far off the skin, or as far as it sat
+    // at rest if less. The bone runs inside the strand: the front strand's bone came within 1.6 cm of the collarbone on a
+    // walk with 1.2 and its mesh went into her (the owner, 2026-11-19); at rest it lies 2.8 cm off.
+    double surfaceRadiusM = 0.03;
     Vec3 windMS;                 // a steady wind, m/s (its force grows with the hair's speed through the air)
     double windDrag = 0.6;       // 1/s: how fast the hair takes the wind's speed
     // How far a chain's lower joints rest with the upper body instead of the head (tools/rig's chains hang from the head:
