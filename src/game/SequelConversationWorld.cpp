@@ -111,6 +111,10 @@ struct Kept {
 
 struct Conversation {
     bool on = false;             // in the conversation mode with the world asked for
+    // A conversation the game opened around a load (the player not 3 s on foot before it: the docking officer's at the Citadel's
+    // arrival) is left on the 3D screen: holding the view at its mark is what the level streaming then saw rendered, and the
+    // Citadel's load never finished (2026-11-19, two runs of two). Held: none of the below is published.
+    bool skipped = false;
     bool placed = false;         // the player's place taken
     std::uint32_t serial = 0;
     ue3::Object* controller = nullptr;
@@ -421,15 +425,18 @@ void Tick(conversation_world::Link const& link) {
     std::uint64_t const now = GetTickCount64();
     if (!gC.on || conversation != gC.controller) {
         End(link, "another conversation began");
-        gFootSettledAtStart = gLastFootRunMs >= 3000;
+        gFootSettledAtStart = gLastFootRunMs >= 3000 && gFoot.valid && GetTickCount64() - gFoot.ms < 2000;
         gC.on = true;
         gC.serial = ++gSerial;
         gC.controller = conversation;
         gC.startMs = now;
         gC.why = "the opening settling";
-        log::Info("conversation world: conversation {} ({}) begins: shown in the world, first person", gC.serial,
-            ue3::runtime::FullName(conversation));
+        gC.skipped = !gFootSettledAtStart;
+        log::Info("conversation world: conversation {} ({}) begins: {}", gC.serial, ue3::runtime::FullName(conversation),
+            gC.skipped ? "the game opened it around a load (not 3 s on foot before it): left on the 3D screen"
+                       : "shown in the world, first person");
     }
+    if (gC.skipped) return;
     ue3::Object* const pawn = player::Pawn(controller);
     auto const head = HeadOf(pawn);
     auto const rotation = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
@@ -459,8 +466,7 @@ void Tick(conversation_world::Link const& link) {
         gC.placedMs = now;
         gC.stepMs = now;
         // Only for a conversation begun after 3 s on foot (not one the game opens around a load, the docking officer's).
-        bool const settledOnFoot = gFoot.valid && now - gFoot.ms < 2000 && gFootSettledAtStart;
-        if (gSettings.dofOff && (settledOnFoot || gDof.IsOff())) {
+        if (gSettings.dofOff) {
             gDofBackOwed = false;
             gDof.Off("a conversation held in the world (the director's depth of field blurs the room)");
         }
