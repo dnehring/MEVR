@@ -95,10 +95,12 @@ constexpr char kBlock[] =
     "jiggleArmour = 0.25\n"
     "armourBodies =\n"
     "fullBodies = hmf_mir_\n"
-    "; A character's own share, before the rules above (the owner, 2026-11-19): name part:share, comma-separated. 0 leaves the\n"
-    "; body as the game made it (no rigged body, no jiggle: EDI's robot body); Samara's armour keeps half, Kasumi's suit a\n"
-    "; quarter.\n"
-    "bodyJiggle = _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25\n"
+    "; A character's own share, before the rules above (the owner, 2026-11-19): name part:share, comma-separated, the first\n"
+    "; that matches wins. 0 leaves the body as the game made it (no rigged body, no jiggle: EDI's robot body); Samara's armour\n"
+    "; keeps half; Kasumi's suit, Ashley's and Liara's combat outfits and Cerberus female armour a quarter; Jack all of it;\n"
+    "; Ashley's hospital and romance clothes (ASHc) and Liara's romance body (LIAd) all of it.\n"
+    "bodyJiggle = hmf_arm_ashc:1, asa_arm_liad:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, "
+    "asa_arm_lia:0.25, hmf_arm_crb:0.25\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
     "followBody = 0.7\n";
@@ -117,8 +119,10 @@ struct Settings {
     double jiggleArmour = 0.25;
     std::vector<std::string> armourBodies;
     std::vector<std::string> fullBodies{"hmf_mir_"};
-    // A character's own share (name part, share), before the armour rules: EDI none, Samara half, Kasumi a quarter.
-    std::vector<std::pair<std::string, double>> bodyJiggle{{"_edi", 0.0}, {"asa_spr_", 0.5}, {"asa_arm_sam", 0.5}, {"_ksm", 0.25}};
+    // A character's own share (name part, share; the first match wins), before the armour rules (the owner, 2026-11-19).
+    std::vector<std::pair<std::string, double>> bodyJiggle{{"hmf_arm_ashc", 1.0}, {"asa_arm_liad", 1.0}, {"_edi", 0.0},
+        {"asa_spr_", 0.5}, {"asa_arm_sam", 0.5}, {"_ksm", 0.25}, {"hmf_jck_", 1.0}, {"hmf_arm_ash", 0.25},
+        {"asa_arm_lia", 0.25}, {"hmf_arm_crb", 0.25}};
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
 

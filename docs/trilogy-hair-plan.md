@@ -483,8 +483,13 @@ What's left, in order:
    head's field (`m_oHeadMesh`) and a reflect row were what a body swap lacked.
 Not Shepard (the owner, 2026-11-19): the player's pawn is never simulated (a first-person VR experience; third person isn't
 the priority), so the sequels' modular armour pieces (breasts on the torso piece, glutes on the legs) need no work.
-Per character (the owner, 2026-11-19): EDI none (her robot body: no rigged body, no swap), Samara half, Kasumi a quarter
-(`[Hair] bodyJiggle = _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25`, before the armour rules). Left: the armour lists per sequel (`armourBodies`/`fullBodies`: the name rule is right only on ME1), the package's load
+Per character (the owner, 2026-11-19): EDI none (her robot body: no rigged body, no swap), Samara half, Kasumi a quarter,
+Jack full, Ashley in armour, Liara's combat outfits and Cerberus female armour a quarter (`[Hair] bodyJiggle = hmf_arm_ashc:1,
+asa_arm_liad:1, _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25, hmf_jck_:1, hmf_arm_ash:0.25, asa_arm_lia:0.25,
+hmf_arm_crb:0.25`, the first match wins, before the armour rules). ME3's outfits are told apart by the packages that load them
+(lane A's census, `%LOCALAPPDATA%\MEVR\rig\census\LE3.csv`): `BioH_<name>_NN` is a squad appearance, so armour (Ashley's ASHa,
+ASHb, ASHf; Liara's LIAa, LIAe, LIAf, LIAh); Ashley's ASHc loads only in the hospital and her romance scene, Liara's LIAd only
+in hers (full). Left: the package's load
 cost at the first lookup per level [verify], and step 5.
 
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
