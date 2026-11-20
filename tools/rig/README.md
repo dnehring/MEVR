@@ -61,6 +61,43 @@ height and side (the apex's height and its distance from the middle); for glutes
 tissue's middle (half way from the body's core to the apex), the region's centre a little outward, its radii the mound's
 half extents. Miranda's numbers and how they were read are in the plan's comments.
 
+## Automatic placement
+
+`"place": "auto"` in a step (or `mevr-rig place <package> <mesh> [--plan p --step id]`, which also prints the distance from
+that step's hand-placed bones and regions) places the four soft-tissue bones and their regions from the mesh's own surface
+(`Placement.cs`): LOD 0's triangles as a height field seen from the front for the chest and from the back for the hips (the
+furthest x per 0.5 cm cell of y and z), averaged with its mirror image; per mound the apex (the furthest cell 2..12 cm off the
+middle, in Chest2's height -15..+5.5 cm or Pelvis's -17..+5), its height from the field smoothed (0.75 cm chest, 1.5 cm hips),
+its side the middle of the run across the apex's height within 1.5 cm of it (inner end no nearer the middle than 4 cm chest,
+3.5 cm hips); the bone 7.5 cm (breast) or 7.0 cm (glute) inside the apex on Chest2 or Pelvis, the region's centre 3.5 or 4.25 cm
+inside, the hand plans' radii, weights and `from` bones. Every distance scales with Chest2's or Pelvis's height over Miranda's
+(140.4, 101.2). `tools/rig/check-place.ps1` checks it against the three hand-placed rigs (ME3 Miranda's suit and underwear
+body, Liara): each centre within 1 cm on each axis (research/trilogy-hair.md "Automatic placement").
+
+## Every female body
+
+`tools/rig/census.ps1 -Game LE1|LE2|LE3` lists every `HMF_*`/`ASA_*` skeletal mesh in every package of a game and its DLC
+(`mevr-rig census`, Idle priority) into `%LOCALAPPDATA%\MEVR\rig\census\<GAME>.csv` (local: the player's game data), with LOD 0's
+vertex count and a hash of its vertices (a cooked copy in another package hashes the same), the bone names' hash and whether the
+skeleton has Chest2 and Pelvis. `python tools/rig/females-plan.py <GAME> [--compare ...] [--list] [--write]` sorts it (bodies
+are every family but hair, heads, headgear, visors, breathers and hats) and writes `plans/<game>-females.jsonc`: one step per
+distinct body mesh (its object path in the game's memory; one mesh kept under two groups of its package is one step),
+`"place": "auto"`, `"continueOnError": true`, into `{MEVR}/rig/<GAME>/MEVR_Bodies_<GAME>.pcc`, each mesh named `<mesh>_MEVR`
+(`<mesh>_<vertices>_MEVR` where two meshes share a name: ME2 Jack's two `HMF_JCK_LGTa_MDL`). `standsFor` lists the paths the rig
+stands in for; the build writes them to the package's index, `MEVR_Bodies_<GAME>.json` (`mevr-rig-index` v1: `meshes`, each
+`path` and `name`), which the game reads to swap by path. A part of an outfit without a mound (ME2/ME3 Shepard's shoulders and
+sleeves) is skipped; a torso gets breasts, legs glutes.
+
+```powershell
+tools/rig/census.ps1 -Game LE1                 # %LOCALAPPDATA%\MEVR\rig\census\LE1.csv
+python tools/rig/females-plan.py LE1 --write   # tools/rig/plans/le1-females.jsonc
+tools/rig/build-bodies.ps1 -Game LE1           # MEVR_Bodies_LE1.pcc + .json + colliders\, its log beside it (Idle priority)
+python tools/rig/bodies-report.py LE1 --list   # per body: mounds placed, LOD 0 vertices per region, checks, spheres
+```
+
+Sizes and times (2026-11-19): ME1 38 bodies 7.5 MB, ME2 80 of 101 14.4 MB, ME3 116 of 143 22.1 MB, under a minute each
+(research/trilogy-hair.md "Automatic placement and every female body").
+
 ## Body spheres (the hair's collision with the body)
 
 Every body the `rig` verb builds (a step without hair, unless its plan says `"colliders": false`) also gets its surface for the

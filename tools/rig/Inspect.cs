@@ -59,6 +59,17 @@ internal static class Inspect
                 }
             }
             Console.WriteLine($"  dumped LOD {l} to {dump}");
+            string tris = Program.Arg(args, "--tris");
+            if (tris != null)
+            {
+                using var t = new System.IO.StreamWriter(tris);
+                t.WriteLine("a,b,c");
+                for (int i = 0; i + 2 < lod.IndexBuffer.Length; i += 3)
+                {
+                    t.WriteLine($"{lod.IndexBuffer[i]},{lod.IndexBuffer[i + 1]},{lod.IndexBuffer[i + 2]}");
+                }
+                Console.WriteLine($"  its triangles to {tris}");
+            }
         }
         if (args.Contains("--rest"))
         {

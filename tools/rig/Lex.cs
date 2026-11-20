@@ -27,6 +27,12 @@ internal static class Lex
         }
         if (found.Count > 1)
         {
+            // A whole path names one ("CTHd.X" against "Review.CTHd.X").
+            var exact = found.Where(e => e.InstancedFullPath.Equals(pathEnd, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (exact.Count == 1)
+            {
+                return exact[0];
+            }
             throw new InvalidOperationException($"{found.Count} SkeletalMeshes end '{pathEnd}': " + string.Join(", ", found.Select(f => f.InstancedFullPath)));
         }
         return found[0];
