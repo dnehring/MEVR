@@ -847,6 +847,38 @@ struct EyesStandInLimits {
 };
 bool EyesStandIn(bool on, double flatUnits, EyesStandInLimits const& limits = {});
 
+// The view sits with him (ME1's StepSeat, research/69 item 43; the owner, 2026-11-16: "any of the types of sit down based
+// interactions that happen across all three games"): his head as the scene animates it against his pawn's place. Standing (the
+// head `standUnits` or more above it, not crouched) learns his standing height (smoothed by `standGain`) and his head's place;
+// `sitDropUnits` under that (or under `sitUnits` without a standing sample) he sits: the held view follows his head from where it
+// last stood, at `rateUnitsPerS`, outside `deadbandUnits`; `upAgainUnits` from standing again (or `standUnits` without a sample)
+// he gets up and the view comes up with him. The step is added to the held place; while he sits the stick does not walk.
+struct SeatLimits {
+    double standUnits = 70.0;
+    double sitUnits = 62.0;
+    double sitDropUnits = 15.0;
+    double upAgainUnits = 8.0;
+    double standGain = 0.1;
+    double rateUnitsPerS = 100.0;
+    double deadbandUnits = 4.0;
+};
+struct SeatState {
+    bool on = false;           // he sits
+    bool following = false;    // the view follows his head (down, or up again until it is there)
+    bool haveStand = false;
+    double standUnits = 0.0;   // his head above his place, standing
+    Vec3 headAtStand{};
+    Vec3 ref{};                // where the view's follow has got to
+    double followedUnits = 0.0;
+};
+struct SeatStep {
+    bool sat = false;          // he sat down this step
+    bool stood = false;        // he got up this step
+    Vec3 move{};               // add to the held place
+};
+SeatStep StepSeat(SeatState& state, Vec3 const& head, double headAbovePlaceUnits, bool crouched, double dtS,
+    SeatLimits const& limits = {});
+
 // The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
 // or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those
 // held longer than maxAgeMs are dropped first (into `expired`).

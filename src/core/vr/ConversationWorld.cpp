@@ -1462,6 +1462,41 @@ bool EyesStandIn(bool on, double flatUnits, EyesStandInLimits const& limits) {
     return flatUnits > (on ? limits.offUnits : limits.onUnits);
 }
 
+SeatStep StepSeat(SeatState& state, Vec3 const& head, double h, bool crouched, double dtS, SeatLimits const& limits) {
+    SeatStep out;
+    if (!std::isfinite(h)) return out;
+    if (!state.on) {
+        if (h >= limits.standUnits && !crouched) {
+            state.standUnits = state.haveStand ? state.standUnits + (h - state.standUnits) * limits.standGain : h;
+            state.haveStand = true;
+            state.headAtStand = head;
+        }
+        bool const sits = !crouched && (state.haveStand ? h < state.standUnits - limits.sitDropUnits : h < limits.sitUnits);
+        if (sits) {
+            state.on = true;
+            state.following = true;
+            state.ref = state.haveStand ? state.headAtStand : head;
+            out.sat = true;
+        }
+    } else if (state.haveStand ? h > state.standUnits - limits.upAgainUnits : h >= limits.standUnits) {
+        state.on = false;
+        out.stood = true;
+    }
+    if (!state.following) return out;
+    Vec3 const diff{head.x - state.ref.x, head.y - state.ref.y, head.z - state.ref.z};
+    double const len = std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+    if (len <= limits.deadbandUnits) {
+        state.following = state.on;  // up again and there: done
+        return out;
+    }
+    double const most = limits.rateUnitsPerS * std::clamp(dtS, 0.0, 0.1);
+    double const k = len <= most ? 1.0 : most / len;
+    out.move = {diff.x * k, diff.y * k, diff.z * k};
+    state.ref = {state.ref.x + out.move.x, state.ref.y + out.move.y, state.ref.z + out.move.z};
+    state.followedUnits += len * k;
+    return out;
+}
+
 bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {
     if (movedUnits > limits.maxUnits) {
         state.count = 0;

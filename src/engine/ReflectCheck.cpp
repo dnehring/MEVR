@@ -4579,7 +4579,17 @@ void CheckSequelConversationLooks() {
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", bNoCollisionFail);
     CheckField("Engine.Actor", "bStatic", SDK_BOOL(AActor, bStatic));
     CheckField("Engine.Actor", "bNoDelete", SDK_BOOL(AActor, bNoDelete));
+    // Walking along in a moment (ME1's worldWalkAlong) and the seat (ME1's StepSeat).
+    CheckClass<USeqAct_Interp>("Engine.SeqAct_Interp");
+    CheckField("Engine.SeqAct_Interp", "bPaused", SDK_BOOL(USeqAct_Interp, bPaused));
+    CheckField("Engine.SeqAct_Interp", "bIsPlaying", SDK_BOOL(USeqAct_Interp, bIsPlaying));
+    CheckField("Engine.SeqAct_Interp", "GroupInst", SDK_FIELD(USeqAct_Interp, GroupInst));
+    CheckField("Engine.InterpGroupInst", "GroupActor", SDK_FIELD(UInterpGroupInst, GroupActor));
+    CheckField("Engine.InterpGroupInst", "TrackInst", SDK_FIELD(UInterpGroupInst, TrackInst));
+    CheckClass<UInterpTrackInstMove>("Engine.InterpTrackInstMove");
+    CheckField("Engine.Pawn", "bIsCrouched", SDK_BOOL(APawn, bIsCrouched));
 #if defined(MEVR_GAME_LE2)
+    CheckFunction("Engine.SkeletalMeshComponent.IsPlayingFaceFXAnim");
     CheckField("SFXGame.BioPawn", "m_oLookAtData", SDK_FIELD(ABioPawn, m_oLookAtData));
     CheckField("SFXGame.BioLookAt", "m_oTarget", SDK_FIELD(UBioLookAt, m_oTarget));
     CheckField("SFXGame.BioLookAt", "m_nRank", SDK_FIELD(UBioLookAt, m_nRank));
