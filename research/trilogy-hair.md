@@ -399,3 +399,38 @@ player's own pawn is never simulated, so this matters only for an NPC dressed so
 **A cost to watch.** `DynamicLoadObject` of one object loads its whole package with the packages it imports: one package of
 every female body, importing each body's materials from the game's own packages, may load all of those at the first lookup of
 each level (a hitch, memory). [verify] in the game; one package per body (or per character) would avoid it.
+
+## The dancers' sizes and the dress fit (2026-11-20, lane C of section 12)
+
+The owner's first look at uniform growth about the bone (sizes-LE1/2/3.png): the breasts grew "rounder and higher", unnatural;
+10% on the glutes reads well on ME1's bare body (NKDa) but not on a dress (ME2 CTHd, ME3 CTHc), whose skirt hangs straight down
+from the glutes' widest point. Decided: breasts grow mainly outward and down, up to 10% larger than ME3 Liara's romance body
+(LIAd); dresses fitted under the glutes so the curve reads.
+
+**The growth** (tools/rig/Sizes.cs, tools/rig/README.md "Sizes"): in the mesh's bind frame about the bone's bind place P, a
+vertex's share on the bone moves to P + G (v - P) with out' = out (1 + a kOut), y' = y (1 + a kSide), z' = z (1 + a kUp) -
+a kDrop out' ("out" +x for a breast, -x for a glute, the glute bone's own X: its yaw is 180). Tuned on renders of ME1's NKDb
+(a bare body with room to grow) and ME2's CTHd: breasts kOut 1.0, kSide 0.45, kUp 0.15, kDrop 0.18 (the first guess 0.4,
+0.2, 0.25 and a softer 0.8, 0.55, 0.3, 0.4 both drew a dark crease under the breasts at the upper end: the sag shear folds the
+lower pole over the unweighted chest; 0.12 removed most of it but lost the droop); glutes 1.0, 0.35, 0.3, 0.15 as first set.
+Glute amounts 0.10..0.16 (a middle dancer 0.12) read about as the uniform 10% did on NKDa.
+
+**The cap** (`breastMax` in MEVR_Bodies_<GAME>.json, 1 + the largest breast `a`): the body's breast peak (from Chest2's rest
+x, the furthest vertex weighted to the bone, grown) reaches LIAd's peak grown by a = 0.10 (16.5 -> 16.9 cm ahead of Chest2).
+LIAd itself 1.100; LE1 38 bodies min 1.109, median 1.627, max 1.772 (ME1's NKDa 1.109: already nearly LIAd's size); LE2 70
+bodies min 1.000, median 1.486, max 1.772 (10 as large as the cap already); LE3 104 bodies min 1.000, median 1.142, max 1.772
+(36 at 1.0). Flat clothed chests (ME2 CTHd's jacket: peak 13.2 cm) get a up to 0.76; there the jacket's lapels follow the
+growth and the upper end reads a little pointed.
+
+**The dress fit** (tools/rig/Fit.cs, tools/rig/README.md "Dress fit"): the reference is the game's bare HMF_ARM_NKDa sliced
+every centimetre, each slice's convex hull within 24 cm of the middle (it bridges the gap between the thighs); a skirt (the back
+comes in under 2.5 cm over 12 cm under the glutes, closed in the middle, a single surface) has its back half moved onto that
+hull scaled to its hips plus 0.5..2.5 cm of ease, from 10 cm above the glutes to 38 cm under, every LOD, tangent frames turned
+with the surface. Measured on the meshes before: ME2 CTHd's back stays at -14.8 cm from z 92 down to 60 (straight from the
+glutes' depth); ME3 CTHc's at -10.5 the whole way (no glutes at all: the fit both adds them, up to 3 cm, and tucks under).
+Fitted: CTHc, CTHd, CTHg and their `_old` versions in all three games, plus ME2's ASA_ARM_CTHa (Liara's cabin dress): 20 rigs;
+largest moves 3.1-5.6 cm. Baked into the rigged body, so every woman in such a dress gets it, not only the dancers. Nothing
+else was detected as a skirt (trousers, bare legs, armour: the back comes in, or open between the legs).
+
+Renders: %LOCALAPPDATA%\MEVR\rig\previews\sizes2-LE1.png, -LE2.png, -LE3.png (a bare body and a dress each, beside LIAd),
+sizes2-all.png. The game's own normals were not compared in the game yet: [verify] the fitted dresses' shading in the headset.

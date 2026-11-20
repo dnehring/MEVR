@@ -76,6 +76,8 @@ internal static class Program
             "colliders" => Colliders.Run(args),
             "place" => Placement.Run(args),
             "census" => Census.Run(args),
+            "sizes" => Sizes.Run(args),
+            "export" => Sizes.Export(args),
             _ => Usage(),
         };
     }

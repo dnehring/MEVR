@@ -21,6 +21,8 @@ FAMILY = re.compile(r'^(HMF|ASA)_([A-Za-z0-9]+)_', re.I)
 PARTS = {'HIR', 'HED', 'HGR', 'HGRPROP', 'VSR', 'BRT', 'BRTA', 'BRTB', 'BRTC', 'HAT', 'BLANK', 'EYE', 'LSH', 'BRW'}
 ARMOUR = ('_hvy', '_med', '_lgt')               # game/Hair OutfitJiggle's armour types (on the mesh's path)
 FULL = ('hmf_mir_',)                            # its fullBodies default: a bodysuit named like armour
+# Rigs (lower case) never fitted as a skirt (tools/rig/Fit.cs), when the owner sees one that shouldn't be.
+FIT_EXCLUDE = set()
 
 
 def census_path(game):
@@ -168,17 +170,27 @@ def main():
             "// memory (the package index MEVR_Bodies_<GAME>.json maps them to the rig). Built on the player's machine from their own",
             '// game files; the package stays local. After each step: armour (game/Hair OutfitJiggle: a quarter of the jiggle) or full,',
             "// by that rule on the mesh's path.",
+            "// Every step has \"fit\": \"auto\": a skirt (a dress hanging straight down from the glutes) is fitted under them to the",
+            "// game's bare body (`fitReference`, HMF_ARM_NKDa; tools/rig/Fit.cs), unless it is in FIT_EXCLUDE.",
             '{',
             f'  "out": "{{MEVR}}/rig/{a.game}/MEVR_Bodies_{a.game}.pcc",',
             '  "continueOnError": true,',
-            '  "steps": [',
         ]
+        bare = [k for k in keys if k[0] == 'hmf_arm_nkda_mdl']
+        if bare:
+            c = chosen[bare[0]]
+            src = '{' + a.game + '}/' + c['file'].replace('\\', '/')
+            lines.append(f'  "fitReference": {{ "source": "{src}", "mesh": "{c["inFile"]}" }},')
+        else:
+            print('no HMF_ARM_NKDa in', a.game, ': no skirt fit')
+        lines.append('  "steps": [')
         steps = []
         for k in keys:
             c = chosen[k]
             src = '{' + a.game + '}/' + c['file'].replace('\\', '/')
             stands = ', '.join(f'"{p_}"' for p_ in (pick(groups[p])[0]['path'] for p in rigs[k]))
-            steps.append(f'    {{ "source": "{src}", "mesh": "{c["inFile"]}", "name": "{mapping[k]}", "place": "auto", '
+            fit = '"fit": "none"' if mapping[k].lower() in FIT_EXCLUDE else '"fit": "auto"'
+            steps.append(f'    {{ "source": "{src}", "mesh": "{c["inFile"]}", "name": "{mapping[k]}", "place": "auto", {fit}, '
                          f'"standsFor": [{stands}] }}, // {outfit(rigs[k][0])}')
         if steps:
             steps[-1] = steps[-1].replace(' }, //', ' } //', 1)

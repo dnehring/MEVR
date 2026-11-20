@@ -98,6 +98,51 @@ python tools/rig/bodies-report.py LE1 --list   # per body: mounds placed, LOD 0 
 Sizes and times (2026-11-19): ME1 38 bodies 7.5 MB, ME2 80 of 101 14.4 MB, ME3 116 of 143 22.1 MB, under a minute each
 (research/trilogy-hair.md "Automatic placement and every female body").
 
+## Sizes (the clubs' dancers)
+
+The game grows a dancer's breasts and glutes (game/Hair, docs/trilogy-hair-plan.md section 12) by an amount `a` per region,
+mostly outward from the body and a little down (`Sizes.cs`; the owner, 2026-11-20: grown the same every way they looked rounder
+and higher). In the mesh's bind frame (x forward, y side, z up; "out" is +x for a breast, -x for a glute) about the bone's bind
+place P, a vertex's share on the bone moves to P + G (v - P):
+
+    out' = out (1 + a kOut),  y' = y (1 + a kSide),  z' = z (1 + a kUp) - a kDrop out'
+
+| region | kOut | kSide | kUp | kDrop |
+| --- | --- | --- | --- | --- |
+| breasts | 1.0 | 0.45 | 0.15 | 0.18 |
+| glutes | 1.0 | 0.35 | 0.30 | 0.15 |
+
+(kDrop 0.25 drew a crease under the breasts at the upper end.) `mevr-rig sizes <bodies.pcc> --ref <package> <mesh> --write`
+writes each rig's `breastMax` (= 1 + the largest breast `a`) into the package's index: its breast peak reaches ME3 Liara's
+romance body's (ASA_ARM_LIAd) grown by a = 0.10 (the owner: up to 10% larger than hers), clamped 1.0..1.8; build-bodies.ps1
+runs it after each build (LE3's package first: it holds the reference). Glutes a 0.10..0.16, a middle dancer 0.12.
+
+    tools\rig\preview-sizes.ps1          # before/after sheets: %LOCALAPPDATA%\MEVR\rig\previews\sizes2-<GAME>.png, sizes2-all.png
+
+renders a bare body and a dress per game (as the game made it, a middle dancer, the upper end, beside LIAd) with
+`mevr-rig export <package> <mesh> <out.obj> [--breast 1+a] [--glute 1+a] [--breast-shape k,k,k,k] [--glute-shape ...]
+[--fit <ref package> <ref mesh>]` and headless Blender. The pictures are the player's game data: local only.
+
+## Dress fit (a skirt fitted under the glutes)
+
+A dress hangs straight down from the glutes' widest point, so their shape (and the dancers' boost) never shows (the owner,
+2026-11-20). A step with `"fit": "auto"` (every step of the generated plans; `"skirt"` forces it, `"none"` or the plan
+script's `FIT_EXCLUDE` leaves it) is checked against the plan's `fitReference` (the game's bare HMF_ARM_NKDa: every female body
+shares the skeleton) by `Fit.cs`:
+
+- **A skirt** when its back comes in less than 2.5 cm over the 12 cm under the glutes' widest point (the reference's height),
+  is closed in the middle 24 cm under it, and has no second surface inside (legs modelled under a coat: left alone).
+- **The fit**: on the back half (the angle from straight back under 70 degrees, fading out at 110), from 10 cm above the
+  glutes' widest point to 38 cm under it (fading in over the top 7 cm and out over the bottom 16: the hem and the front are the
+  game's), each vertex moves along the line from the slice's middle onto the reference's convex hull at that height (the shape
+  a cloth stretched round the hips and both thighs takes), scaled by the hips' width ratio, plus 0.5 cm of ease at the glutes
+  growing to 2.5 cm 25 cm under them; at most 6 cm, never a vertex more than 8 cm from that shape (an arm, a hand). Every LOD;
+  each moved vertex's tangent frame turned with its surface's normal, so the game's shading follows. Baked before the bones
+  are placed, so the glute bone and region sit on the fitted shape.
+- The build log says per step `fit: fitted under the glutes, ...` or `fit: not fitted, <why>`. Fitted on 2026-11-20: CTHc,
+  CTHd and CTHg (and their `_old` versions) in all three games, and ME2's ASA_ARM_CTHa (Liara's dress in the cabin): 20 rigs.
+  Every woman wearing one of those dresses gets the fitted shape, not only the dancers.
+
 ## Body spheres (the hair's collision with the body)
 
 Every body the `rig` verb builds (a step without hair, unless its plan says `"colliders": false`) also gets its surface for the
