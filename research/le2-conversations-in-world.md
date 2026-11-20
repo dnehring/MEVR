@@ -654,6 +654,74 @@ Stretch `20261120-045217-563-LE2-fpc4-le2` (fake headset, `prep.ps1`, restored w
    23.5 forward, -6.0 right, 11.0 up (arm IK's 24, 13).
 5. **Moments this stretch:** 2 held (Tali's reintroduction, twice across a reload), 0 to the 3D screen. ME3: 0 (none reached).
 
+## 10. Lane FPC-ME3 (2026-11-20): the presence rules at the opening, the cab-ride hang, ME3's checks
+
+ME3's checks of lanes FPC to FPC4's work, and the owner's new presence rule. Numbers only from the code and the logs.
+
+### 10.1 Everyone but Shepard hidden: the 3D screen (item 0, the owner's rule (a), 2026-11-20)
+
+**The owner's decision** ("Yes, by rule (a)"): a conversation where every speaker except Shepard is hidden at the opening (ME3's
+Khalisah interview `citprs_khalisah2_d_dlg`, the video calls) goes to the 3D screen at its start; a run-time rule in the spirit
+of ME1's presence rules, not a hand list, not first person.
+
+**The rule** (`core/vr/ConversationWorld`: `cw::PresenceFacts`, `cw::PresenceAtOpening`, `cw::Name(Presence)`; unit-tested in
+`tests/ConversationWorldTests.cpp`): the facts read from the live scene once the stage has placed everyone decide, in ME1's order,
+
+1. `ShepardHidden`: his pawn hidden by the script (ME1's first rule);
+2. `ShepardAbsent`: farther than `worldAbsentM` (15 m) from the conversation's owner and no line between them (ME1's second);
+3. `OthersHidden` (new): the conversation's people but Shepard (the owner, the speakers, the listener, ME3's found actors and
+   extra participants: the reader's `Speakers`, persons only) found, and every one of them hidden (the actor's `bHidden` or its
+   body's `HiddenGame`). Nobody found but Shepard (a terminal, a hologram that isn't a person) keeps its place.
+
+**Where it acts:** `game/SequelConversationWorld`, at the end of the opening's settle (0.35 s, when the place would be taken), on
+ME2 and ME3 alike, under ME1's keys: `[Cinematics] worldAutoScreen` (`on`, the default: the 3D screen; `log`: logged only, held in
+the world; `off`), `worldAbsentM`. The verdict is logged at every opening (`conversation world: conversation N: the presence rules
+at the opening: a place for the player (its people: SFXStuntActor_0 shown)`, or `... no place for the player in this scene
+(everyone of the scene but Shepard is hidden: the presence rules at the opening; its people: ...; the owner 1.8 m away, in
+sight): on the 3D screen (worldAutoScreen = on)`); `mevr convo world` counts them (`N conversations with no place for the player
+on the 3D screen (M by the presence rules at the opening)`). A conversation held by hand (`mevr convo world on`) only logs the
+verdict and stays held.
+
+**ME1:** its own presence rules (`game/ConversationWorld`'s `Begin`) are the first two only; they don't cover the new case (the
+Khalisah shape: the speaker 1.8 m from Shepard, hidden, Shepard shown). ME1 is not changed (its compiled code: `game/
+ConversationWorld` 19,796 sections, 0 changed; `core/vr/ConversationWorld` 0 changed, the new function's 6 sections new).
+Moving ME1's two rules onto `cw::PresenceAtOpening` is a no-op refactor left for an ME1 batch; adding the third to ME1 is the
+owner's call.
+
+**The docking officer's comm call** (`citprs_citadel_docking_v_dlg`, Save_0090's opening conversation, held by hand): its owner is
+a point of interest (no person), its listener the officer, a stunt actor shown and drawn (`SFXStuntActor_0 hidden=0`, drawn 0.0 s
+ago, 3.7 m away in its void): **the rule does not catch it** (a place for the player). It stays on the 3D screen only because the
+game opens it around a load (the load rule). A comm call staged as a person in a void is not "everyone hidden".
+
+### 10.2 The cab ride's hang: no scale set while the world isn't drawn
+
+**What happened** (fake headset, 2026-11-20 11:15-11:28, stretch `<session>-LE3-fpcme3`): Save_0090 loads into the docking
+officer's wheel (the rapid transit: Presidium Commons, Refugee Camp, Embassies, Purgatory, Hospital). Held in the world by hand
+(`mevr convo world on`, twice: the first set the override, the second held the conversation the module had begun), the module
+switched the engine's depth of field off at the opening (11:20:55): the slice's rule "only for a conversation begun after 3 s on
+foot" assumed such a conversation is never placed. `mevr convo pick 2` (Embassies, wheel location 5); the officer's lines played,
+the conversation ended at 11:22:14 in game mode 0; game/SystemSettings' menu-return `scale set DynamicShadows ...
+LightEnvironmentShadows` at 11:22:14.7; the module's `depth of field on again (after 3 s on foot)` at 11:22:17.6. **ME3's cab ride
+loads in game mode 0**, GWorld unchanged: both fell into the load, which never finished (the Citadel loading picture, snapshot
+`2026-11-20_11-24-29-776`, `render levers: scene renders per frame 0` and `objects=135284` for six minutes). The same hang as the
+slice's at the Citadel's arrival (2026-11-19 20:56, commit `950abe3f`). FPC4 and EXIT3 took the same ride without holding the
+conversation (no depth of field switch) and it finished.
+
+**The fix** (gotchas/me2-scale-set-during-load, its "Fix in place"):
+
+1. `game/WorldDrawn` (`world_drawn::Tick` once a game tick from `Mod.cpp`, the sequels' for now; `world_drawn::Now(withinMs =
+   500)`): the world drawn just now, the player's body drawn within the last 0.5 s of wall time (its mesh's
+   `PrimitiveComponent.LastRenderTime` moving; a loading screen draws no scene and the world's clock may stand still).
+2. Every `scale set` the mod sends on the sequels waits for it, retried, never dropped: `game/SystemSettings`' `Poll` (a new
+   level, a return to gameplay, the shadows, an edit, the first apply; `#if` LE2/LE3, tests `mevr-le2-system-settings`,
+   `mevr-le3-system-settings`); `game/DepthOfFieldHold` (`Off`/`Back` say what is wanted, `Step` sends it each tick: the sequels'
+   conversations and ME2's galaxy projector flow). Logs `system settings: a scale set waits: the world isn't drawn just now`,
+   `conversation world: the depth of field back on waits: the world isn't drawn just now (...)`.
+3. A conversation opened around a load and held by hand never switches the depth of field.
+
+**Check:** hold the docking officer's conversation by hand, pick a ride: the ride's load finishes (`mevr state` at the
+destination), the log has the waits and the switch back after the load.
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,

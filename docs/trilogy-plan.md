@@ -1060,6 +1060,12 @@ These unblock the most: almost every other entry gets smaller once they land.
   curated walks excepted), Shepard's walk withheld at the source through each game's hooks instead of the slice's pin, never an
   automatic guided walk to a mark (`worldWalkInS = -1`); (3) scenes with no place for the player go to the 3D screen from a table
   generated from the scan (presence-based), never typed by hand.
+- **The owner's answer, 2026-11-20 ("Yes, by rule (a)")**: a conversation where every speaker except Shepard is hidden at the
+  opening (ME3's Khalisah interview `citprs_khalisah2_d_dlg`, the video calls) goes to the 3D screen at its start, by a run-time
+  rule in the spirit of ME1's presence rules, not a list and not first person: `cw::PresenceAtOpening` (unit-tested, with ME1's
+  two run-time rules) in `game/SequelConversationWorld` on ME2 and ME3 under ME1's `worldAutoScreen` (research/
+  le2-conversations-in-world.md section 10.1). ME1's own presence rules don't cover that case (reported; ME1 unchanged). The
+  docking officer's comm call is not caught by it (its officer is shown, in a void): it stays on the screen by the load rule.
 - **Who:** lane FPC (ME2, then ME3 on the same module), after another session's ME3 core slice (bff358d3 and its follow-ups).
 - **Rules that carry over** (the owner, 2026-11-16, "this will be a bigger deal in me2"; research/69 items 41 and 42): the
   game's fade to black always moves the player with Shepard (curated walks excepted); what Shepard stands on carries the
