@@ -54,7 +54,7 @@ rows the change touches.
 | game | shared | adapted | forked | missing | n/a | present and verified (V) | present, unverified (U) |
 |---|---|---|---|---|---|---|---|
 | LE2 | 18 | 55 | 1 | 14 | 5 | 59 | 15 |
-| LE3 | 18 | 54 | 2 | 12 | 7 | 36 | 38 |
+| LE3 | 18 | 54 | 3 | 11 | 7 | 36 | 39 |
 
 Cells not in the ledger's form (`**kind** V|U ...`):
 
