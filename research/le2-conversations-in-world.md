@@ -938,6 +938,96 @@ heads on both sequels unchanged.
    rides, the black move, the handover, the end facing on the Prothean fixture (the runner turned the world mode off before its
    end). Moments this lane: ME3 0 held, 0 to the screen (none reached); ME2 none run.
 
+## 12. Lane FPC6 (2026-11-20): ME3's subtitles, ME3's fixtures by ride, the first circle walk-up
+
+What was found and changed on both sequels, how to check it. Numbers only from the code and the logs. ME3 stretch
+`20261120-135521-550-LE3-fpc6-le3` (fake headset, `prep.ps1 -Game LE3 -RendererPreview`, Save_0090; relaunched once for a host
+change; restored with 0 differences), ME2 stretch `20261120-144049-857-LE2-fpc6-le2` (restored with 0 differences).
+
+### 12.1 ME3's subtitle under the speaker (item 1)
+
+1. **Not a fault of the placement: the career's subtitle option is off.** `mevr convo subtitles` (ME3, new) prints the game's own
+   subtitle list (`BioWorldInfo.m_pSubtitles`, a `SFXGame.BioSubtitles`: its entries with their render mode, 0 none, 1 default,
+   2 top, 3 bottom, 4 above the wheel; `m_bSubtitleVisible`), the controller's `m_bHideCurrentSubtitle` and the player's option
+   (`SFXProfileSettings.GetSubtitleConfigOption`, the profile's setting 30: 0 on, 1 off). Save_0090's career: `the option off`.
+   With the option off ME3 keeps only the last line above the wheel (mode 4) while the wheel is up; during spoken lines its list
+   is empty, on the 3D screen as in first person (the refugee leader's conversation with the world mode off: 24 s of lines, 0
+   entries; snapshot `2026-11-20_14-18-06-437-left.png`, no subtitle on the screen). So lane FPC-ME3's six blank snapshots were
+   lines with nothing to show. In a held conversation the probe logs each change: `conversation world: the game's subtitles:
+   the option on, visible 1, ... 1 entries [mode 4, 126 chars, running]`.
+2. **With the option on** (`mevr convo subtitles on`, a test aid: the options screen's own `SetProfileSettingValueId(30, 0)` on
+   `Engine.OnlinePlayerStorage`, then `BioPlayerController.UpdateLocalProfileSettingsCache`; the runner's restore puts the profile
+   back) every spoken line reached the list (mode 4 on ME3 for all of them) and the quad under the speaker: Avina's line at her
+   hologram (`2026-11-20_14-10-31-336-left.png`), Shepard's line under the refugee leader he talks to
+   (`2026-11-20_14-23-22-244-left.png`).
+3. **Fixed: the band's width.** A 126-character line wraps wider than ME1's stage x 80..1200 on ME3's frame: its first and last
+   letters ("She", "your") stayed on the panel (the snapshot's `hud.png`, rows 0.671-0.696 at both sides). `plugin/ConversationUi`
+   (the sequels' hosts only) now takes ME1's rows across the frame's whole width.
+4. **Check:** a held ME3 conversation with the option on: `convosub.png` holds the whole line, `hud.png` has nothing at those rows.
+
+### 12.2 ME3's fixtures from Save_0090 (item 2)
+
+**The ride:** Save_0090 loads into the docking officer's wheel (world mode off). Its positions: 0 Presidium Commons, 1 Refugee Camp,
+2 Embassies, 3 Purgatory, 4 Hospital, 5 No thanks (`mevr convo pick <position>`; wheel locations 0 middle right, clockwise to 5 top
+right). After each pick `tools\game-watch.ps1 -UntilWorld` (all exit 0, 15-25 s). **ME3's starts here take input 0**
+(`conversation-world.ps1 -StartInput 0`): input 1 started nothing at the Refugee Camp. The pawn for `mevr setloc` is
+`mevr instances SFXGame.SFXPawn_Player TheWorld` (without the filter index 0 is an archetype, and setloc moves nothing visible).
+
+1. **Not loaded in this career's plot:** Miranda's `citprs_miranda_talk1_m_dlg` (its start is in `BioD_CitHub_DockP2`; the Refugee
+   Camp loads `BioD_CitHub_Underbelly`/`UnderbellyP3`), Joker's `citprs_joker_talk1_d_dlg` (`PresidiumP2`; the Presidium loads
+   `Presidium`/`PresidiumP3`), Aria's `citwrd_rp1_aria_*` at Purgatory. `cat004_hangar_shuttle_m_dlg` needs the Cronos route.
+2. **Refugee Camp:** Avina (`Avina.SFXSeqAct_StartConversation_1`) and the refugee leader (`Refugee_Leader.SFXSeqAct_StartConversation_0`,
+   `citund_refugee_leader_d_dlg`, a person walks 6.5 m in its lines) held in first person; Kelly, Conrad and the others' starts
+   began nothing in this plot. **Found and fixed: a Cut opening took the eyes from his head bone before his mesh followed the
+   stage's teleport** (conversation 5, 30 m teleport: `the eyes from his head bone (-399, -91, 81 from his pawn)`, the body 4 m off
+   the eyes all scene, `eyes-off-body` 6 records): a Cut now waits up to 1.5 s more for his head bone to stand within 80 units
+   (flat) of his pawn (log `his head bone stands N units from his pawn ... the opening waits for it`), then takes his head over his
+   pawn. Two later Cut openings (53 m and 44 m teleports at the Presidium) took the eyes 8-12 units from the pawn, no wait needed.
+   **Found and fixed: the records listed ME3's stage and cameras** (a `CameraActor` judged `too-close`): people only now.
+3. **Purgatory's `Drinking` sequence:** fired at `Drinking.SeqAct_Teleport_0` (`conversation-world.ps1 -Start
+   fire:Engine.SequenceOp:Drinking.SeqAct_Teleport_0 -StartInput 0`; the `SeqEvent_Used` at `SFXPointOfInterest_1` leads there):
+   each fire is one drink (`SeqAct_Interp_0`, 10.8 s), held as a moment (`a matinee's move track walks Shepard 0.0 s into the
+   cutscene: held in first person`), the view joins at the end. Fired from the entrance the teleport put Shepard 83 m away at the bar
+   and the view stayed (moment 2; a player uses it at the bar). At the bar (moments 3-5): **his animated head leans 1.05 m forward
+   onto the bar while his pawn stays under the player's view, so the player sees Shepard's back and head in front of them**
+   (snapshots `2026-11-20_14-30-31-320-left.png`, `14-31-23-668-left.png`; records `bodyFromEyesM` 0.81-1.12; the seat rule doesn't
+   see it: his head drops 0.15-0.18 m). ME1's moment hides his pawn only by the pawn's distance (60 units), and follows his head only
+   when seated: owner question (report). The fourth drink went on foot with the game's drunk filter (no Aria scene in this plot).
+4. **Presidium:** Oraka (`Aria2.SFXSeqAct_StartConversation_1`, `citwrd_aria2_oraka_d_dlg`) and Sommers
+   (`SEQ_Vengence_Sommers.SFXSeqAct_StartConversation_0`, Shepard walks 2.6 m in its lines) held: Cut openings, the stage's
+   placements of the others withheld at the source (4), 0 findings and one `face-off-you` (41 degrees).
+5. **The end facing on ME3** (FPC4's rule, through `cw::FacingOnFoot`): `conversation 2 ends: the held facing 24.9 deg, the
+   controller's -171.3, the pawn's -0.0: both turned` (Sommers), the same at the refugee leader's end.
+6. **Not seen on ME3:** seats (none of the reachable scenes seats Shepard by the seat rule), rides, the game's black moving the
+   player, the handover into a GUI screen.
+7. **Moments this lane:** ME3 5 held (Purgatory's drinks), 0 to the 3D screen; ME2 0 (no cutscene run).
+
+### 12.3 A circle walk-up seen in the game (item 3)
+
+ME2, VR_31's Save_0004 at Freedom's Progress, Tali's room streamed in as section 6.2 does, the player 8 m from Tali, then her
+conversation's own start fired without its cutscene (`conversation-world.ps1 -Start
+fire:SFXGame.SFXSeqAct_StartConversation:Tali_Conversation.SFXSeqAct_StartConversation_0`): opening walk in, the circle formed round
+the player toward Tali (5.4 m, the owner stays), **`BioPawn_1 speaks and walks 5.4 m into the circle`**. ME2's `MoveToGoal` cleared
+its goal 1.45 m short after 3.97 m and the walk was logged as stalled, the speaker left facing his walk: such a walk (within 1.6 m,
+at least 1 m walked and at least as far as is left) now counts as arrived near its place and turns to the circle (`... walk ended
+1.45 m from its place after 3.97 m (the AI's own stop): near enough, it turns to 118 deg`). Snapshot
+`2026-11-20_14-47-00-053-left.png` (Prazza in front of the player after his walk, Tali beyond). The squad walked as before (Miranda
+arrived 0.67 m off; Jacob's walk refused by the AI at once, 4.6 m from his place, `squad-behind` 173 degrees: his place had no path;
+[verify] in a scene begun as play begins it). ME3's hub people are stunt actors with no AI: no walk-up there (section 9.3).
+
+### 12.4 The presence rule on ME2 in the game (item 4): no fixture reached
+
+None of the 23 starts loaded on the Normandy in John_12's Save_0036 (decks 3 and the henchmen's rooms) is in the generated table
+(`scratch` match of the loaded starts against `src/core/vr/ConversationPresence.inc`); the table's Normandy entries are on other
+decks (`nor_ai_tour_cargo_d` deck 4, `nor_yeoman_a` the CIC), which the elevator's GUI streams in, and Freedom's Progress's
+(`profre_cover_tutorial_a`, `profre_hard_shield_tut_a`) have no start action. Not checked in the game; the next lane needs a deck
+change by script (the elevator's Kismet) or a save on the CIC deck.
+
+### 12.5 A scene that waits for the player (item 5)
+
+No scan of the triggers a start's script waits on exists yet (`game/SceneWaits` judges at run time): no fixture found this lane, on
+any game. The run-time source logged no wait in any held scene here (Avina, the refugee leader, Oraka, Sommers, Tali).
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,

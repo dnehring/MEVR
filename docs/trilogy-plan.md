@@ -1059,10 +1059,17 @@ These unblock the most: almost every other entry gets smaller once they land.
   stops the load after it (mechanism [verify]): the by-hand hold refuses it unless `force`; ME1's black move and the seat in the
   sequels' moments; the face axis +X on ME2 and ME3; a conversation whose lines walk Shepard on ME3 (the Prothean's moment:
   his track moves withheld, 0 findings).
-- **Left:** a scene with a speaker beyond 3.5 m (a circle walk-up seen in the game), the circle and the UI placement seen on ME3 (the
-  subtitle under the speaker not shown there yet), the script's GUI black screen, a scene that waits for the player (no fixture
-  yet), the seats and walk-along seen in the game, ME3's Miranda talk at the docks, Joker seated, a level cutscene (Purgatory's
-  bar), rides, the black move and the handover seen on ME3, a conversation begun on foot that ends into a cab ride. Each item on
+- **Done since (lane FPC6, 2026-11-20, section 12 there):** ME3's "missing subtitle" was the career's subtitle option (off); with it
+  on every line reaches the quad under the speaker (seen), the band now the frame's width (ME3's long lines spilled onto the panel);
+  `mevr convo subtitles [on|off]`; a Cut opening waits for his mesh to follow the stage's teleport before taking the eyes from his
+  head (ME3's refugee leader: the body 4 m off the eyes); the records list people only; ME3 fixtures by ride from Save_0090 (the
+  wheel's positions, starts take input 0; Avina, the refugee leader, Oraka, Sommers held; Purgatory's drinks held as moments; the
+  end facing seen on ME3); the first circle walk-up seen (ME2: Prazza walks 4 m into the circle), a walk the AI ends near its place
+  now turns to the circle.
+- **Left:** a fix for a moment whose animation leans Shepard's head a metre off the player's eyes (Purgatory's bar: the player sees
+  his back; owner question), the presence table seen on ME2 (no reachable fixture in the two saves), the script's GUI black screen,
+  a scene that waits for the player (no fixture), seats and walk-along seen, Miranda's and Joker's ME3 scenes (not in Save_0090's
+  plot), rides, the black move and the handover seen on ME3, a conversation begun on foot that ends into a cab ride. Each item on
   ME2 and ME3 alike.
 - **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
   with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
