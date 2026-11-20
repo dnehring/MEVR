@@ -7,8 +7,8 @@ namespace mevr::hook {
 class Context;
 }
 
-// Two of the game's conversation decisions the mod takes part in (research/69, read with Ghidra; LE1's, and on ME3 the
-// controller's placement and the move track, on ME2 the move track: research/le2- and le3-conversations-in-world.md):
+// Two of the game's conversation decisions the mod takes part in (research/69, read with Ghidra; LE1's, ME2's all three, ME3's
+// controller's placement and move track: research/le2-conversations-in-world.md sections 2 and 6, le3- section 3):
 //
 // - UBioConversation::SetPositionRotator (0xC862D0, the class's vtable slot 0x2C0; this, actor, FVector*, FRotator*) is the
 //   one place a conversation puts a person on a stage mark: ABioStage::PlaceActors (0xC93B60, once, when a conversation that
@@ -61,6 +61,9 @@ void SetMoveTrackProvider(MoveTrackProvider provider);
 // as the hooked function calls it: track, instance, time, FVector* place, FRotator* rotation): for a provider that withholds
 // the move and still has to know where the script has the actor. False if the call could not be made or said no.
 bool MoveTrackPlace(void const* track, void const* instance, float time, float place[3]);
+// Where a move track's walk ends: its position curve's last key (Engine.InterpTrackMove.PosTrack's Points), asked of the track
+// at that time (MoveTrackPlace). Game thread, outside the engine's physics step (the floor marker of a scripted walk).
+bool MoveTrackEnd(void const* track, void const* instance, float place[3]);
 
 // Since the hooks went in (cumulative: game/ConversationWorld and game/ConversationFlow each keep what they last saw).
 struct Stats {

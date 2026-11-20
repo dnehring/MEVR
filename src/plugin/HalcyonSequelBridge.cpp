@@ -24,6 +24,7 @@
 #include "core/Log.hpp"
 #include "core/vr/ActionCamera.hpp"
 #include "core/vr/CombatStance.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/InteractLabel.hpp"
@@ -494,7 +495,15 @@ unsigned CineScreenLayers(const CineScreenFrame& frame, const void** layersOut, 
 }
 
 const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
-    return mevr::host::transition_fade::Layer(session, viewSpace, context, view);
+    // ME1's cut inside a scene held in the world (cw::State::cut: a conversation's re-placement, a moment's end that joins
+    // Shepard past where he stands): a dip from black when the mod's counter changes (LE1's own seam in plugin/TransitionFade).
+    static std::uint32_t lastCut = 0;
+    bool cut = false;
+    if (auto const convo = mevr::vr::conversation_world::Latest(300); convo && convo->active != 0 && convo->cut != lastCut) {
+        cut = lastCut != 0 || convo->cut != 0;
+        lastCut = convo->cut;
+    }
+    return mevr::host::transition_fade::Layer(session, viewSpace, context, view, cut);
 }
 
 bool HudPanelDraw(ID3D11DeviceContext* context, void (*draw)(void*), void* user, bool textBatch, bool afterLeftEye) noexcept {

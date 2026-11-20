@@ -1022,10 +1022,15 @@ These unblock the most: almost every other entry gets smaller once they land.
   (`MevrSeams::WorldViewHoldBegin`), `MevrSeams::ConversationInWorld` in each sequel renderer's cinematic decision.
 - **Why now:** the owner changed priorities on 2026-11-19 and made it part of the release on both sequels. The default stays
   ME1's: the 3D cinema screen; first person experimental, off unless chosen (Comfort > Conversations > First person).
-- **Left:** research/le2-conversations-in-world.md "What is left", in the owner's order: the walking scenes (Tali's meeting at
-  Freedom's Progress, Miranda's), looks at the player's eyes, walking to marks with the game's AI, the circle and the squad's
-  formation, the subtitle and wheel placement, moments (walk-along, the game's black moving the player, rides, seats, eye
-  height). Each item on ME2 and ME3 alike.
+- **Done since (lane FPC2, 2026-11-20, research/le2-conversations-in-world.md section 6):** the placements and Shepard's track
+  moves withheld at the source on both sequels (ME2's `SetPositionRotator` 0xA2D180 and `InterruptConversation` 0xB06390 found
+  through the live vtables; ME3's 0xA29DF0 and 0x6BAFF0); moments (ME1's `worldMoments = view`) for the level cutscenes that walk
+  Shepard, Tali's re-intro held in first person on ME2 with a dip at the join; the generated presence table (ME2 109, ME3 156
+  conversations to the 3D screen, `cw::NoPlaceForPlayer`); the floor marker's rule and drawing (all three games; the walk's end
+  in moments as its first source).
+- **Left:** section 6.7 there: ME3's checks, the eyes ahead of Shepard's collar (`StepEyeHeight`), looks at the player's eyes,
+  the circle and the squad's formation (`game/AiWalk`), the subtitle and wheel placement, walk-along, the game's black moving the
+  player, rides and seats on the sequels, the floor marker's "waits" and "black move" sources. Each item on ME2 and ME3 alike.
 - **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
   with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
   option off (snapshots and stances under `%LOCALAPPDATA%\MEVR\sessions`); then the owner's headset pass.

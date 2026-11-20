@@ -38,9 +38,11 @@ internal static class Program
             }
             GameName = args[gameIndex + 1];
         }
-        if (GameName == "LE3" && !args.Any(a => a is "--script" or "--class-dump"))
+        // ME3: the plain scan with ME2's inspection (conversations, their line matinees and whom their tracks act on, starts,
+        // level matinees: research/le2-conversations-in-world.md section 7), scripts and classes; not its sequences or state events.
+        if (GameName == "LE3" && args.Any(a => a is "--state-events" or "--sequence" or "--wheels" or "--vo-extract" or "--references"))
         {
-            Console.Error.WriteLine("LE3 reads only scripts and classes (--script, --class-dump): its conversations, sequences and state events are not implemented.");
+            Console.Error.WriteLine("LE3 reads only the plain scan, scripts and classes (--script, --class-dump): its sequences, state events, wheels, audio and references are not implemented.");
             return 2;
         }
         if (GameName == "LE2" && args.Any(a => a is "--wheels" or "--vo-extract" or "--references"))

@@ -31,8 +31,13 @@
 //     by more than 0.3 m and less than 6 m in one camera update by anything else is put back with Actor.SetLocation before the
 //     frame is drawn (a placement the game repeats at once is its own, cw::Insists), and Shepard is kept on the player's place
 //     (ME2's gesture walks' root motion is what remains there [verify]).
-// Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's walk, the
-// subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), moments. Game thread.
+//   - Conversations with no place for the player (the generated presence table, cw::NoPlaceForPlayer) stay on the 3D screen.
+//   - Moments (ME1's worldMoments = view): a level cutscene whose move track walks Shepard is held in first person from the
+//     player's place (his pawn hidden while apart, the body the player's), joined at its end under a dip; the floor marker
+//     (cw::StepMarker) where his walk ends (research/le2-conversations-in-world.md section 6).
+// Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's
+// walk, the subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), walk-along, the game's
+// black moving the player, rides, seats, the eyes at the player's height. Game thread.
 namespace mevr::game::sequel_conversation_world {
 
 // The camera-update handler; after ue3::runtime::Up.

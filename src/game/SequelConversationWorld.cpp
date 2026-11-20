@@ -231,10 +231,16 @@ FootPov gFootPov;
 std::uint64_t gEndedShownMs = 0;
 depth_of_field::Hold gDof{"conversation world"};
 std::uint32_t gSerial = 0;
+unsigned gNoPlaceScreens = 0;  // conversations the presence table sent to the 3D screen this session
+// The host's dip from black (cw::State::cut, plugin/TransitionFade through MevrSeams::TransitionFadeLayer): counts the player's
+// re-placements inside a scene held in the world (a Cut opening, a moment's end that joins Shepard past where he stands).
+std::uint32_t gCutSerial = 0;
 bool gStarted = false;
 std::string gLast = "none yet";
 // The player's pawn this tick: the providers below run inside the engine's own code (no script, no lookups).
 ue3::Object* gShepardPawn = nullptr;
+void const* gShepardTrack = nullptr;          // the move track walking Shepard in a moment, and its instance
+void const* gShepardTrackInstance = nullptr;
 
 // engine/ConversationHooks' placement question (ME3's controller's SetPositionRotator; ME2's function is not pinned yet): after
 // the opening, the stage never moves Shepard (the player's place is the player's) nor anyone kept where they stand; the game's
@@ -276,6 +282,10 @@ bool OnMoveTrack(void const* actor, void const* track, void const* instance, flo
     }
     slot->actor = actor;
     slot->ms = now;
+    if (actor == gShepardPawn && gMomentHeld) {
+        gShepardTrack = track;  // a moment's walk: where it ends is the floor marker's (TickMoment)
+        gShepardTrackInstance = instance;
+    }
     if (actor != gShepardPawn || !gC.on || !gC.placed || gC.skipped) return false;
     ++gC.trackHeld;
     float place[3];
@@ -365,6 +375,14 @@ std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* playe
 ue3::Object* ConversationPlayer(ue3::Object* conversation) {
     return gPlayer.Read<ue3::Object*>(conversation).value_or(nullptr);
 }
+
+// The conversation's data (its BioConversation: the name the presence table knows).
+ue3::FieldRef gConvData{kController, "m_pConvData", ue3::kEveryGame};
+ue3::Object* ConversationData(ue3::Object* controller) {
+    ue3::Object* const data = gConvData.Read<ue3::Object*>(controller).value_or(nullptr);
+    return data != nullptr && ue3::runtime::IsAlive(data) ? data : controller;
+}
+constexpr int kGameNumber = 3;
 #else
 // ME2: the world's current conversation (ME1's ConversationNow), in the conversation mode only (the caller asks the mode).
 ue3::Object* LiveConversation(ue3::Object* controller) {
@@ -379,6 +397,12 @@ ue3::Object* LiveConversation(ue3::Object* controller) {
 ue3::Object* ConversationPlayer(ue3::Object* conversation) {
     return gPlayer.Read<ue3::Object*>(conversation).value_or(nullptr);
 }
+
+// ME2's conversation is its data too.
+ue3::Object* ConversationData(ue3::Object* conversation) {
+    return conversation;
+}
+constexpr int kGameNumber = 2;
 
 // The dialogue wheel is up (game/Thespian's ME2 reader: the GUI manager's conversation handler).
 bool WheelUp(ue3::Object* controller) {
@@ -476,11 +500,28 @@ std::optional<engine::TrackingFrame> HeldFrame() {
         {view.offsetForward, view.offsetRight, view.offsetUp}, view.head, view.unitsPerMeter);
 }
 
+// The floor marker for the host (tracking space), when one shows.
+struct MarkerOut {
+    bool on = false;
+    cw::MarkerNeed need = cw::MarkerNeed::None;
+    XrVector3f at{};
+    float alpha = 0.0f;
+};
+
 // The host's state for a view held in the world (a conversation, or a moment's: the same HostServices v33 state).
 void PublishHeld(conversation_world::Link const& link, ue3::Object* controller, std::uint32_t serial, std::uint32_t cut,
-    ue3::Vector const& held, ue3::Rotator const& facing, float fov) {
+    ue3::Vector const& held, ue3::Rotator const& facing, float fov, MarkerOut const& marker = {}) {
     if (link.publish == nullptr) return;
     cw::State s{};
+    if (marker.on) {
+        s.marker = 1;
+        s.markerNeed = static_cast<std::uint8_t>(marker.need);
+        s.markerAt[0] = marker.at.x;
+        s.markerAt[1] = marker.at.y;
+        s.markerAt[2] = marker.at.z;
+        s.markerAlpha = marker.alpha;
+        s.markerRadiusM = 0.30f;
+    }
     s.active = 1;
     s.wheelHand = 2;
     s.conversation = serial;
@@ -504,7 +545,7 @@ void PublishHeld(conversation_world::Link const& link, ue3::Object* controller, 
 }
 
 void Publish(conversation_world::Link const& link, ue3::Object* controller) {
-    PublishHeld(link, controller, gC.serial, gC.follows, gC.held, gC.facing, gC.fov);
+    PublishHeld(link, controller, gC.serial, gCutSerial, gC.held, gC.facing, gC.fov);
 }
 
 // On foot with the world mode wanted (and 3 s on foot: never around a load), the host is told a conversation may begin this
@@ -724,8 +765,21 @@ struct Moment {
     double apartMaxUnits = 0.0;
     double turnedDeg = 0.0;
     vr::comfort::SnapTurn snap;
+    // The floor marker (cw::StepMarker): where the script's walk ends (the track's last key), the ring there until the player
+    // stands in it.
+    void const* endTrack = nullptr;
+    std::optional<ue3::Vector> walkEnd;   // on the floor (world)
+    cw::MarkerState marker;
+    unsigned markers = 0;
 };
 Moment gM;
+
+// Where a move track's walk ends (engine/ConversationHooks' MoveTrackEnd: its position curve's last key). Game thread.
+std::optional<ue3::Vector> TrackEnd(void const* track, void const* instance) {
+    float place[3];
+    if (!engine::conversation_hooks::MoveTrackEnd(track, instance, place)) return std::nullopt;
+    return ue3::Vector{place[0], place[1], place[2]};
+}
 // The counts of this session (the lane's report): held in first person, left on the 3D screen and why.
 unsigned gMomentsHeld = 0;
 unsigned gMomentsNoTrack = 0;
@@ -748,9 +802,11 @@ void EndMoment(conversation_world::Link const& link, char const* why, bool publi
     if (!gM.provisional && at) {
         double const apart = std::hypot(at->x - gM.feet.x, at->y - gM.feet.y);
         bool const cut = apart > cw::OpeningLimits{}.stayUnits;
+        if (cut) ++gCutSerial;  // the next scene's state (the conversation that follows) dips from black
         log::Info("conversation world: moment {}: {} after {:.1f} s: the view joins Shepard {:.2f} m away{} (walked {:.2f} m, at most "
-                  "{:.2f} m apart, turned {:.0f} deg)", gM.serial, why, static_cast<double>(now - gM.startMs) / 1000.0, apart / 100.0,
-            cut ? " under a dip" : "", gM.walkedUnits / 100.0, gM.apartMaxUnits / 100.0, gM.turnedDeg);
+                  "{:.2f} m apart, turned {:.0f} deg; {} floor marker{})", gM.serial, why, static_cast<double>(now - gM.startMs) / 1000.0,
+            apart / 100.0, cut ? " under a dip" : "", gM.walkedUnits / 100.0, gM.apartMaxUnits / 100.0, gM.turnedDeg, gM.markers,
+            gM.markers == 1 ? "" : "s");
         // Where the player now stands, for what follows (a conversation's opening judges from there; ME1: the moment leaves its
         // place as the place on foot).
         gFoot = {true, *at, now};
@@ -764,6 +820,8 @@ void EndMoment(conversation_world::Link const& link, char const* why, bool publi
     gM = {};
     gM.declined = declined;
     gMomentHeld = false;
+    gShepardTrack = nullptr;
+    gShepardTrackInstance = nullptr;
 }
 
 // One tick of the cinematic mode with the world wanted: true while the moment holds the view (the caller returns).
@@ -876,14 +934,48 @@ bool TickMoment(conversation_world::Link const& link, ue3::Object* controller, s
     }
     gM.held = {gM.feet.x + gM.eyeOffset.x, gM.feet.y + gM.eyeOffset.y, gM.feet.z + gM.eyeOffset.z};
     gMomentHeld = true;
-    PublishHeld(link, controller, gM.serial, gM.cut, gM.held, gM.facing, gM.fov);
     vr::host_view::State const view = vr::host_view::Latest();
+    std::optional<engine::TrackingFrame> frame;
     if (view.valid) {
-        view_anchor::Hold(engine::FromCameraView(engine::UnrealVector{gM.held.x, gM.held.y, gM.held.z},
-                              engine::UnrealRotation{0, gM.facing.yaw, 0}, {view.lookPitch, view.lookYaw, 0},
-                              {view.offsetForward, view.offsetRight, view.offsetUp}, view.head, view.unitsPerMeter),
-            view);
+        frame = engine::FromCameraView(engine::UnrealVector{gM.held.x, gM.held.y, gM.held.z}, engine::UnrealRotation{0, gM.facing.yaw, 0},
+            {view.lookPitch, view.lookYaw, 0}, {view.offsetForward, view.offsetRight, view.offsetUp}, view.head, view.unitsPerMeter);
     }
+    // The floor marker (cw::StepMarker): where Shepard's walk ends, while the player follows it.
+    MarkerOut marker;
+    if (!gM.provisional && at) {
+        vr::floor_lock::PawnSample const sample = player::FloorLockSample();
+        double const half = sample.floorValid && sample.floorZ < at->z ? at->z - sample.floorZ : 90.0;
+        if (gShepardTrack != nullptr && gShepardTrack != gM.endTrack && TrackMovedLately(pawn, 500)) {
+            gM.endTrack = gShepardTrack;
+            auto const end = TrackEnd(gShepardTrack, gShepardTrackInstance);
+            // A place the track can't have meant (the origin, or far from where it walks him now) is no walk's end: logged, no marker.
+            double const fromHim = end ? std::hypot(end->x - at->x, end->y - at->y) : 0.0;
+            if (end && (std::abs(end->x) + std::abs(end->y) + std::abs(end->z) > 1.0) && fromHim < 6000.0) {
+                gM.walkEnd = ue3::Vector{end->x, end->y, static_cast<float>(end->z - half)};
+            } else {
+                log::Info("convo: marker: moment {}: the track's last key gave {} ({:.0f} units from Shepard): no walk's end, no marker",
+                    gM.serial, end ? std::format("({:.0f}, {:.0f}, {:.0f})", end->x, end->y, end->z) : std::string("nothing"), fromHim);
+            }
+        }
+        cw::MarkerFacts facts;
+        facts.scene = true;
+        if (gM.walkEnd) facts.walkEnd = cw::Vec3{gM.walkEnd->x, gM.walkEnd->y, gM.walkEnd->z};
+        facts.player = cw::Vec3{gM.feet.x, gM.feet.y, gM.feet.z - half};
+        cw::Marker const m = cw::StepMarker(gM.marker, facts, dt);
+        if (m.changed) {
+            ++gM.markers;
+            log::Info("convo: marker: moment {}: {} ({:.0f}, {:.0f}, {:.0f}), {:.2f} m from the player", gM.serial, cw::Name(m.need),
+                m.at.x, m.at.y, m.at.z, std::hypot(m.at.x - facts.player.x, m.at.y - facts.player.y) / 100.0);
+        }
+        if (m.alpha > 0.0 && frame) {
+            marker.on = true;
+            marker.need = m.need;
+            marker.at = engine::ToTracking(*frame, engine::UnrealVector{m.at.x, m.at.y, m.at.z});
+            marker.alpha = static_cast<float>(m.alpha);
+        }
+    }
+    PublishHeld(link, controller, gM.serial, gCutSerial, gM.held, gM.facing, gM.fov, marker);
+    if (frame) view_anchor::Hold(*frame, view);
     return true;
 }
 
@@ -961,9 +1053,17 @@ void Tick(conversation_world::Link const& link) {
         gC.startMs = now;
         gC.why = "the opening settling";
         gC.skipped = !gFootSettledAtStart;
-        log::Info("conversation world: conversation {} ({}) begins: {}", gC.serial, ue3::runtime::FullName(conversation),
-            gC.skipped ? "the game opened it around a load (not 3 s on foot before it): left on the 3D screen"
-                       : "shown in the world, first person");
+        // No place for the player in it (the generated presence table, cw::NoPlaceForPlayer): the 3D screen, by rule.
+        std::string const name = ue3::runtime::FullName(ConversationData(conversation));
+        bool const noPlace = cw::NoPlaceForPlayer(name, kGameNumber);
+        if (noPlace) {
+            gC.skipped = true;
+            ++gNoPlaceScreens;
+        }
+        log::Info("conversation world: conversation {} ({}) begins: {}", gC.serial, name,
+            noPlace      ? "none of its lines acts on the player (the presence table): no place for the player, on the 3D screen"
+            : gC.skipped ? "the game opened it around a load (not 3 s on foot before it): left on the 3D screen"
+                         : "shown in the world, first person");
     }
     if (gC.skipped) return;
     ue3::Object* const pawn = player::Pawn(controller);
@@ -1005,6 +1105,7 @@ void Tick(conversation_world::Link const& link) {
         gC.fov = pov && pov->fov != nullptr ? std::clamp(*pov->fov, 60.0f, 110.0f) : 90.0f;
         gC.placed = true;
         gC.placedMs = now;
+        if (gC.opening == cw::Opening::Cut) ++gCutSerial;  // another space: the player is put at his mark under a dip (ME1's)
         gC.stepMs = now;
         // Only for a conversation begun after 3 s on foot (not one the game opens around a load, the docking officer's).
         if (gSettings.dofOff) {
@@ -1156,12 +1257,17 @@ std::string Console(std::string_view args) {
     RefreshSettings();
     engine::conversation_hooks::Stats const hooks = engine::conversation_hooks::Totals();
     return std::format("conversations in the world (the sequels' module, " MEVR_GAME_NAME_A "): {} ({}); people kept {}; near plane kept {} "
-                       "({} writes); source hooks: placement {} ({} calls, {} withheld), move track {} ({} calls, {} withheld); now: {}; "
-                       "last: {}",
+                       "({} writes); source hooks: placement {} ({} calls, {} withheld), move track {} ({} calls, {} withheld); this "
+                       "session: {} conversations with no place for the player on the 3D screen, moments {} held, {} without a "
+                       "track of Shepard's, {} with his pawn hidden, {} not from the player's view{}; now: {}; last: {}",
         WorldWanted() ? "on" : "off", gOverride < 0 ? "[Cinematics] conversations" : "this session's override",
         gSettings.stay ? "on" : "off", gSettings.nearPlane ? "on" : "off", gNearWrites,
         engine::conversation_hooks::Installed() ? "in" : "not in", hooks.placements, hooks.kept,
-        engine::conversation_hooks::MoveTrackInstalled() ? "in" : "not in", hooks.trackMoves, hooks.trackKept,
+        engine::conversation_hooks::MoveTrackInstalled() ? "in" : "not in", hooks.trackMoves, hooks.trackKept, gNoPlaceScreens,
+        gMomentsHeld, gMomentsNoTrack, gMomentsHidden, gMomentsNotFromView,
+        gM.on ? std::format(" (moment {} {}, {:.2f} m walked)", gM.serial, gM.provisional ? "waiting for a track" : "held",
+                    gM.walkedUnits / 100.0)
+              : std::string(),
         gC.on ? std::format("conversation {} {}", gC.serial,
                     gC.placed ? std::format("held at ({:.0f}, {:.0f}, {:.0f}), {} kept actors, {} undone", gC.held.x, gC.held.y,
                                     gC.held.z, gC.kept.size(), gC.undoneTotal)

@@ -4,6 +4,7 @@
 #include "plugin/SquadPlaceDraw.hpp"
 
 #include "core/Log.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "core/vr/GalaxyHologram.hpp"
 #include "core/vr/OverlayPlacement.hpp"
 #include "core/vr/SquadPlace.hpp"
@@ -51,6 +52,9 @@ constexpr gh::Colour kSquad{0.30f, 0.70f, 1.00f, 1.0f};
 constexpr gh::Colour kMember{1.00f, 0.62f, 0.22f, 1.0f};
 constexpr gh::Colour kFollow{0.35f, 1.00f, 0.55f, 1.0f};
 constexpr gh::Colour kRefused{1.00f, 0.25f, 0.18f, 1.0f};
+// The floor marker of a first-person scene (cw::StepMarker, the mod's conversation state): quiet, a pale ring.
+constexpr gh::Colour kMarker{0.85f, 0.92f, 1.00f, 1.0f};
+
 
 struct EyeChain {
     XrSwapchain handle = XR_NULL_HANDLE;
@@ -254,6 +258,20 @@ void ForgetSession() {
     SetStatus("{\"shown\": false}");
 }
 
+// The floor marker's ring, in the app space: a thin ring and a fainter inner one lying on the floor, a hair above it, at the
+// mod's fade (no pulse, no label: the owner's "small, quiet").
+gh::DrawList BuildMarker(vr::conversation_world::State const& state, XrPosef const& headPose) {
+    gh::DrawList list;
+    XrVector3f const at{state.markerAt[0], state.markerAt[1] + 0.02f, state.markerAt[2]};
+    float const distance = gh::Length(gh::Sub(at, headPose.position));
+    float const radius = state.markerRadiusM > 0.05f ? state.markerRadiusM : 0.30f;
+    float const width = std::max(0.012f, distance * 0.002f);
+    float const alpha = std::clamp(state.markerAlpha, 0.0f, 1.0f);
+    list.rings.push_back({at, {0.0f, 1.0f, 0.0f}, radius, width, Scaled(kMarker, 0.55f * alpha)});
+    list.rings.push_back({at, {0.0f, 1.0f, 0.0f}, radius * 0.6f, width * 0.6f, Scaled(kMarker, 0.25f * alpha)});
+    return list;
+}
+
 XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     if (frame.session == XR_NULL_HANDLE || frame.appSpace == XR_NULL_HANDLE || frame.context == nullptr || frame.device == nullptr ||
         !frame.headValid) {
@@ -261,7 +279,12 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     }
     sp::View const view = sp::Latest();
     std::uint64_t const now = GetTickCount64();
-    if (view.active == 0 || view.size != sizeof(sp::View) || view.count < 2) {
+    bool const arc = view.active != 0 && view.size == sizeof(sp::View) && view.count >= 2;
+    // Else the floor marker of a first-person scene, in the same layer (no swapchain of its own).
+    auto const scene = arc ? std::nullopt : vr::conversation_world::Latest(300);
+    bool const marker = scene && scene->size == sizeof(vr::conversation_world::State) && scene->active != 0 && scene->marker != 0 &&
+        scene->markerAlpha > 0.01f;
+    if (!arc && !marker) {
         if (gStartMs != 0) SetStatus("{\"shown\": false}");
         gStartMs = 0;
         return nullptr;
@@ -272,7 +295,7 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
     int const height = std::clamp(frame.eyeHeight > 0 ? static_cast<int>(static_cast<float>(frame.eyeHeight) * kScale) : 1200, 512, 2048);
     if (!EnsureTargets(frame.device, frame.session, width, height)) return nullptr;
     float const timeS = static_cast<float>(now - gStartMs) / 1000.0f;
-    gh::DrawList const list = Build(view, frame.head, timeS);
+    gh::DrawList const list = arc ? Build(view, frame.head, timeS) : BuildMarker(*scene, frame.head);
     LARGE_INTEGER t0{}, t1{}, freq{};
     QueryPerformanceCounter(&t0);
     gRenderer.Prepare(list, frame.head);
@@ -317,10 +340,17 @@ XrCompositionLayerBaseHeader const* Layer(Frame const& frame) {
         gFrames = 0;
         gDrawMsSum = 0.0;
     }
+    if (!arc) {
+        SetStatus(std::format("{{\"shown\": true, \"floorMarker\": {{\"need\": {}, \"at\": [{:.3f}, {:.3f}, {:.3f}], \"alpha\": {:.2f}}}, "
+                              "\"target\": [{}, {}]}}",
+            static_cast<int>(scene->markerNeed), scene->markerAt[0], scene->markerAt[1], scene->markerAt[2], scene->markerAlpha, width,
+            height));
+    } else {
     SetStatus(std::format("{{\"shown\": true, \"landing\": \"{}\", \"follow\": {}, \"member\": {}, \"points\": {}, "
                           "\"landingPoint\": [{:.3f}, {:.3f}, {:.3f}], \"tile\": {}, \"target\": [{}, {}]}}",
         sp::Name(static_cast<sp::Landing>(view.landing)), view.follow != 0 ? "true" : "false", view.member, view.count,
         view.landingPoint.x, view.landingPoint.y, view.landingPoint.z, view.tile, width, height));
+    }
     gLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
     gLayer.space = frame.appSpace;
     gLayer.viewCount = 2;

@@ -1297,6 +1297,9 @@ void CheckFields() {
 
 void CheckPaths() {
     CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));  // the cockpit probe
+    // engine/ConversationHooks' MoveTrackEnd: where a moment's walk of Shepard ends (the floor marker).
+    CheckPath("Engine.InterpTrackMove", {"PosTrack", "Points"}, SDK_AT(offsetof(UInterpTrackMove, PosTrack) + offsetof(FInterpCurveVector, Points), 16));
+    CheckPath("Engine.InterpTrackMove", {"PosTrack", "Points", "InVal"}, SDK_AT(offsetof(FInterpCurvePointVector, InVal), 4));
     CheckPath("Engine.Actor", {"Rotation", "Pitch"}, SDK_AT(offsetof(AActor, Rotation) + offsetof(FRotator, Pitch), 4));
     CheckElement("SFXGame.BioTriggerStream", "StreamingStates", static_cast<long long>(sizeof(FBioStreamingState)));  // mevr stream
     CheckPath("SFXGame.BioTriggerStream", {"StreamingStates", "StateName"}, SDK_AT(offsetof(FBioStreamingState, StateName), 8));
@@ -2808,6 +2811,9 @@ void CheckThespian() {
     CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // no letterbox while held
     // game/SequelConversationWorld's moments: a camera of the scene's own has the view, and Shepard's pawn hidden.
     CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));
+    // ... and where the walk of Shepard's move track ends (the floor marker): its position curve's last key.
+    CheckPath("Engine.InterpTrackMove", {"PosTrack", "Points"}, SDK_AT(offsetof(UInterpTrackMove, PosTrack) + offsetof(FInterpCurveVector, Points), 16));
+    CheckPath("Engine.InterpTrackMove", {"PosTrack", "Points", "InVal"}, SDK_AT(offsetof(FInterpCurvePointVector, InVal), 4));
     // game/AiWalk's ME2 adapter: the AI's move, the stop, the speed, the AI enable counters and the game's switch of them.
     CheckFunction("SFXGame.BioAiController.PrecisionMoveTo");
     PARAM(ABioAiController_execPrecisionMoveTo_Parms, "SFXGame.BioAiController.PrecisionMoveTo", vLoc);
@@ -3945,6 +3951,9 @@ void CheckFields() {
     // game/SequelConversationWorld's moments: a camera of the scene's own has the view, and Shepard's pawn hidden.
     CheckPath("Engine.Camera", {"ViewTarget", "Target"}, SDK_AT(offsetof(ACamera, ViewTarget) + offsetof(FTViewTarget, Target), 8));
     CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    // ... and where the walk of Shepard's move track ends (the floor marker): its position curve's last key.
+    CheckPath("Engine.InterpTrackMove", {"PosTrack", "Points"}, SDK_AT(offsetof(UInterpTrackMove, PosTrack) + offsetof(FInterpCurveVector, Points), 16));
+    CheckPath("Engine.InterpTrackMove", {"PosTrack", "Points", "InVal"}, SDK_AT(offsetof(FInterpCurvePointVector, InVal), 4));
     CheckField("Engine.Camera", "LockedFOV", SDK_FIELD(ACamera, LockedFOV));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));

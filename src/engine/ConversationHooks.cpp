@@ -4,6 +4,8 @@
 #include "core/Hook.hpp"
 #include "core/Log.hpp"
 #include "engine/Addresses.hpp"
+#include "ue3/Handles.hpp"
+#include "ue3/Runtime.hpp"
 
 #include <Windows.h>
 
@@ -305,6 +307,28 @@ bool MoveTrackPlace(void const* track, void const* instance, float time, float p
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
+}
+
+namespace {
+// The move track's position curve (Engine.InterpTrackMove.PosTrack: FInterpCurveVector, its Points' InVal the key times).
+ue3::FieldRef gPosTrack{"Engine.InterpTrackMove", "PosTrack", ue3::kEveryGame};
+ue3::FieldRef gPosPoints{gPosTrack, "Points"};
+ue3::FieldRef gPosInVal{gPosPoints, "InVal"};
+} // namespace
+
+bool MoveTrackEnd(void const* track, void const* instance, float place[3]) {
+    auto* const t = static_cast<ue3::Object*>(const_cast<void*>(track));
+    auto* const i = static_cast<ue3::Object*>(const_cast<void*>(instance));
+    if (t == nullptr || i == nullptr || place == nullptr || !ue3::runtime::IsAlive(t) || !ue3::runtime::IsAlive(i)) {
+        return false;
+    }
+    void* const curve = gPosTrack.Address(t);
+    auto const points = curve != nullptr ? gPosPoints.ElementsOf(curve, 4096) : std::nullopt;
+    if (!points || points->count <= 0) {
+        return false;
+    }
+    auto const last = gPosInVal.Read<float>(points->At(points->count - 1));
+    return last && MoveTrackPlace(track, instance, *last, place);
 }
 
 Stats Totals() {

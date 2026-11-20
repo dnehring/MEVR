@@ -277,13 +277,15 @@ inline constexpr std::uint32_t kCoverTrace = 0;
 // from the controller's Actor.Rotation (+0x124).
 inline constexpr std::uint32_t kUpdateSelection = 0xAC0530;
 // engine/ConversationHooks on ME2 (research/le2-conversations-in-world.md section 2): BioConversation's placement is the
-// virtual at its vtable slot 0x2B8 (execSetPositionRotator 0xB4A320 and the stage's placement, 0xAF4E00, call it), but the
-// class's own vtable (0x1252840, stored by its InternalConstructor 0xA29410) holds _purecall there: the function a live
-// conversation calls is not pinned yet (`mevr convo vtables` reads it in the game), so no placement hook on ME2. The
-// interruption (BioWorldInfo's slot 0x8D0) likewise. The move track's (LE1's same first 16 bytes, unique in ME2's .text):
-// MoveWithInterpMoveTrack, its track's GetLocationAtTime at vtable slot 0x388 (LE1 0x390).
-inline constexpr std::uint32_t kConversationSetPositionRotator = 0;
-inline constexpr std::uint32_t kInterruptConversation = 0;
+// virtual at its vtable slot 0x2B8 (execSetPositionRotator 0xB4A320 and the stage's placement, 0xAF4E00, call it). The
+// class's own vtable (0x1252840, its InternalConstructor 0xA29410) holds _purecall there; a live conversation's vtable
+// (0x1252488, read in the game with `mevr convo vtables`, 2026-11-20) holds 0xA2D180: (conversation, actor, FVector*,
+// FRotator*), LE1's shape (a pawn stopped, moved only for a place that isn't zero, dropped to the floor, turned). The
+// interruption is the live BioWorldInfo's slot 0x8D0 (vtable 0x1292CA8): 0xB06390, LE1's first 16 bytes. The move track's
+// (LE1's same first 16 bytes, unique in ME2's .text): MoveWithInterpMoveTrack, its track's GetLocationAtTime at vtable slot
+// 0x388 (LE1 0x390).
+inline constexpr std::uint32_t kConversationSetPositionRotator = 0xA2D180;
+inline constexpr std::uint32_t kInterruptConversation = 0xB06390;
 inline constexpr std::uint32_t kMoveWithInterpMoveTrack = 0x6B9C50;
 // Our reflection layer's globals (ue3/Runtime, engine/GameAdapter): GObjects (TArray<UObject*>; Halcyon's ME2 code uses it
 // too, engine_probe.cpp, pchud.cpp, and the host's queue for Halcyon's off-thread ProcessEvent calls checks objects against
@@ -331,6 +333,10 @@ inline constexpr Entry kTable[] = {
         "48 8B C4 48 89 48 08 55 53 57 41 54 41 55 41 56", 0, 0, "mod (interaction gaze)"},
     {"AActor::MoveWithInterpMoveTrack", kMoveWithInterpMoveTrack, Kind::Function, "48 8B C4 55 53 56 57 41 56 41 57 48 8D A8 58 FE", 0, 0,
         "mod (conversations in the world, moments)"},
+    {"UBioConversation::SetPositionRotator", kConversationSetPositionRotator, Kind::Function,
+        "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 48 8D 6C 24 A9 48 81 EC 90 00 00 00", 0, 0, "mod (conversations in the world)"},
+    {"ABioWorldInfo::InterruptConversation", kInterruptConversation, Kind::Function,
+        "48 89 5C 24 08 57 48 83 EC 20 48 8B D9 48 8B FA 48 8B 89 4C", 0, 0, "mod (conversations in the world)"},
     // Our reflection layer's globals and the engine's allocator (ue3/Runtime has its own patterns too).
     {"GObjects", kGObjects, Kind::Data, "C9 74 5B EB F0 4C 8B 05 ?? ?? ?? ?? 4B 8B 04 06", 8, 0x9B24B,
         "mod (reflection), host (Halcyon LE2's game-thread queue)"},
