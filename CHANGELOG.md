@@ -15,10 +15,13 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
-- **People leave first-person conversations on Mass Effect 2 too (experimental; Mass Effect 3's is built, not yet tried).**
+- **People leave first-person conversations on Mass Effect 2 and 3 too (experimental).**
   The same rule as Mass Effect 1's below: in the first-person conversation mode, someone the game takes away at a scene's end
-  while you can see them (Tali and her people after you meet her on Freedom's Progress) walks away with the game's own walk
-  first and is gone once out of your sight, when you look away, or under a short fade. Same settings (`[Cinematics] worldExit`).
+  while you can see them walks away first and is gone once out of your sight, when you look away, or under a short fade. On
+  Mass Effect 2 they take the game's own path out of the room (Tali and Prazza after you meet her on Freedom's Progress leave
+  through the room within a few seconds, no fade). On Mass Effect 3 the Citadel's people can't walk (the game has no AI for
+  them), so they go when you look away or under a short fade; your squadmates there go as the game has them go. Same settings
+  (`[Cinematics] worldExit`).
 - **A floor marker where a scripted walk ends (first-person conversations, experimental).** When a scene walks Shepard
   somewhere while you stay where you stood (the walk with Anderson to the council), a small pale ring on the floor shows where
   his walk ends, and fades once you stand in it. Nothing pauses or walks you there.

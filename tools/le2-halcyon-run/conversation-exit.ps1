@@ -4,26 +4,33 @@
 # conversation started, ended early by the world's own call after -Talk seconds (so the script's removals at its end run), and
 # the eyes snapshotted while the people it removes walk away; the module's lines collected, the settings given back.
 #
-#   tools\le2-halcyon-run\conversation-exit.ps1 -Holder <you> [-Game LE2|LE3] -Start fire:<Class>:<text> [-Talk 12]
+#   tools\le2-halcyon-run\conversation-exit.ps1 -Holder <you> [-Game LE2|LE3] -Start fire:<Class>:<text> [-StartInput 0] [-Talk 12]
 #       [-After 16] [-Every 2] [-Exit walk|hold|off] [-Before 'console line', ...] [-Tag what]
 #
-# -Start fire:<Class>:<t>  `mevr instances <Class> <t>`, then `mevr activate 0 0`: the level's own action fired (a start action,
-#                          or the first action of the chain that leads to it).
-# -Talk <s>                seconds in the conversation before `mevr convo exit end` (0: let it play; -After then waits for it).
+# -Start fire:<Class>:<t>  `mevr instances <Class> <t>`, then `mevr activate 0 <StartInput>`: the level's own action fired (a start
+#                          action, or the first action of the chain that leads to it; ME3's start: input 1 preloads, then starts).
+# -Talk <s>                seconds in the conversation before it is ended (0: let it play; -After then waits for it). ME2:
+#                          `mevr convo exit end` (the world's own early end). ME3 has none: each second the wheel's first reply
+#                          (`mevr convo exit reply <n>`) or the line skipped (`mevr convo exit skip`), until no conversation is
+#                          live (at most -Advance seconds).
 # -Exit                    `mevr convo exit <word>` for the run (walk: the default; off: the broken run, the game's own pop).
 # -Before                  console lines run before the start (`mevr setloc ...`, `god`); `sleep:<s>` waits that long.
+# -HeadYaw <deg>           the replayed head turned that far right in the room the whole run (whom the eyes see at the end).
 # Results: the stretch's session folder, exit-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the module's
 # `convo exit:` and `ai walk:` lines, the audit's, the sequels' `conversation world:` lines and the renderer's [VRSTATE]).
 param(
     [Parameter(Mandatory)][string]$Holder,
     [ValidateSet('LE2', 'LE3')][string]$Game = 'LE2',
     [Parameter(Mandatory)][string]$Start,
+    [int]$StartInput = 0,
     [double]$Talk = 12,
+    [double]$Advance = 90,
     [double]$After = 16,
     [double]$Every = 2,
     [ValidateSet('walk', 'hold', 'off')][string]$Exit = 'walk',
     [string[]]$Before = @(),
-    [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'exit'
+    [ValidatePattern('^[A-Za-z0-9_-]*$')][string]$Tag = 'exit',
+    [double]$HeadYaw = 0
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\..\common.ps1"
@@ -38,7 +45,7 @@ if ($Start -notmatch '^fire:([A-Za-z0-9_.]+):(.*)$') { throw '-Start: fire:<Clas
 $fireClass = $Matches[1]
 $fireText = $Matches[2]
 $out = Join-Path $open.session ('exit-' + $Tag + '-' + (Get-Date -Format 'HHmmss'))
-Steer-Init -Out $out
+Steer-Init -Out $out -Yaw $HeadYaw
 $bin = Get-MELEBinDir (Find-MELEInstall).Root $Game
 $log = Join-Path $bin ('Logs\{0}MEVR.log' -f $Game)
 $halcyonLog = Join-Path $env:LOCALAPPDATA ('{0}\{0}_Log.txt' -f $(if ($Game -eq 'LE3') { 'MELE3VR' } else { 'MELE2VR' }))
@@ -62,11 +69,26 @@ try {
         Start-Sleep -Milliseconds 1500
     }
     Steer-Note ('instances: ' + (Steer-Ask ("mevr instances {0} {1}" -f $fireClass, $fireText)).Trim())
-    Steer-Note ('activate: ' + (Steer-Ask 'mevr activate 0 0').Trim())
+    Steer-Note ('activate: ' + (Steer-Ask "mevr activate 0 $StartInput").Trim())
     $deadline = (Get-Date).AddSeconds($Talk)
     while ((Get-Date) -lt $deadline) { Start-Sleep -Seconds 2; Steer-Note ('state: ' + (Steer-Ask 'mevr state').Trim()) }
-    if ($Talk -gt 0) {
+    if ($Talk -gt 0 -and $Game -eq 'LE3') {
         Steer-Snapshot "$Tag-before-end"
+        Steer-Note ('people: ' + (Steer-Ask 'mevr convo exit people').Trim())
+        $deadline = (Get-Date).AddSeconds($Advance)
+        while ((Get-Date) -lt $deadline) {
+            $cards = (Steer-Ask 'mevr thespian cards').Trim()
+            if ($cards -match 'no conversation') { Steer-Note 'advance: no conversation is live'; break }
+            if ($cards -match 'wheel up' -and $cards -match '\[(\d+)\] reply \d+ category \d+ style \d+( unskippable)?:') {
+                Steer-Note ('advance: ' + (Steer-Ask ('mevr convo exit reply ' + $Matches[1])).Trim())
+            } else {
+                Steer-Note ('advance: ' + (Steer-Ask 'mevr convo exit skip').Trim())
+            }
+            Start-Sleep -Milliseconds 1000
+        }
+    } elseif ($Talk -gt 0) {
+        Steer-Snapshot "$Tag-before-end"
+        Steer-Note ('people: ' + (Steer-Ask 'mevr convo exit people').Trim())
         Steer-Note ('end: ' + (Steer-Ask 'mevr convo exit end').Trim())
     }
     $deadline = (Get-Date).AddSeconds($After)

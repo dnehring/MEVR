@@ -365,6 +365,14 @@ post-handler: the change itself lands later) takes out a level holding someone i
    (designed above, not built)? Recommendation: yes, next.
 6. **Line hides and holograms** (Saren's hologram going off at the hearing's end; ME3's 773 line visibility tracks): left as
    authored (built: noticed and counted, not held)? Recommendation: leave holograms, hold people hidden by a line (ME3 first).
+7. **ME3's squadmates in its hubs** (lane EXIT3, section 11): ME3's hubs have no party; a crew member there is a stunt actor tagged
+   `hench_<name>`. Built: any `hench_` tag is a squadmate on ME3 and is left alone (Javik after his moment at the embassies, James
+   after his talk: they go as the game has them go). (a) keep that; (b) treat a crew member outside the party as anyone else of the
+   scene (held, then the look-away or the dip: they can't walk, no AI). ME1 and ME2 keep the live party (ME2's Tali, `hench_tali` at
+   her reintroduction before she joins, walks off). Recommendation: (a), the owner's "squadmates are left alone".
+8. **ME3's hub people can't walk** (section 11): everyone but the player in ME3's hubs is a stunt actor, with no AI to walk them, so
+   a removal in view waits for the player to look away (3 s) and then goes under the dip. (a) keep that; (b) a short dip at once for
+   them (no 3 s of a person standing still after their scene). Recommendation: (a) until the headset says the wait reads badly.
 
 ## 9. The sequels, built (lane EXIT2, 2026-11-20)
 
@@ -379,7 +387,7 @@ commit or time). The rule is section 4's, unchanged.
 | The level script's op | `BioSeqAct_ModifyPropertyPawn`, row "Active" (`aBehaviorFunctions`) | the same op, row "Active" mapped to an object function (`aObjectFunctions`) | `BioSeqAct_SetActive` (no ModifyPropertyPawn in ME3) |
 | The function | `SFXGame.BioActorBehavior.SetActive(bSetActive)` on the behaviour | `Engine.Actor.SetActive(bActive)` on the pawn | `Engine.Actor.SetActive(bActive)` on the target actor |
 | How it is called | the op's native Activated, its row helper through the behaviour's vtable slot 0x250 (ProcessEvent) | the InteractProperty ops' native Activated (`0xA7A010`, every target in reverse; `0xA79D50`, the first target: four and three
-class vtables point at them, [verify] which is ModifyPropertyPawn's in the game with `mevr vslot`), each row of type 4 through a helper (`0xA7FC60`, `0xA7F4C0`) calling the pawn's vtable slot **0x240**, ME2's `UObject::ProcessEvent` (`0xD8D50`) | **UnrealScript**: `BioSeqAct_SetActive.Activated` is a script event whose body is `foreach Targets: Actor(target).SetActive(bSetActive)` (read with `tools/conversation-scan --game LE3 --script BioSeqAct_SetActive.Activated`); the native is called by the script VM on that script's own frame |
+class vtables point at them; **ModifyPropertyPawn's is `0xA7A010`**, its live vtable `0x126E5D8` holds it at slot `0x400` and `0xA79D50` nowhere: `mevr vslot`, lane EXIT3, section 12; the three with `0xA79D50` are the GetProperty family), each row of type 4 through a helper (`0xA7FC60`, `0xA7F4C0`) calling the pawn's vtable slot **0x240**, ME2's `UObject::ProcessEvent` (`0xD8D50`) | **UnrealScript**: `BioSeqAct_SetActive.Activated` is a script event whose body is `foreach Targets: Actor(target).SetActive(bSetActive)` (read with `tools/conversation-scan --game LE3 --script BioSeqAct_SetActive.Activated`); the native is called by the script VM on that script's own frame |
 | The native hooked | `UBioActorBehavior::execSetActive` `0xBAAB60` | `AActor::execSetActive` **`0x4BC510`** (its C++ `SetActive` at the actor's slot 0x340) | `AActor::execSetActive` **`0x4BFAF0`** (slot 0x330) |
 | The frame the hook reads | ProcessEvent's (Node `SetActive`, Locals the parameters) | the same | the calling script's (Node `BioSeqAct_SetActive.Activated`, Object the op): `engine/ExitHooks`' script path |
 
@@ -409,7 +417,8 @@ call: `P_GET_UBOOL` (the next token's native through `GNatives`, the value into 
    foot, in the armed word (`PublishArmed` carries `cut` and publishes while it is new); the sequels' fade seam
    (`plugin/HalcyonSequelBridge` `TransitionFadeLayer`) reads `FootCut()` on foot as LE1's does.
 6. The world mode: the sequels' module's word (the file's `[Cinematics] conversations`, or `mevr convo world on|off|auto`).
-7. The walk: `game/AiWalk`'s adapters (ME2 `BioAiController.PrecisionMoveTo`, ME3 `MoveToSlot`) behind ME1's reachability check.
+7. The walk: `game/AiWalk`'s adapters (ME2 `SFXAI_Core.MoveToGoal` to a navigation point since lane EXIT3, section 12, else
+   `BioAiController.PrecisionMoveTo`; ME3 `MoveToSlot`) behind ME1's reachability check (ME2 also the AI's path search).
 8. Test aid: `mevr convo exit end` (the sequels): `BioWorldInfo.EndCurrentConversation`, the world's own early end, so a start
    action's outputs run without playing every line. Runner: `tools/le2-halcyon-run/conversation-exit.ps1`.
 
@@ -471,7 +480,8 @@ streamed in and the player inside it; restored with 0 differences). Folders `exi
    after 0.00 m`, the retry too, then the dip at 7.1 s): ME2 keeps `PrecisionMoveTo`.
 6. **What the player sees on ME2 today:** in Tali's room the picker found hidden places (2-4 of 36) but none with a way the AI takes,
    so people walk 3 m straight away at about 0.3 m/s and go under a dip 12 s after the scene. Next: a faster ME2 walk (the AI's
-   path move, [verify] which ME2 function walks an NPC at walking pace; `MoveToSlot` does not) and longer walks.
+   path move, [verify] which ME2 function walks an NPC at walking pace; `MoveToSlot` does not) and longer walks. **Done in
+   lane EXIT3, section 12**: the Kismet's own `MoveToGoal` along the AI's path; both walk out of sight in 2-3 s, no dip.
 
 **ME3 (not run in the game in this lane; the run lock was another lane's for the first hour).** Fixtures from the same scratch scan
 (189 deactivations within 6 ops of a start's outputs), on the Citadel hub `Save_0090` loads (`BioD_CitHub_HanarPlot`,
@@ -479,6 +489,128 @@ streamed in and the player inside it; restored with 0 differences). Folders `exi
 `citprs_james_m_dlg` (`hench_marine`, a squadmate when in the party: let through). Check first that the hook's script path counts
 (`mevr convo exit status`: the hook's `calls` grow while `fromEvent` doesn't: ME3's script frames) and that the script goes on after
 a withheld call (the op's other targets switched, the level's script not stuck).
+
+## 11. ME3 in the game (fake headset, 2026-11-20 03:48-04:17, lane EXIT3)
+
+Stretch `%LOCALAPPDATA%\MEVR\sessions\20261120-034847-326-LE3-exit3` (`prep.ps1 -Holder EXIT3 -Game LE3 -RendererPreview -BuildDir
+build-trilogy`, `launch.ps1`, `load.ps1 -Save <career>\Save_0090.pcsav`; restored with 0 differences). Folders `exit-proth-*` there
+(steer.txt, console.txt, lines.txt).
+
+**Reaching a fixture by script.** `Save_0090` loads into the Citadel's docking conversation (`load.ps1` timed out waiting for
+gameplay: the game sits in the docking officer's wheel). `mevr convo exit reply 2` (QueueReply: Thespian's pick waits for a focused
+session, which the fake headset never has) took the "Embassies" ride. **Neither of EXIT2's fixtures is loaded there**:
+`BioD_CitHub_HanarPlot` (the spectre) and `BioD_CitHub_EmbassyP1` (James) are not streamed in at the embassies in this save's plot
+(`mevr instances SFXGame.SFXSeqAct_StartConversation` lists nine starts, none of theirs). The fixture used instead, from the same
+scratch scan: **the Prothean's character moment** (`BioD_CitHub_Prothean`, the From Ashes DLC's package in `DLC_HEN_PR`):
+`citprs_proth_char_moment_m_dlg`, owner Javik (`hench_prothean`), a hanar and two bystanders as nodes; its `Out` ->
+`SFXSeqAct_SetTargetable_2` -> **`BioSeqAct_SetActive_1`, false on Javik, the hanar and both bystanders** (depth 1). The chain, read
+with a scratch sequence dumper (`scratch`, LEX library): the remote event `RE_Poll_BioH_Prothean_Visible` -> Javik's own level answers
+-> "Prothean in party?" -> "Time for moment?" -> `SeqAct_Teleport_0` (Javik to the spot) -> targetable -> the use event -> a gate ->
+the start's input 1 (preload) -> `PreLoad Done` -> `BioSeqAct_SetActive_0` (the hanar and bystanders on) -> the start's input 0. By
+script: `mevr instances Engine.SeqAct_ActivateRemoteEvent Prothean` + `mevr activate 0 0`, the same for `Engine.SeqAct_Teleport`, then
+`conversation-exit.ps1 -Game LE3 -Start fire:SFXGame.SFXSeqAct_StartConversation:Prothean -StartInput 1 -Talk 8 -HeadYaw 128`
+(the runner's ME3 advance: each second the wheel's first reply, `mevr convo exit reply <n>`, or the line skipped,
+`mevr convo exit skip`, BioConversationController.SkipNode; the conversation ends in about 80 s).
+
+**What the hub's people are.** In the hub only the player is a `BioPawn` (`mevr instances SFXGame.BioPawn TheWorld`: one); everyone
+else, Javik's crew double included (`BioH_Prothean_00_NC.SFXStuntActor_1`), is an **`SFXStuntActor`** (an actor with a body and
+`m_bActive`, no AI). The first run held nobody: the module took only `BioPawn`s as people, and the sequels' reader
+(`m_aSpeakerData`) lists only those who have spoken, so Javik (the owner) and one bystander were "nobody of a scene". Fixed: on ME3
+the people are pawns or stunt actors (presence from `SFXStuntActor.m_bActive`), read also from the controller's `m_pOwner`,
+`m_pSpeaker`, `m_pListener`, `m_aAllFoundActors[].pSpeakerActor` and `m_aExtraParticipants` (the module's LE3 adapter; the sequels'
+reader untouched). A stunt actor is never walked: no AI walks it, so its change waits for the look-away (or applies out of sight).
+
+**Squadmates in ME3's hubs.** There is no party in the hub; a crew member is its `BioH_<name>_00_NC` stunt actor tagged
+`hench_<name>`. ME3 treats a `hench_` tag as a squadmate (James is `hench_marine`): **Javik let through, "a squadmate: the squad is
+the next scene's"**, in every run. ME1 and ME2 keep the live party's rule (ME2's Tali is `hench_tali` at her reintroduction, before
+she joins: held and walked, section 10). Owner question 7.
+
+**Runs (each a fresh moment, the same launch):**
+
+1. `proth-walk` (head ahead): the hanar and both bystanders stand 14-16 m off, about 126 degrees right of the held view (`mevr convo
+   exit people`: each person's bearing, distance, presence and sight from the drawn eyes): out of sight, let through at once. Right.
+2. `proth-yaw128` (the replayed head 128 degrees right, `-HeadYaw`): in view at the end (bystander 2 in sight, the other two behind
+   people). **The script path held three calls**: `the script deactivates SFXStuntActor_2 (citprs_proth_hanar) in the player's view
+   (12.9 m from the eyes): held back`, the same for both bystanders, Javik let through as a squadmate; `can't walk away: a stunt actor,
+   no AI walks it`; 0.3 s later `applied ... out of the player's sight; hidden now yes`, because the conversation's end turned the view
+   to the pawn's own facing on foot (the held view's yaw 0 against the pawn's; the sequels' module's, lane FPC: reported). Hook
+   totals `calls 25, fromEvent 3` (our own applies through ProcessEvent), **`fromScript 22, withheld 3`**.
+3. **The script goes on after a withheld call**: the op's `foreach` went on through its other targets after each withheld one (Javik,
+   then the three held, in the script's order), the conversation ended, the game went back on foot, and the same level's sequence ran
+   twice more in the launch (remote event, teleport, start, end: `fromScript 33` by the last run). No stall, no crash: `StepOverCall`
+   leaves the frame where the call would have.
+4. `proth-off` (the broken run, `-Exit off`): `let through (worldExit = off ...)` and **`convo: audit: vanished-in-view` caught the
+   hanar and both bystanders** (12.6 m from the eyes).
+
+**The walk on ME3 (`MoveToSlot`) is not checked**: no person of a hub conversation is a pawn. It needs a mission level's conversation
+with NPC pawns (a combat level's squad or enemies); none was reached.
+
+## 12. ME2's walk: the Kismet's own, along the AI's path (lane EXIT3, 2026-11-20 04:37-04:52)
+
+**The move ME2's own scripts use.** ME2's Kismet walks an NPC with `SFXSeqAct_MoveToNode` (scripts read with
+`tools/conversation-scan <ME2 CookedPCConsole> <out.txt> --game LE2 --script <Class.Function>`, and `--script grep:<text>` for who
+calls what; the output is game code, scratch only): its `MoveTo` sets the pawn's `bIsWalking` and calls
+`SFXAI_Core.MoveToGoalExternal(goal actor, offset, callback)`, which on an active AI only refuses ("Trying to force an active AI to
+move") and in the `Disabled` state, `SFXAI_None` and `SFXAI_CombatScripted` calls **`SFXAI_Core.MoveToGoal(NewMoveGoal,
+NewMoveOffset, MoveDelegate, bIgnoreAIGoHere)`**: `SetMoveGoal` then `PushState('MovingToGoal')`. The state's code: leave cover, stand
+up, `GetFirstMoveTarget` (straight to the goal when `DirectWalkCheck` allows, else `ApplyPathConstraints` + `FindPathToward(MoveGoal,
+false, 2000)`), then every 0.1 s `SetMovementSpeed` (a walk, or a run past the AI's `m_fRunThreshold`: `WantsToRun`) and
+`SmoothPathMovement` until the route is walked; `HasReachedGoal` (`Pawn.ReachedDestination(MoveGoal)`) and `PopState`, whose
+`PoppedState` clears `MoveGoal`, stops the pawn and calls the delegate. The Kismet's cancel is `SFXAI_Core.CancelAction()`, whose
+`MovingToGoal` version clears `MoveTarget` (the global one only raises `m_bCancelAction`). `PrecisionMoveTo` and `MoveToSlot` are
+latent natives (`BioAiController`): the first is the precise step EXIT2 saw at 0.3 m/s, the second moves nobody on ME2.
+`SFXAI_Core` also has a `MovingToLocation` state (a straight `MoveTowardLocation` to `MovePoint`; the henchmen's hold uses it), not used.
+
+**Built (game/AiWalk's ME2 adapter, ME1's and ME3's paths unchanged):**
+
+1. The walk: `MoveToGoal` as the controller's class has it (`FindFunction` on its class: a script call's lookup), its goal **the
+   level's navigation point nearest the point asked** (`WorldInfo.NavigationPointList`, `NavigationPoint.nextNavigationPoint`,
+   within 2.5 m flat and 1.2 m up or down; kept in `Walk::moveAction`), `bIgnoreAIGoHere` true. Without a goal there, or an AI that is
+   no `SFXAI_Core`: `PrecisionMoveTo` as before. Log `ai walk: <pawn> walks with MoveToGoal (ME2's Kismet walk) to <PathNode_N>`.
+2. The end: the AI's own. `Step` calls it arrived once `MovingToGoal` has popped (the controller's `MoveGoal` no longer the goal)
+   within 90 units of it, or within 25; the goal cleared far from it is the AI giving up (a stall). Judged by distance alone, Tali
+   stopped 90 units short at the edge of the hidden place, still in sight (run `tali-path`). `End` clears `MoveGoal` (and
+   `MoveTarget` when it is the goal; journalled) so the state's loop ends at its next step: what `MovingToGoal.CancelAction` does,
+   which a ProcessEvent of the global `CancelAction` would not reach (its flag would outlive the move).
+3. **The places (game/ConversationExit's ME2 search):** ME1's straight candidates (36 points, a clear way at knee and chest height,
+   `PointReachable`) plus **the navigation points** within the core's 3-11 m of the person on its floor that the eyes can't see,
+   with a path the person's AI finds, nearest first, at most 6 added after 24 asked. **The path search needs UE3's constraints first**:
+   `Goal_AtActor.AtActor(P, Goal)` and `Path_TowardGoal.TowardGoal(P, Goal)` (static functions, called on their classes' default
+   objects; `MovingToGoal.ApplyPathConstraints` pushes the same two) and then `Engine.Controller.FindPathToward(Goal, false, 2000)`
+   (2000: the state's own limit). Without them every search came back empty, in sight or not (the log's control: `0 of 2 asked with
+   a path`; with them `2 of 2`). The core's `PickDestination` then picks as before (a hidden place, not toward the player, the most
+   away). Log `...; navigation points: N within reach on the floor, N of them in sight (N of 2 asked with a path), N hidden asked for a
+   path, N with one: one picked (the walk follows the AI's path)`.
+4. `mevr convo exit walkby goal|precise` (an A/B) and `mevr vslot <n> <offset | rva:<hex>>` on the sequels.
+
+**In the game** (stretch `%LOCALAPPDATA%\MEVR\sessions\20261120-043728-914-LE2-exit3-le2`, `load.ps1 -Save
+VR_31_Soldier_141126_336072f\Save_0004.pcsav` before each run, EXIT2's route into Tali's room, `conversation-exit.ps1 -Start
+fire:SFXGame.SFXSeqAct_StartConversation:Tali_Conversation -Talk 0`; restored with 0 differences):
+
+| run | what | Prazza | Tali |
+|---|---|---|---|
+| EXIT2 (section 10) | `PrecisionMoveTo` | 2.76 m in 9.2 s, dip at 12.2 s | the same |
+| `tali-goal` | `MoveToGoal` to the node nearest the 3 m point (no path search yet) | 2.34 m in 1.1 s, dip at 4.1 s | 1.93 m in 1.6 s, dip at 4.5 s |
+| test `hench_tali` | `mevr convo exit test`, the path search with its constraints | | 4.81 m in 2.6 s to a hidden node (`PathNode_215`) |
+| `tali-path` | both to `PathNode_215`, arrival by distance | 3.84 m, **applied out of sight at 1.8 s** | 5.00 m, stopped 90 units short in sight, dip at 5.5 s |
+| `tali-path2` | (a tried rule: no two people to one place) | out of sight at 1.9 s | no other hidden node with a path: 3 m straight, dip at 5.1 s (rule dropped) |
+| **`tali-path3`** | **the arrival the AI's own** | **3.89 m, applied out of sight at 1.9 s** | **5.14 m, applied out of sight at 3.1 s** |
+
+So on ME2 both walk out of the player's sight with the game's own walk along the AI's path and the game's removal is applied there:
+no dip, 2-3 s after the scene (1.7-2 m/s: the AI's own pace, `SetMovementSpeed`; whether it reads as a walk or a run is for the
+headset). The two guards are nobody of the scene and still go at once (question 1). The call trace (`mevr convo exit trace on`):
+`SFXGame.SFXAI_Core.MoveToGoal on SFXAI_None_4`, then `Core.Object.PopState <- State SFXGame.SFXAI_Core.MovingToGoal` as the walk ends.
+
+**ModifyPropertyPawn's Activated, settled** (section 9's open point): `mevr instances SFXGame.BioSeqAct_ModifyPropertyPawn
+Tali_Conversation`, `mevr vslot 0 rva:A7A010` -> the op's vtable `exe+0x126E5D8` holds `0xA7A010` at slot `+0x400`; `rva:A79D50` ->
+none. So it is `0xA7A010` (every target, in reverse: the log shows the two guards, then Prazza, then Tali, the reverse of the op's
+target list). Ghidra: the seven vtables holding the two are 0x478 bytes apart in one run; the four holding `0xA7A010` match the native
+ModifyProperty family (ModifyProperty, ArtPlaceable, Navigation, Pawn), the three holding `0xA79D50` the GetProperty family (GetProperty,
+ArtPlaceable, Pawn), from LExSDKv2's LE2 class list.
+
+**ME1's compiled code unchanged** (the touched translation units' LE1 objects, built from main's sources and from these, in build-mono's
+`MEVR-LE1` and build-trilogy's `MEVR-LE1-mod`, compared without debug sections: 357 identical; `Mod.obj` differs only in its
+`__DATE__`/`__TIME__` literals' symbols).
 
 ## Log
 
@@ -488,3 +620,6 @@ a withheld call (the op's other targets switched, the level's script not stuck).
   `PointReachable`; people whose level streams out applied at once; the audit set once (long) and the `popped-out` canary caught.
 - 2026-11-20 (lane EXIT2): the sequels' adapter (section 9), ME2 run on the fake headset (section 10), ME3's line visibility tracks
   counted; ME3 not run in the game.
+- 2026-11-20 (lane EXIT3): ME3 in the game at the Citadel's embassies (section 11: stunt actors as people, the hub's squadmates by
+  tag, the script path held and stepped over, the broken run caught); ME2's walk made the Kismet's own along the AI's path, both of
+  Tali's people out of sight with no dip (section 12); ModifyPropertyPawn's Activated settled (`0xA7A010`); questions 7 and 8.
