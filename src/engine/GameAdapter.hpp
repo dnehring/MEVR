@@ -511,13 +511,14 @@ struct HairStandIn {
 // research/trilogy-hair.md: the shipped hair mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair
 // bones; tools/rig/plans/le3-miranda-*.jsonc add hair chains and soft-tissue bones (MEVR_Miranda.pcc, built on the player's
 // machine from their own game files).
+// A dark purple sheen (the owner, 2026-11-19, after the blond: "something like dark purple, it's a little too obvious right
+// now"): both lobes tighter than the game's broad 50, tinted purple, at about the game's own strength.
 inline constexpr char kMirandaLook[] =
-    "Highlight2Color=1.3,0.85,0.35; Highlight1Color=0.40,0.27,0.11; Hightlight1Intensity=2; Hightlight2Intensity=2.8; "
+    "Highlight2Color=0.34,0.16,0.44; Highlight1Color=0.13,0.07,0.17; Hightlight1Intensity=1.2; Hightlight2Intensity=1.6; "
     "Highlight2SpecExp_Scalar=200; Highlight1SpecExp_Scalar=90";
 inline constexpr HairStandIn kHairStandIns[] = {
     {"BIOG_HMF_ARM_MIR_R.MIRa.HMF_ARM_MIRa_MDL", "MEVR_Miranda.HMF_ARM_MIRa_MEVR"},
-    // Her look: a warm blond highlight on her dark hair (the owner's "likely blondish", 2026-11-19; picked from the same-pose
-    // sheet in research/trilogy-hair.md "Her look": both lobes tighter than the game's broad, plastic 50, warmer, stronger).
+    // Her look: kMirandaLook (research/trilogy-hair.md "Her look"; first a warm blond, then the owner's dark purple).
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR",
      "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", kMirandaLook},
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},

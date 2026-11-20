@@ -200,9 +200,38 @@ def ardy_to_ue(posed_first_frame):
     return np.array([[0, 0, 1.0], [1.0 if right_minus_left_x > 0 else -1.0, 0, 0], [0, 1.0, 0]])
 
 
-def retarget(G, P, names, parents, pos, quat):
+# The posture correction (README "Posture"): these bones' average deviation from the skeleton's own rest pose (upright),
+# measured in the body's heading frame over the loop, is taken out; the motion around it stays. ARDY's walks lean back from
+# the hips with the head pushed forward (the owner, 2026-11-19: "the posture is bad").
+POSTURE_BONES = ("Pelvis", "LowerBack", "Chest", "Chest1", "Chest2", "Neck", "Head")
+
+
+def heading(rot_pelvis, rest_pelvis):
+    """The body's heading at a frame: a rotation about up (Z) by the yaw of the pelvis's rest forward (+X) as posed."""
+    import numpy as np
+    from scipy.spatial.transform import Rotation as R
+    f = (rot_pelvis * rest_pelvis.inv()).apply([1.0, 0.0, 0.0])
+    return R.from_euler("z", float(np.arctan2(f[1], f[0])))
+
+
+def parse_posture_bones(text):
+    """'Pelvis=0,LowerBack=0.3,...' -> per-bone strengths (bones not named: 1)."""
+    strengths = {b: 1.0 for b in POSTURE_BONES}
+    for part in (text or "").split(","):
+        if "=" in part:
+            name, value = part.split("=", 1)
+            name = name.strip()
+            if name not in strengths:
+                raise SystemExit(f"--posture-bones: {name} isn't one of {', '.join(POSTURE_BONES)}")
+            strengths[name] = float(value)
+    return strengths
+
+
+def retarget(G, P, names, parents, pos, quat, posture=1.0, window=None, strengths=None, hip_sway=1.0):
     """Core world rotations G [T,27,3,3] and positions P [T,27,3] (ARDY axes) onto the skeleton. Returns (frames, world
-    points per frame, worst direction error in degrees, hips scale). A frame: {"root": xyz, "local": [xyzw per bone]}."""
+    points per frame, worst direction error in degrees, hips scale, posture correction per bone in degrees). A frame:
+    {"root": xyz, "local": [xyzw per bone]}. `posture` (0..1) takes that share of POSTURE_BONES' average deviation from rest
+    out, the average over `window` (frame range, default all)."""
     import numpy as np
     from scipy.spatial.transform import Rotation as R
     M = ardy_to_ue(P[0])
@@ -221,9 +250,45 @@ def retarget(G, P, names, parents, pos, quat):
     align = {me: (swing(rest_points[index[mc]] - rest_points[index[me]], core_rest_dir(cj, cc)) if cc else R.identity())
              for me, cj, cc, mc in MAP}
     scale = rest_points[index["Pelvis"], 2] / (P[0, CI["Hips"], 1] * 100.0)
-    frames, points_per_frame = [], []
-    for t in range(G.shape[0]):
-        target = {me: R.from_matrix(M @ G[t, CI[cj]] @ M.T) * align[me] * rest_world[index[me]] for me, cj, cc, mc in MAP}
+    T = G.shape[0]
+    targets = [{me: R.from_matrix(M @ G[t, CI[cj]] @ M.T) * align[me] * rest_world[index[me]] for me, cj, cc, mc in MAP}
+               for t in range(T)]
+    corrections = {}
+    if posture > 0:
+        lo, hi = window if window else (0, T)
+        rest_pelvis = rest_world[index["Pelvis"]]
+        heads = [heading(targets[t]["Pelvis"], rest_pelvis) for t in range(T)]
+        for b in POSTURE_BONES:
+            rest_b = rest_world[index[b]]
+            rel = [heads[t].inv() * targets[t][b] * rest_b.inv() for t in range(T)]  # deviation from rest, heading frame
+            mean = R.concatenate(rel[lo:hi]).mean()
+            fix = R.from_rotvec(-mean.as_rotvec() * posture * (strengths or {}).get(b, 1.0))
+            corrections[b] = float(np.degrees(np.linalg.norm(mean.as_rotvec())))
+            for t in range(T):
+                targets[t][b] = heads[t] * fix * rel[t] * rest_b
+    # Hip sway (README "Hip sway"): the pelvis's swing about its average (roll, twist, tilt) and the hips' side-to-side
+    # travel, both scaled by `hip_sway`; the chest and head keep their own motion (their world rotations are Core's), the
+    # legs their directions.
+    sway_side = np.zeros(T)
+    if abs(hip_sway - 1.0) > 1e-6:
+        lo, hi = window if window else (0, T)
+        rest_pelvis = rest_world[index["Pelvis"]]
+        heads = [heading(targets[t]["Pelvis"], rest_pelvis) for t in range(T)]
+        rel = [heads[t].inv() * targets[t]["Pelvis"] * rest_pelvis.inv() for t in range(T)]
+        mean = R.concatenate(rel[lo:hi]).mean()
+        for t in range(T):
+            about_mean = (mean.inv() * rel[t]).as_rotvec() * hip_sway
+            targets[t]["Pelvis"] = heads[t] * mean * R.from_rotvec(about_mean) * rest_pelvis
+        # The hips' deviation from their own path (a moving average over one stride, in world space: the walk's travel,
+        # drift and turns kept), projected onto each frame's side axis.
+        hips = np.array([M @ P[t, CI["Hips"]] for t in range(T)]) * 100.0 * scale
+        span = max(1, (hi - lo) // 2)
+        path = np.array([hips[max(0, t - span):t + span + 1].mean(axis=0) for t in range(T)])
+        side = np.array([heads[t].inv().apply(hips[t] - path[t])[1] for t in range(T)])
+        sway_side = side * (hip_sway - 1.0)
+    frames, points_per_frame, posture_trace = [], [], []
+    for t in range(T):
+        target = targets[t]
         world = [None] * len(names); local = [None] * len(names); points = np.zeros((len(names), 3))
         for i, name in enumerate(names):
             p = parents[i]
@@ -235,20 +300,32 @@ def retarget(G, P, names, parents, pos, quat):
                 world[i] = world[p] * local[i] if p >= 0 else local[i]
             points[i] = pos[i] if p < 0 else points[p] + world[p].apply(pos[i])
         shift = (M @ P[t, CI["Hips"]]) * 100.0 * scale - points[index["Pelvis"]]
+        if sway_side[t] != 0.0:
+            shift = shift + heading(world[index["Pelvis"]], rest_world[index["Pelvis"]]).apply([0.0, sway_side[t], 0.0])
         points = points + shift
         points_per_frame.append(points)
+        # The posture as drawn, in the body's heading frame: the trunk's lean (pelvis to neck, degrees from vertical, +
+        # forward) and the head ahead of the upper chest (cm).
+        head = heading(world[index["Pelvis"]], rest_world[index["Pelvis"]])
+        trunk = head.inv().apply(points[index["Neck"]] - points[index["Pelvis"]])
+        posture_trace.append((float(np.degrees(np.arctan2(trunk[0], trunk[2]))),
+                              float(head.inv().apply(points[index["Head"]] - points[index["Chest2"]])[0])))
         # The Root bone's position in component space (not its local offset: Root hangs from God, which needn't sit at the
         # origin; a local offset here sank Miranda to her hips in the game, 2026-11-19).
         frames.append({"root": points[index["Root"]].tolist(), "local": [r.as_quat().tolist() for r in local]})
     worst = 0.0
     for t, points in enumerate(points_per_frame):
         for me, cj, cc, mc in MAP:
-            if not cc:
-                continue
+            if not cc or me in corrections:
+                continue  # a corrected bone differs from Core's on purpose
             a = points[index[mc]] - points[index[me]]
             b = M @ (P[t, CI[cc]] - P[t, CI[cj]])
             worst = max(worst, float(np.degrees(np.arccos(np.clip(np.dot(a, b) / np.linalg.norm(a) / np.linalg.norm(b), -1, 1)))))
-    return frames, points_per_frame, worst, scale
+    lo, hi = window if window else (0, T)
+    measured = np.array(posture_trace[lo:hi])
+    corrections["trunkLeanDeg"] = float(measured[:, 0].mean())
+    corrections["headForwardCm"] = float(measured[:, 1].mean())
+    return frames, points_per_frame, worst, scale, corrections
 
 
 def best_loop(local_rot_mats, fps):
@@ -312,13 +389,17 @@ def cmd_retarget(a) -> int:
     data = np.load(npz, allow_pickle=True)
     G, P, fps = data["global_rot_mats"], data["posed_joints"], float(data["fps"])
     names, parents, pos, quat = load_skeleton(skel)
-    frames, points, worst, scale = retarget(G, P, names, parents, pos, quat)
     loop = None
     if a.loop == "auto":
         loop = best_loop(data["local_rot_mats"], fps)
     elif a.loop and a.loop != "none":
         start, end = (int(x) for x in a.loop.split(":"))
         loop = {"start": start, "end": end, "seconds": (end - start) / fps}
+    window = (loop["start"], loop["end"]) if loop else None
+    if a.posture_window:
+        window = tuple(int(x) for x in a.posture_window.split(":"))  # a jump: its standing frames, not the crouch
+    frames, points, worst, scale, corrections = retarget(G, P, names, parents, pos, quat, a.posture, window,
+                                                         parse_posture_bones(a.posture_bones), a.hip_sway)
     header = next((line for line in skel.read_text(encoding="utf-8").splitlines() if line.startswith("#")), "")
     meta_path = source_folder / "generate.json"
     source = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {"npz": str(npz)}
@@ -326,11 +407,13 @@ def cmd_retarget(a) -> int:
             "units": "game units (cm), UE axes (X forward, Y right, Z up); local rotations xyzw as the package stores them",
             "skeleton": {"file": skel.name, "header": header.lstrip("# "), "bones": names, "parents": parents.tolist()},
             "loop": loop, "source": source, "retarget": {"method": "swing-aligned rest, Core world rotation change",
-            "map": [list(row) for row in MAP], "hipsScale": scale, "worstDirectionDeg": worst},
+            "map": [list(row) for row in MAP], "hipsScale": scale, "worstDirectionDeg": worst,
+            "posture": a.posture, "postureCorrectionDeg": corrections},
             "clip": frames}
     out = folder / f"{clip_name}.mevrclip.json"
     out.write_text(json.dumps(clip), encoding="utf-8")
     check = {"frames": len(frames), "fps": fps, "hipsScale": scale, "worstDirectionDeg": worst, "loop": loop,
+             "posture": a.posture, "postureCorrectionDeg": corrections,
              "travelM": float(np.linalg.norm(points[-1][names.index("Pelvis")][:2] - points[0][names.index("Pelvis")][:2]) / 100)}
     (folder / "retarget.json").write_text(json.dumps(check, indent=2), encoding="utf-8")
     png = folder / f"{clip_name}-check.png"
@@ -415,7 +498,64 @@ def cmd_self_test(a) -> int:
         else:
             pos[i] = world_rot[p].inv().apply(np.array(world_points[n]) - world_points[p])
             quat[i] = (world_rot[p].inv() * world_rot[n]).as_quat()
-    frames, points, worst, scale = retarget(G, P, names, parents, pos, quat)
+    frames, points, worst, scale, _ = retarget(G, P, names, parents, pos, quat, posture=0.0)
+    # The posture correction: the same motion with every spine joint leaned back a constant 20 degrees on top; corrected,
+    # the posture bones' average deviation from rest in the heading frame must be gone (under a degree), the legs untouched.
+    lean = R.from_euler("x", 20, degrees=True).as_matrix()  # about ARDY's X: a lean in the sagittal plane
+    G2 = G.copy()
+    for t in range(T):
+        for j, (name, parent) in enumerate(CORE):
+            if name in ("Spine", "Spine1", "Spine2", "Spine3", "Neck", "Head"):
+                G2[t, j] = lean @ G2[t, j]
+    corrected_frames, points2, _, _, corrections = retarget(G2, P, names, parents, pos, quat, posture=1.0)
+    rest_local = [R.from_quat(q) for q in quat]
+    rest_world, _ = forward_kinematics(parents, pos, rest_local)
+    residual = 0.0
+    # Checked on the clip's own frames: each posture bone's world rotation rebuilt from the corrected locals.
+    for b in POSTURE_BONES:
+        bi = names.index(b)
+        devs = []
+        for t in range(T):
+            world = [None] * len(names)
+            for i in range(len(names)):
+                p = parents[i]
+                lr = R.from_quat(corrected_frames[t]["local"][i])
+                world[i] = world[p] * lr if p >= 0 else lr
+            head = heading(world[names.index("Pelvis")], rest_world[names.index("Pelvis")])
+            devs.append(head.inv() * world[bi] * rest_world[bi].inv())
+        residual = max(residual, float(np.degrees(np.linalg.norm(R.concatenate(devs).mean().as_rotvec()))))
+    legs_kept = max(float(np.linalg.norm(points2[t][names.index(n)] - points2[t][names.index("Pelvis")]
+                                         - (points[t][names.index(n)] - points[t][names.index("Pelvis")])))
+                    for t in range(T) for n in ("RightAnkle", "LeftAnkle"))
+    posture_ok = residual < 1.0 and legs_kept < 0.5 and max(v for k, v in corrections.items() if k in POSTURE_BONES) > 5.0
+    # Hip sway: at x2 the pelvis swings twice as far about its average; a leg's direction (hip to knee) stays Core's.
+    def pelvis_swing(fr):
+        worlds = []
+        for t in range(T):
+            world = [None] * len(names)
+            for i in range(len(names)):
+                p = parents[i]
+                lr = R.from_quat(fr[t]["local"][i])
+                world[i] = world[p] * lr if p >= 0 else lr
+            worlds.append(world)
+        pi = names.index("Pelvis")
+        rel = [heading(w[pi], rest_world[pi]).inv() * w[pi] * rest_world[pi].inv() for w in worlds]
+        mean = R.concatenate(rel).mean()
+        return float(np.mean([np.linalg.norm((mean.inv() * r).as_rotvec()) for r in rel]))
+    swayed, sway_points, _, _, _ = retarget(G, P, names, parents, pos, quat, posture=0.0, hip_sway=2.0)
+    ratio = pelvis_swing(swayed) / pelvis_swing(frames)
+    leg_turn = 0.0
+    for t in range(T):
+        for hip, knee in (("RightHip", "RightKnee"), ("LeftHip", "LeftKnee")):
+            a = points[t][names.index(knee)] - points[t][names.index(hip)]
+            b = sway_points[t][names.index(knee)] - sway_points[t][names.index(hip)]
+            leg_turn = max(leg_turn, float(np.degrees(np.arccos(np.clip(np.dot(a, b) / np.linalg.norm(a) / np.linalg.norm(b), -1, 1)))))
+    sway_ok = 1.6 < ratio < 2.4 and leg_turn < 0.01
+    print(f"self-test: hip sway x2 swings the pelvis x{ratio:.2f} about its average, legs turned {leg_turn:.4f} deg: "
+          + ("PASS" if sway_ok else "FAIL"))
+    posture_ok = posture_ok and sway_ok
+    print(f"self-test: posture correction removed up to {max(corrections.values()):.1f} deg, residual {residual:.2f} deg, "
+          f"ankles moved {legs_kept:.3f} units: " + ("PASS" if posture_ok else "FAIL"))
     M = ardy_to_ue(P[0])
     hips_error = max(float(np.linalg.norm(points[t][names.index("Pelvis")] - (M @ P[t, CI["Hips"]]) * 100 * scale)) for t in range(T))
     rest_ok = abs(scale - 100 / 95) < 1e-6
@@ -423,7 +563,7 @@ def cmd_self_test(a) -> int:
     root_error = max(float(np.linalg.norm(np.array(frames[t]["root"]) - points[t][names.index("Root")])) for t in range(T))
     root_height_ok = abs(frames[0]["root"][2] - (points[0][names.index("Pelvis")][2])) < 1e-6
     ok = (worst < 0.01 and hips_error < 1e-6 and rest_ok and root_error < 1e-9 and root_height_ok and len(frames) == T
-          and len(frames[0]["local"]) == len(names))
+          and len(frames[0]["local"]) == len(names) and posture_ok)
     print(f"self-test: worst direction error {worst:.4f} deg, hips error {hips_error:.2e} units, root error {root_error:.2e}, "
           f"hips scale {scale:.4f}: "
           + ("PASS" if ok else "FAIL"))
@@ -444,6 +584,14 @@ def main(argv=None) -> int:
     r.add_argument("--npz"); r.add_argument("--loop", default="auto", help="auto | none | <start>:<end> (frames; a jump: its window)")
     r.add_argument("--clip-name", help="the clip's name and folder (default the motion's): one motion onto several skeletons")
     r.add_argument("--max-error", type=float, default=0.5, help="fail above this worst bone direction error (degrees)")
+    r.add_argument("--posture", type=float, default=1.0, help="0..1: take this share of the pelvis, spine, neck and head's "
+                   "average lean (from the skeleton's upright rest, over the loop) out; 0 keeps ARDY's (README 'Posture')")
+    r.add_argument("--posture-bones", help="per-bone strengths, e.g. 'Pelvis=0,LowerBack=0' keeps the walk's own pelvis "
+                   "tilt and lower-back arch (its style) and straightens the rest (bones not named: 1)")
+    r.add_argument("--hip-sway", type=float, default=1.0, help="scale the pelvis's swing about its average and the hips' "
+                   "side-to-side travel (1: as generated; README 'Hip sway')")
+    r.add_argument("--posture-window", help="<start>:<end> frames the posture is measured over (default the loop; a jump: "
+                   "its standing frames before the take-off)")
     m = sub.add_parser("metrics"); m.add_argument("--name"); m.add_argument("--npz")
     sub.add_parser("self-test")
     a = ap.parse_args(argv)

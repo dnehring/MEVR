@@ -51,6 +51,25 @@ metres, 20 fps. Its rest pose has identity rotations (BVH style), so a rest bone
    scales by the pelvis heights; the root carries the travel.
 4. Checks: every mapped bone's direction against Core's, every frame (0.00 degrees on Miranda), and the render.
 
+### Posture
+
+ARDY's walks lean back from the hips with the head pushed forward (the hip-swaying walk: trunk 10 degrees back, head 4 cm
+ahead of the upper chest), which reproduced exactly reads as bad posture (the owner, 2026-11-19). `--posture` (0..1, default
+1) takes out that share of the pelvis, spine, neck and head's average deviation from the skeleton's own upright rest pose,
+measured in the body's heading frame over the loop (`--posture-window a:b` instead: a jump's standing frames before the
+take-off, not its crouch); the motion around the average stays. Straightening every bone also took the walk's style (its
+arched lower back and tilted pelvis: "no longer feminine"), so `--posture-bones` sets a strength per bone:
+`Pelvis=0,LowerBack=0` keeps the hips' tilt and the lower back's arch and straightens the chest, neck and head (option C of
+2026-11-19: trunk 7 degrees back, the head 1.3 cm). `retarget.json` reports each bone's correction and the result,
+`trunkLeanDeg` (pelvis to neck, + forward) and `headForwardCm`; her rest pose is -2.5 degrees and 1.3 cm.
+
+### Hip sway
+
+`--hip-sway <factor>` (1: as generated) scales the pelvis's swing about its average (roll, twist, tilt) and the hips'
+side-to-side travel about their own path; the chest and head keep their motion, the legs their directions (at large
+factors the feet slide a little: hidden walking in place). The walk's hips travel 11.5 cm side to side at 1, 19.5 at 1.5,
+27.6 at 2.
+
 ME stores bone rotations as `W_child = W_parent * L` (checked 2026-11-19 on Miranda: her rest stands with the head at 166 cm
 and the feet on the floor; the conjugated reading lies on its side).
 
