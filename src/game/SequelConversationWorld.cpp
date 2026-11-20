@@ -106,8 +106,6 @@ struct Settings {
     bool shepardStays = true;
     bool dofOff = true;          // [Cinematics] worldDof = 0 keeps it: the conversation's depth of field blurs the room
     bool nearPlane = true;       // [Cinematics] worldNearPlane (ME1's key): the on-foot near plane kept through the director's shots
-    double eyeForwardUnits = 8.0;  // the eyes ahead of his head bone (upstream ConvoFp's eyeFwd)
-    double eyeUpUnits = 4.0;
     // ME1's walking during a conversation (research/59, worldMove): the left stick moves Shepard and the view inside the
     // boundary around where the conversation began, never into people (worldMoveLeashM 4, worldMoveSpeedMS 1.4,
     // worldMoveClearM 0.7).
@@ -185,12 +183,18 @@ struct Conversation {
     cw::Opening opening = cw::Opening::Stay;
     ue3::Vector pin{};           // where Shepard's pawn is kept (the stick moves it)
     ue3::Vector start{};         // the boundary's centre
-    engine::UnrealVector headOffset{};  // his head bone from his pawn's place at the opening
+    // The held place from the pin (world, Unreal units): the view on foot's own (a Stay or WalkIn with the view on foot fresh:
+    // the eyes stay where the player had them), else his head bone at the mark plus the first-person eyes from it (EyeAtHead);
+    // its height then brought to the player's eye over his floor (StepEyeHeight). research/le2-conversations-in-world.md 7.1.
+    ue3::Vector eyeOffset{};
+    char const* eyesFrom = "";
+    double eyeFixUnits = 0.0;    // how far StepEyeHeight moved the eyes (the end line)
+    std::uint64_t eyeMs = 0;     // StepEyeHeight's last tick
+    bool eyeFixLogged = false;
     std::uint64_t stepMs = 0;
     double walkedUnits = 0.0;
     unsigned pinned = 0;         // camera updates that put him back on the pin
-    engine::UnrealVector head{}; // Shepard's head where the view stands (pin + headOffset)
-    ue3::Vector held{};          // the view's place (the POV before the renderer's offsets): PlaceFromHead(head), every tick
+    ue3::Vector held{};          // the view's place (the POV before the renderer's offsets): pin + eyeOffset, every tick
     ue3::Rotator facing{};
     float fov = 90.0f;
     cw::FollowState follow;
@@ -241,6 +245,17 @@ std::string gLast = "none yet";
 ue3::Object* gShepardPawn = nullptr;
 void const* gShepardTrack = nullptr;          // the move track walking Shepard in a moment, and its instance
 void const* gShepardTrackInstance = nullptr;
+// What Shepard stands on (RideBase, below): the base read last, where it was, how far it carried the player this scene.
+ue3::FieldRef gActorBase{"Engine.Actor", "Base", ue3::kEveryGame};
+struct Ride {
+    ue3::Object* base = nullptr;
+    ue3::Vector at{};
+    std::uint64_t ms = 0;
+    double units = 0.0;
+    bool logged = false;
+};
+Ride gRide;
+ue3::Vector gRideMomentDelta{};  // the ride since TickMoment last took it
 
 // engine/ConversationHooks' placement question (ME3's controller's SetPositionRotator; ME2's function is not pinned yet): after
 // the opening, the stage never moves Shepard (the player's place is the player's) nor anyone kept where they stand; the game's
@@ -480,15 +495,80 @@ double Distance(ue3::Vector const& a, ue3::Vector const& b) {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-// The held place from Shepard's head: the eyes a little ahead of the head bone along his facing. ME3's renderer adds the
-// player's own head movement (the host view's offsets: 6DOF from the recentre, not a framing offset as LE1's) at the POV.
-ue3::Vector PlaceFromHead(engine::UnrealVector const& head, ue3::Rotator const& facing) {
+// The first-person eyes from Shepard's head bone (ME1's eyeFromHead; core cw::NoteEyeFromHead): learned on foot from the game's
+// own first-person camera (its POV, before the renderer adds the head's lean from the recenter point) against his animated head
+// bone, with the head at the recenter point. The slice's 8 forward and 4 up put the eyes inside Shepard's shoulders (Tali's
+// conversation, research/le2-conversations-in-world.md 6.6). Each game's fallback is its on-foot measure on the fake headset
+// (arm IK's "first person camera vs Shepard's head bone" with the headset at the recenter point): ME2 24 forward, 13 up
+// (2026-11-14, lanes B to F); ME3 FPC3's ME3 run (section 7).
+#if defined(MEVR_GAME_LE3)
+constexpr cw::Vec3 kEyeFromHeadFallback{8.0, 0.0, 4.0};
+#else
+constexpr cw::Vec3 kEyeFromHeadFallback{24.0, 0.0, 13.0};
+#endif
+cw::EyeFromHead gEyeFromHead;
+std::uint64_t gEyeFromHeadLogMs = 0;
+
+ue3::Vector EyeAtHead(engine::UnrealVector const& head, ue3::Rotator const& facing) {
     engine::Basis const basis = engine::ToBasis(engine::UnrealRotation{0, facing.yaw, 0});
-    double const f = gSettings.eyeForwardUnits;
-    double const u = gSettings.eyeUpUnits;
-    return {static_cast<float>(head.x + basis.forward.x * f + basis.up.x * u),
-        static_cast<float>(head.y + basis.forward.y * f + basis.up.y * u),
-        static_cast<float>(head.z + basis.forward.z * f + basis.up.z * u)};
+    cw::Vec3 const e = cw::EyeFromHeadOr(gEyeFromHead, kEyeFromHeadFallback);
+    return {static_cast<float>(head.x + basis.forward.x * e.x + basis.right.x * e.y),
+        static_cast<float>(head.y + basis.forward.y * e.x + basis.right.y * e.y), static_cast<float>(head.z + e.z)};
+}
+
+// On foot (mode 0), the first-person camera the pawn's: one sample of the eyes from his head bone (the lean must be near zero:
+// the body follower slides the body with it).
+void LearnEyeFromHead(ue3::Object* pawn, ue3::Vector const& povLocation, ue3::Rotator const& povRotation,
+    std::optional<engine::UnrealVector> const& head) {
+    if (!head || pawn == nullptr || !player::FloorLockSample().cameraOwned) return;
+    vr::host_view::State const view = vr::host_view::Latest();
+    if (!view.valid) return;
+    double const lean = std::sqrt(static_cast<double>(view.offsetForward) * view.offsetForward +
+        static_cast<double>(view.offsetRight) * view.offsetRight + static_cast<double>(view.offsetUp) * view.offsetUp);
+    engine::Basis const basis = engine::ToBasis(engine::UnrealRotation{0, povRotation.yaw, 0});
+    double const dx = povLocation.x - head->x, dy = povLocation.y - head->y, dz = povLocation.z - head->z;
+    cw::Vec3 const sample{dx * basis.forward.x + dy * basis.forward.y, dx * basis.right.x + dy * basis.right.y, dz};
+    if (!cw::NoteEyeFromHead(gEyeFromHead, sample, lean)) return;
+    std::uint64_t const now = GetTickCount64();
+    if (gEyeFromHead.samples == 1 || now - gEyeFromHeadLogMs >= 60000) {
+        gEyeFromHeadLogMs = now;
+        log::Info("conversation world: on foot the first-person eyes are {:.1f} forward, {:.1f} right, {:.1f} up from Shepard's head "
+                  "bone ({} samples at the recenter point; a scene held at his mark puts the eyes there)",
+            gEyeFromHead.eye.x, gEyeFromHead.eye.y, gEyeFromHead.eye.z, gEyeFromHead.samples);
+    }
+}
+
+// ME1's StepEyeHeight (research/69 item 44; core cw::EyeHeightStep): while the conversation is held, the drawn eye centre (the
+// host's view.centreZ: the held place plus the head's own lean) is brought to Shepard's cylinder floor plus the player's live
+// standing eye (the floor lock's STAGE eye), 1 m/s for the opening's first 1.5 s, 0.3 m/s after. The fake headset reads no
+// standing eye: nothing moves there.
+ue3::FieldRef gPawnCylinder{"Engine.Pawn", "CylinderComponent", ue3::kEveryGame};
+ue3::FieldRef gCylinderHeight{"Engine.CylinderComponent", "CollisionHeight", ue3::kEveryGame};
+void StepEyeHeight(ue3::Object* pawn, std::uint64_t now, double dt) {
+    if (pawn == nullptr) return;
+    vr::host_view::State const view = vr::host_view::Latest();
+    if (!view.valid || !view.centreValid) return;
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const height = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+    if (!height || !(*height > 0.0f && *height < 300.0f)) return;
+    cw::EyeHeightFacts facts;
+    facts.floorZ = static_cast<double>(gC.pin.z) - *height;  // Shepard is kept on the pin (his pawn's place)
+    facts.eyeM = view.stageEyeM;
+    facts.drawnZ = view.centreZ;
+    facts.unitsPerMeter = view.unitsPerMeter > 0.0f ? view.unitsPerMeter : 100.0;
+    facts.dtS = dt;
+    facts.opening = now - gC.placedMs < 1500;
+    double const step = cw::EyeHeightStep(facts);
+    if (step == 0.0) return;
+    gC.eyeOffset.z += static_cast<float>(step);
+    gC.eyeFixUnits += std::abs(step);
+    double const err = facts.floorZ + facts.eyeM * facts.unitsPerMeter - facts.drawnZ;
+    if (!gC.eyeFixLogged && std::abs(err) > 3.0) {
+        gC.eyeFixLogged = true;
+        log::Info("conversation world: conversation {}: the drawn eyes are {:.2f} m over the floor under Shepard, the player's {:.2f} m: "
+                  "the view goes {} by {:.2f} m", gC.serial, (facts.drawnZ - facts.floorZ) / facts.unitsPerMeter, facts.eyeM,
+            err > 0 ? "up" : "down", std::abs(err) / facts.unitsPerMeter);
+    }
 }
 
 // The tracking frame of the held view (view_anchor's FromHost with the held POV in the game camera's place).
@@ -596,7 +676,7 @@ void End(conversation_world::Link const& link, char const* why) {
     gLast = std::format("conversation {}: {} after {:.1f} s; opening {}, walked {:.0f} units, Shepard put back {} times after the "
                         "fact; {}; {} re-placements by lasting jumps; at the source: Shepard's placements {}, people's {}, Shepard's "
                         "track moves {}{}; people kept after the fact: {} undone, {} yielded, {} refused by SetLocation, {} track "
-                        "walks left to their tracks",
+                        "walks left to their tracks; the eyes from {}, their height brought {:.2f} m to the player's",
         gC.serial, why, static_cast<double>(GetTickCount64() - gC.startMs) / 1000.0, cw::Name(gC.opening), gC.walkedUnits, gC.pinned,
         gC.placed ? std::format("held at ({:.0f}, {:.0f}, {:.0f}) yaw {:.1f}", gC.held.x, gC.held.y, gC.held.z,
                         gC.facing.yaw * (360.0 / 65536.0))
@@ -605,7 +685,13 @@ void End(conversation_world::Link const& link, char const* why) {
         gC.sceneWantsShepard ? std::format(" (last wanted at ({:.0f}, {:.0f}, {:.0f}), {:.0f} units from the player's place)",
                                    gC.sceneWants.x, gC.sceneWants.y, gC.sceneWants.z, Distance(gC.sceneWants, gC.pin))
                              : std::string(),
-        gC.undoneTotal, gC.yieldedTotal, gC.refusedMoves, gC.trackWalks);
+        gC.undoneTotal, gC.yieldedTotal, gC.refusedMoves, gC.trackWalks, gC.eyesFrom[0] != 0 ? gC.eyesFrom : "nowhere yet",
+        gC.eyeFixUnits / 100.0);
+    if (gRide.units > 0.0) {
+        gLast += std::format("; the player rode {:.2f} m with what Shepard stood on", gRide.units / 100.0);
+    }
+    gRide.units = 0.0;
+    gRide.logged = false;
     log::Info("conversation world: {}", gLast);
     if (gC.placed) view_anchor::Hold(std::nullopt);
     if (gC.placed || gC.early) gEndedShownMs = GetTickCount64();
@@ -619,12 +705,56 @@ void End(conversation_world::Link const& link, char const* why) {
     gC = {};
 }
 
+// What Shepard stands on carries the player (ME1's RideBase, research/69 item 42; the ME3 audit's row 23: "36 full ME3
+// conversations move a shuttle, car or lift"): his pawn's Engine.Actor.Base (a lift's or a shuttle's InterpActor; the world's
+// own floor never moves), and how far it moved since the last read moves every place the scene keeps in the world: the pin
+// (else the pin put him back where the ride began, off the lift), the walk's boundary, where the scene wanted him, the kept
+// places of those standing on the same floor, and a moment's view. Read before the pin each camera update and each tick (both
+// read only the move since the last read). Not followed: a turning floor.
+
+void RideBase(ue3::Object* pawn) {
+    std::uint64_t const now = GetTickCount64();
+    ue3::Object* const base = pawn != nullptr && ue3::runtime::IsAlive(pawn) ? gActorBase.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;
+    auto const baseAt = base != nullptr && ue3::runtime::IsAlive(base) ? player::Location(base) : std::nullopt;
+    bool const same = base != nullptr && base == gRide.base && baseAt && gRide.ms != 0 && now - gRide.ms < 250;
+    ue3::Vector const was = gRide.at;
+    gRide.base = baseAt ? base : nullptr;
+    gRide.at = baseAt ? *baseAt : ue3::Vector{};
+    gRide.ms = now;
+    if (!same) return;
+    float const dx = gRide.at.x - was.x, dy = gRide.at.y - was.y, dz = gRide.at.z - was.z;
+    double const len = std::sqrt(static_cast<double>(dx) * dx + static_cast<double>(dy) * dy + static_cast<double>(dz) * dz);
+    if (len < 0.01 || len > 500.0) return;  // still, or a jump of the floor itself (the scene's own rules)
+    gRide.units += len;
+    if (!gRide.logged) {
+        gRide.logged = true;
+        log::Info("conversation world: what Shepard stands on moves ({}, {:.2f} m this tick): the player rides with it",
+            ue3::runtime::FullName(base), len / 100.0);
+    }
+    auto const shift = [&](ue3::Vector& p) {
+        p.x += dx;
+        p.y += dy;
+        p.z += dz;
+    };
+    if (gC.on && gC.placed) {
+        shift(gC.pin);
+        shift(gC.start);
+        if (gC.sceneWantsShepard) shift(gC.sceneWants);
+        for (Kept& k : gC.kept) {
+            ue3::Object* const on = k.actor != nullptr && ue3::runtime::IsAlive(k.actor) ? gActorBase.Read<ue3::Object*>(k.actor).value_or(nullptr) : nullptr;
+            if (on == base) shift(k.at);
+        }
+    }
+    if (gMomentHeld) shift(gRideMomentDelta);  // a moment's view (TickMoment takes it)
+}
+
 // Engine.Camera.UpdateCamera, after the game's (before the frame is drawn): the speakers the stage moved since the last update
 // are put back (ME1's keep-in-place, game/ConversationWorld's undo in the same handler).
 void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*parms*/, void* /*result*/) {
     if (!(gC.on && gC.placed) && !gMomentHeld) return;
     ue3::Object* const controller = player::Controller();
     if (camera == nullptr || controller == nullptr || player::CameraOwner(camera) != controller) return;
+    RideBase(player::Pawn(controller));  // a lift or a shuttle under Shepard moves the pin first (else the pin pulls him off it)
     if (gConstrainAspect.ReadBool(camera).value_or(false) && gConstrainAspect.WriteBool(camera, false)) {
         write_journal::Wrote("ConversationWorld.noLetterbox", camera, 4);
         if (gLetterboxClears++ == 0) {
@@ -816,6 +946,10 @@ void EndMoment(conversation_world::Link const& link, char const* why, bool publi
     view_anchor::Hold(std::nullopt);
     if (gDof.IsOff()) gDofBackOwed = true;
     if (publishOff) PublishOff(link);
+    if (gRide.units > 0.0) log::Info("conversation world: moment {}: the player rode {:.2f} m with what Shepard stood on", gM.serial, gRide.units / 100.0);
+    gRide.units = 0.0;
+    gRide.logged = false;
+    gRideMomentDelta = {};
     bool const declined = gM.declined;
     gM = {};
     gM.declined = declined;
@@ -898,6 +1032,13 @@ bool TickMoment(conversation_world::Link const& link, ue3::Object* controller, s
     }
     double const dt = std::clamp(static_cast<double>(now - gM.stepMs) / 1000.0, 0.0, 0.1);
     gM.stepMs = now;
+    if (!gM.provisional) {
+        RideBase(pawn);  // ME1's RideBase in a moment: what Shepard stands on carries the view
+        gM.feet.x += gRideMomentDelta.x;
+        gM.feet.y += gRideMomentDelta.y;
+        gM.feet.z += gRideMomentDelta.z;
+    }
+    gRideMomentDelta = {};
     if (!gM.provisional && at) {
         vr::controllers::State const pads = vr::controllers::Latest();
         vr::host_view::State const view = vr::host_view::Latest();
@@ -1013,6 +1154,10 @@ void Tick(conversation_world::Link const& link) {
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         if (pov && pov->location != nullptr && pov->rotation != nullptr && pov->fov != nullptr) {
             gFootPov = {true, *pov->location, *pov->rotation, *pov->fov};
+            if (WorldWanted()) {
+                ue3::Object* const pawn = player::Pawn(controller);
+                LearnEyeFromHead(pawn, *pov->location, *pov->rotation, HeadOf(pawn));
+            }
         }
     } else {
         gOnFootSinceMs = 0;
@@ -1098,8 +1243,18 @@ void Tick(conversation_world::Link const& link) {
         gC.opening = cw::DecideOpening(facts, cw::OpeningRule::Auto);
         gC.pin = gC.opening == cw::Opening::Cut ? *pawnAt : gFoot.pawn;
         gC.start = gC.pin;
-        gC.headOffset = {head->x - pawnAt->x, head->y - pawnAt->y, head->z - pawnAt->z};
-        gC.facing = ue3::Rotator{0, rotation->yaw, 0};
+        // The eyes (ME1's opening: the view on foot when it was Shepard's a moment ago, else his eyes from his head bone facing
+        // where his pawn faces): Stay and WalkIn keep the player's own eyes and facing, never turned at the opening.
+        if (gC.opening != cw::Opening::Cut && facts.known && gFootPov.valid) {
+            gC.eyeOffset = {gFootPov.location.x - gFoot.pawn.x, gFootPov.location.y - gFoot.pawn.y, gFootPov.location.z - gFoot.pawn.z};
+            gC.facing = ue3::Rotator{0, gFootPov.rotation.yaw, 0};
+            gC.eyesFrom = "the view on foot";
+        } else {
+            gC.facing = ue3::Rotator{0, rotation->yaw, 0};
+            ue3::Vector const eyes = EyeAtHead(*head, gC.facing);
+            gC.eyeOffset = {eyes.x - pawnAt->x, eyes.y - pawnAt->y, eyes.z - pawnAt->z};
+            gC.eyesFrom = gEyeFromHead.learned ? "his head bone (the eyes as learned on foot)" : "his head bone (the game's measure)";
+        }
         ue3::Object* const camera = player::Camera(controller);
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         gC.fov = pov && pov->fov != nullptr ? std::clamp(*pov->fov, 60.0f, 110.0f) : 90.0f;
@@ -1113,9 +1268,11 @@ void Tick(conversation_world::Link const& link) {
             gDof.Off("a conversation held in the world (the director's depth of field blurs the room)");
         }
         log::Info("conversation world: conversation {}: opening {} (the stage put Shepard {:.0f} units from where the player stood, "
-                  "{:+.0f} up{}): the player's place is {}, Shepard kept there; the left stick walks him within {:.0f} units",
+                  "{:+.0f} up{}): the player's place is {}, Shepard kept there; the eyes from {} ({:.0f}, {:.0f}, {:.0f} from his "
+                  "pawn); the left stick walks him within {:.0f} units",
             gC.serial, cw::Name(gC.opening), facts.markUnits, facts.riseUnits, facts.known ? "" : "; where he stood isn't known",
-            gC.opening == cw::Opening::Cut ? "his mark (another space)" : "where the player stood", gSettings.leashUnits);
+            gC.opening == cw::Opening::Cut ? "his mark (another space)" : "where the player stood", gC.eyesFrom, gC.eyeOffset.x,
+            gC.eyeOffset.y, gC.eyeOffset.z, gSettings.leashUnits);
     } else if (gSettings.move) {
         // ME1's worldMove: the left stick along the head's facing, inside the boundary, never into people.
         double const dt = std::clamp(static_cast<double>(now - gC.stepMs) / 1000.0, 0.0, 0.1);
@@ -1154,8 +1311,14 @@ void Tick(conversation_world::Link const& link) {
         }
         gC.stepMs = now;
     }
-    gC.head = {gC.pin.x + gC.headOffset.x, gC.pin.y + gC.headOffset.y, gC.pin.z + gC.headOffset.z};
-    gC.held = PlaceFromHead(gC.head, gC.facing);
+    if (gC.placed) RideBase(pawn);  // what Shepard stands on carries the place (ME1's RideBase)
+    if (gC.placed && now > gC.placedMs) {
+        // The eyes at the player's own height over the floor under Shepard (ME1's StepEyeHeight).
+        double const dt = gC.eyeMs != 0 ? std::clamp(static_cast<double>(now - gC.eyeMs) / 1000.0, 0.0, 0.1) : 0.0;
+        StepEyeHeight(pawn, now, dt);
+    }
+    gC.eyeMs = now;
+    gC.held = {gC.pin.x + gC.eyeOffset.x, gC.pin.y + gC.eyeOffset.y, gC.pin.z + gC.eyeOffset.z};
     Publish(link, controller);
     // Arm IK in the held frame once the host's view is the held one (a head-tracked view; nothing while it is still cinematic).
     if (auto const frame = HeldFrame()) view_anchor::Hold(frame, vr::host_view::Latest());

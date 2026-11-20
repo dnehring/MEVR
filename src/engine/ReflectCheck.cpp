@@ -3803,6 +3803,8 @@ void CheckFields() {
     CheckLe3GalaxyRay();
     // game/VrCover (lane CV2): the floor under the player, for each judged hit's detail
     CheckField("Engine.Pawn", "CylinderComponent", SDK_FIELD(APawn, CylinderComponent));
+    // game/SequelConversationWorld's RideBase (and game/OmniTool): what Shepard stands on (research/le2-conversations-in-world.md 7)
+    CheckField("Engine.Actor", "Base", SDK_FIELD(AActor, Base));
     // game/VrCover: the shooter's eyes, and Shepard's crouched eyes (research/23 section 7.8)
     CheckField("Engine.Pawn", "EyeHeight", SDK_FIELD(APawn, EyeHeight));
     CheckField("Engine.Pawn", "BaseEyeHeight", SDK_FIELD(APawn, BaseEyeHeight));

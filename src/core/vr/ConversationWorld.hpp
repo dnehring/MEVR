@@ -784,6 +784,54 @@ struct Marker {
 Marker StepMarker(MarkerState& state, MarkerFacts const& facts, double dtS, MarkerLimits const& limits = {});
 inline void Calm(Insistence& state) { state.count = 0; }
 
+// ---- The eyes in a held scene (research/69 item 44; research/le2-conversations-in-world.md section 7) ------------------------
+// The eyes at the player's own height over the floor under Shepard (the owner, 2026-11-17, at the council hearing's podium: "I'm
+// still floating above where I should be"): the drawn eye centre (the host's view.centreZ: the held place, the framing and the
+// head's own pose) is brought to `floorZ` (his cylinder's floor, Location.z - CollisionHeight) plus the player's live standing
+// eye `eyeM` (the floor lock's STAGE eye): `openingRateMS` for the opening's first seconds (under its dip), `rateMS` after,
+// nothing within `deadbandUnits`; nothing when `eyeM` isn't a standing eye (the fake headset's floor reads 0). The step in
+// Unreal units, + up, to add to the held place's height.
+struct EyeHeightFacts {
+    double floorZ = 0.0;
+    double eyeM = 0.0;
+    double drawnZ = 0.0;
+    double unitsPerMeter = 100.0;
+    double dtS = 0.0;
+    bool opening = false;
+};
+struct EyeHeightLimits {
+    double openingRateMS = 1.0;
+    double rateMS = 0.3;
+    double deadbandUnits = 1.0;
+    double minEyeM = 0.5;
+    double maxEyeM = 2.6;
+};
+double EyeHeightStep(EyeHeightFacts const& facts, EyeHeightLimits const& limits = {});
+// Where the first-person eyes are drawn from Shepard's head bone (forward, right, up in the view's yaw; Unreal units), learned on
+// foot from the game's own first-person camera (its POV: the renderer's lean comes after it) against his animated head bone,
+// for a scene held at his mark when no view on foot is fresh (ME1's eyeFromHead, a constant measured the same way: forward 8.9,
+// right 1.7, up 29.3). The sequels' skeletons and cameras differ (ME2 on foot: about 24 forward, 13 up; the ME3 slice's guess of
+// 8 forward, 4 up put the eyes inside Shepard's shoulders, research/le2-conversations-in-world.md 6.6): a sample counts only with
+// the head at the recenter point (the host's view offset under `stillUnits`: the body follower slides the body with a lean) and
+// within the sanity box; it is smoothed (`gain` per sample, the first taken whole).
+struct EyeFromHead {
+    bool learned = false;
+    Vec3 eye{};
+    int samples = 0;
+};
+struct EyeFromHeadLimits {
+    double stillUnits = 5.0;
+    double maxForwardUnits = 60.0;
+    double maxRightUnits = 30.0;
+    double minUpUnits = -45.0;
+    double maxUpUnits = 60.0;
+    double gain = 0.05;
+};
+// True when the sample was taken.
+bool NoteEyeFromHead(EyeFromHead& state, Vec3 const& sample, double leanUnits, EyeFromHeadLimits const& limits = {});
+// The eyes from his head bone: the learned place, else `fallback` (each game's measure).
+Vec3 EyeFromHeadOr(EyeFromHead const& state, Vec3 const& fallback);
+
 // The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
 // or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those
 // held longer than maxAgeMs are dropped first (into `expired`).
