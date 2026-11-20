@@ -1,7 +1,7 @@
 ---
 type: Gotcha
 title: A build killed mid-compile leaks MSBuild's machine-wide compile slots, and every later build waits forever
-description: CMakeLists.txt sets EnforceProcessCountAcrossBuilds=true, so every build's cl.exe processes take slots from one named semaphore shared by the whole machine; a build killed while holding slots never gives them back, and every build after it hangs with no cl.exe running until every MSBuild process has exited; pass -p:EnforceProcessCountAcrossBuilds=false.
+description: CMakeLists.txt set EnforceProcessCountAcrossBuilds=true from 2026-11-17 to 2026-11-19, so every build's cl.exe processes took slots from one named semaphore shared by the whole machine; a build killed while holding slots never gave them back, and every build after it hung with no cl.exe running until every MSBuild process had exited; the property is off now, and older trees take -p:EnforceProcessCountAcrossBuilds=false.
 tags: [build, msbuild, tooling, sessions]
 status: stable
 timestamp: 2026-11-19T19:54:17Z
@@ -21,8 +21,8 @@ tool call times out, but the shell and the build keep running, holding their bui
 
 # Cause
 
-`CMakeLists.txt` (lane BLD, 2026-11-17) writes `UseMultiToolTask=true` and `EnforceProcessCountAcrossBuilds=true` into every
-project's Globals. The multi-tool task gives each source its own `cl.exe`, and with the second property each one first takes
+`CMakeLists.txt` (lane BLD, 2026-11-17, until 2026-11-19) wrote `UseMultiToolTask=true` and
+`EnforceProcessCountAcrossBuilds=true` into every project's Globals. The multi-tool task gives each source its own `cl.exe`, and with the second property each one first takes
 a slot from one named semaphore for the whole machine (one slot per logical processor), so builds running at once share the
 cores instead of each starting 24 compiles.
 
@@ -48,17 +48,23 @@ A `cmake --build` older than any build takes (a cold build-trilogy is about 6 mi
 
 # Fix in place
 
-- Every `cmake --build` passes `-p:EnforceProcessCountAcrossBuilds=false` after the `--` (a property on the command line
-  overrides the project's Globals): CLAUDE.md's build line. Such a build doesn't touch the semaphore, so it neither waits
-  on a leaked one nor leaks one itself.
+- Since 2026-11-19 `CMakeLists.txt` no longer sets the property (the owner's yes), so a tree configured from main doesn't
+  touch the semaphore: it neither waits on a leaked one nor leaks one itself. Each project's compiles are still capped at
+  one per logical processor (`CL_MPCount` lowers it), and `--parallel` caps the projects built at once.
+- A tree configured from an older commit, or another branch, still sets it: pass `-p:EnforceProcessCountAcrossBuilds=false`
+  after the `--` (a property on the command line overrides the project's Globals), as CLAUDE.md's build line does. It is
+  harmless on a tree that doesn't set it.
 - When it bites anyway: stop every stuck tree (`taskkill /T /F /PID <the cmake, or its cmd wrapper>`), then check again,
   since a stuck build's shell goes on to its next command (a test run, another build). Once no process has the semaphore
   open, Windows frees it, and the next build gets a fresh one with every slot.
 - The `.lock` files in `%LOCALAPPDATA%\MEVR\build-cache` are CMake `file(LOCK)` locks, released when their process ends;
   a leftover file blocks nothing.
-- Not changed: `CMakeLists.txt` still sets the property to true, and the scripts in `tools/qa-cafeteria`, `tools/qa-hubs`
-  and `tools/package-release.ps1` build without the flag. Turning it off there is the lasting fix, at the cost of
-  concurrent builds no longer sharing the cores.
+- The cost of turning it off: builds running at once no longer share the cores; they oversubscribe the CPU and each takes
+  longer, but none waits forever. Measured 2026-11-19 while a full build-trilogy and build-mono ran beside four other
+  sessions' builds: up to 115 cl.exe at once on 24 threads, never under 31 GB free of 64.
+- Changing `CMAKE_VS_GLOBALS` changes the third-party cache's key (`tools/cmake/ThirdParty.cmake` records it), so the first
+  configure after the change builds the shared cache entries once (about 47 s per group), and each tree's projects rebuild
+  once (build-trilogy 370 s under that load).
 
 # Citations
 

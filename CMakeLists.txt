@@ -30,11 +30,14 @@ endfunction()
 # Every source compiles in parallel, inside each project too (lane BLD, 2026-11-17). Without this, MSBuild hands all of a
 # project's sources to one cl.exe, which compiles them one after the other: a cold build-trilogy spent 10 minutes with 3-6
 # of 24 cores busy while the three mods' 190 files went through one at a time. MSBuild's multi-tool task gives every
-# source its own cl.exe, at most one per logical processor across all the projects the build runs at once. The compiler
-# gets the same options for each file (the task adds /FS, so the processes share a project's PDB, and drops /MP), so the
-# objects are the same. Set before any target is defined, so the external projects (LExSDKv2, RmlUi...) get it too.
+# source its own cl.exe, at most one per logical processor in each project it compiles (CL_MPCount lowers that). The
+# compiler gets the same options for each file (the task adds /FS, so the processes share a project's PDB, and drops /MP),
+# so the objects are the same. Set before any target is defined, so the external projects (LExSDKv2, RmlUi...) get it too.
+# EnforceProcessCountAcrossBuilds is left off (2026-11-19): it made every cl.exe on the machine take a slot from one named
+# semaphore, and a build killed mid-compile never gave its slots back, so every later build hung with no cl.exe running
+# (docs/knowledge/gotchas/msbuild-cross-build-semaphore.md: six builds hung for 14 hours).
 if (CMAKE_GENERATOR MATCHES "^Visual Studio")
-    list(APPEND CMAKE_VS_GLOBALS "UseMultiToolTask=true" "EnforceProcessCountAcrossBuilds=true")
+    list(APPEND CMAKE_VS_GLOBALS "UseMultiToolTask=true")
 endif ()
 
 # One source tree, one ASI per game (docs/trilogy-design.md). LE1 first.
