@@ -15,6 +15,8 @@
 #   tools/game-watch.ps1 -Watch                  runs until stopped: one line per change of state, and a STUCK line
 #                                                (with evidence) once no-world, blocked or no-frames outlasts -LimitS;
 #                                                for a background watcher (the coordinator's Monitor) or a terminal
+#   tools/game-watch.ps1 -Watch -AlertsOnly      only the STUCK lines and GONE (a game that went away in the middle of
+#                                                a load, or with a crash report): one notification per failure
 #
 # Evidence on a failure, in %LOCALAPPDATA%\MEVR\game-watch\<stamp>-<game>-<state>\: testloop.status, the tail of the
 # game's mod log and of Halcyon's log, any crash report newer than the watch's start, and a snapshot of the eyes when the
@@ -28,7 +30,9 @@ param(
     [double]$LimitS = 120,
     [double]$IntervalS = 2,
     [switch]$NoEvidence,
-    [switch]$Quiet
+    [switch]$Quiet,
+    # -Watch: print only STUCK lines and a game's unexpected exit (a monitor's notifications), not every change of state
+    [switch]$AlertsOnly
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\common.ps1"
@@ -115,17 +119,31 @@ if ($Watch) {
     # One line per change of state; a STUCK line (and evidence) once per stuck spell.
     $last = ''
     $reported = $false
-    Out-Line "watching (stuck after $LimitS s without a drawn world)"
+    $lastGame = $null
+    if (-not $AlertsOnly) { Out-Line "watching (stuck after $LimitS s without a drawn world)" }
     while ($true) {
         $v = Get-MevrWorldVerdict
         $key = "$($v.Game)/$($v.Pid)/$($v.State)"
         if ($key -ne $last) {
             # Waiting states are logged once they last a few seconds, so a flicker between drawn and no-world stays quiet.
             if ($v.State -in 'drawn', 'no-game', 'starting' -or $v.Seconds -ge 10) {
-                Out-Line $v.Detail
+                if (-not $AlertsOnly) { Out-Line $v.Detail }
                 $last = $key
                 $reported = $false
             }
+        }
+        # A game that goes away without its run lock released and with a crash report newer than it, or in the middle of a
+        # no-world spell, is worth a line even in -AlertsOnly (the 2026-11-20 ME3 that vanished 59 s into a load).
+        if ($v.State -eq 'no-game' -and $null -ne $lastGame) {
+            $crash = @('crash-breadcrumbs.txt', 'crash-firstchance.txt', 'crash-exit.txt') | ForEach-Object { Join-Path $MevrDataDir $_ } |
+                Where-Object { (Test-Path $_) -and (Get-Item $_).LastWriteTime -gt $lastGame.Seen.AddMinutes(-1) }
+            if ($crash -or $lastGame.State -in 'no-world', 'blocked', 'no-frames') {
+                Out-Line ("GONE: {0} (pid {1}) went away while {2}{3}" -f $lastGame.Game, $lastGame.Pid, $lastGame.State,
+                    $(if ($crash) { "; crash report: $(@($crash) -join ', ')" } else { '' }))
+            }
+            $lastGame = $null
+        } elseif ($v.State -ne 'no-game') {
+            $lastGame = [pscustomobject]@{ Game = $v.Game; Pid = $v.Pid; State = $v.State; Seen = Get-Date }
         }
         if (-not $reported -and (Test-Bad $v $LimitS)) {
             $dir = Save-Evidence $v "$($v.State) for $([int]$v.Seconds) s"
