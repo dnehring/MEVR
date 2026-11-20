@@ -46,6 +46,14 @@ internal sealed class Plan
     public List<StepPlan> Steps { get; set; } = new();
     // A generated plan (every female body of a game): a step that fails is reported and left out, the rest are built.
     public bool ContinueOnError { get; set; }
+    // A bare body of the same game whose hips and thighs a skirt is fitted to (Fit; steps with "fit").
+    public FitReference FitReference { get; set; }
+}
+
+internal sealed class FitReference
+{
+    public string Source { get; set; }
+    public string Mesh { get; set; }
 }
 
 // One mesh of a plan: copied from `source` into the plan's package as `name`, its bones added, its soft regions or hair
@@ -72,6 +80,8 @@ internal sealed class StepPlan
     // The game objects (full paths in the game's memory) this rig stands in for, written to the package's index (<out>.json);
     // empty: the source mesh's own path.
     public List<string> StandsFor { get; set; } = new();
+    // A skirt fitted under the glutes (Fit): "auto" when the body is one (a generated plan's every step), "skirt" always, else none.
+    public string Fit { get; set; }
 }
 
 internal static class Rigging
@@ -96,17 +106,45 @@ internal static class Rigging
         using IMEPackage pcc = MEPackageHandler.CreateAndOpenPackage(outPath, Lex.Game, forceLoadFromDisk: true);
         var done = new Dictionary<string, StepPlan>(StringComparer.OrdinalIgnoreCase);
         var index = new List<(string path, string name)>();
-        int built = 0, skipped = 0, failed = 0;
+        int built = 0, skipped = 0, failed = 0, fitted = 0;
         var started = System.Diagnostics.Stopwatch.StartNew();
+        Fit.Profile fitProfile = null;
+        if (plan.FitReference != null)
+        {
+            using var refPackage = MEPackageHandler.OpenMEPackage(Resolve(plan.FitReference.Source), forceLoadFromDisk: true);
+            fitProfile = Fit.Reference(ObjectBinary.From<SkeletalMesh>(Lex.FindMesh(refPackage, plan.FitReference.Mesh)));
+            Console.WriteLine($"fit reference {plan.FitReference.Mesh}: the glutes' widest point at z {fitProfile.ZGlute}");
+        }
         foreach (var step in plan.Steps)
         {
             using var source = MEPackageHandler.OpenMEPackage(Resolve(step.Source), forceLoadFromDisk: true);
             var sourceMesh = Lex.FindMesh(source, step.Mesh);
             var report = new Report();
+            Fit.Verdict fit = null;
+            bool wantFit = step.Fit != null && !step.Fit.Equals("none", StringComparison.OrdinalIgnoreCase);
+            if (wantFit && fitProfile == null)
+            {
+                report.Line("fit: the plan has no fitReference; not fitted");
+            }
+            else if (wantFit)
+            {
+                fit = Fit.Detect(ObjectBinary.From<SkeletalMesh>(sourceMesh), fitProfile);
+                if (!fit.Skirt && step.Fit.Equals("skirt", StringComparison.OrdinalIgnoreCase))
+                {
+                    fit = fit with { Skirt = true };
+                }
+                report.Line("fit: " + (fit.Skirt ? "fitted under the glutes, " : "not fitted, ") + fit.Why);
+                if (!fit.Skirt) fit = null;
+            }
             Placement.Result placed = null;
             if (string.Equals(step.Place, "auto", StringComparison.OrdinalIgnoreCase))
             {
-                placed = Placement.Auto(ObjectBinary.From<SkeletalMesh>(sourceMesh));
+                var placeOn = ObjectBinary.From<SkeletalMesh>(sourceMesh);
+                if (fit != null)
+                {
+                    Fit.Apply(placeOn, fitProfile, fit.K);  // the bones placed on the fitted shape the game will draw
+                }
+                placed = Placement.Auto(placeOn);
                 foreach (string n in placed.Notes) report.Line("place: " + n);
                 if (placed.Bones.Count == 0 && step.Bones.Count == 0 && step.Hair == null)
                 {
@@ -121,7 +159,8 @@ internal static class Rigging
             try
             {
                 export = Port.Mesh(sourceMesh, pcc, step.Name, report);
-                RigStep(pcc, step, sourceMesh, export, placed, done, outPath, report);
+                RigStep(pcc, step, sourceMesh, export, placed, done, outPath, report, fit, fitProfile);
+                if (fit != null) ++fitted;
             }
             catch (Exception e) when (plan.ContinueOnError)
             {
@@ -144,7 +183,7 @@ internal static class Rigging
         pcc.Save();
         string indexPath = Path.ChangeExtension(outPath, ".json");
         WriteIndex(indexPath, Path.GetFileNameWithoutExtension(outPath), index);
-        Console.WriteLine($"{Path.GetFileName(outPath)}: {built} built, {skipped} skipped (no soft tissue), {failed} failed, " +
+        Console.WriteLine($"{Path.GetFileName(outPath)}: {built} built ({fitted} skirts fitted), {skipped} skipped (no soft tissue), {failed} failed, " +
             $"{new FileInfo(outPath).Length / 1024} KB, {started.Elapsed.TotalSeconds:F0} s; index {indexPath}");
         return failed > 0 ? 1 : 0;
     }
@@ -165,7 +204,7 @@ internal static class Rigging
     }
 
     static void RigStep(IMEPackage pcc, StepPlan step, ExportEntry sourceMesh, ExportEntry export, Placement.Result placed,
-        Dictionary<string, StepPlan> done, string outPath, Report report)
+        Dictionary<string, StepPlan> done, string outPath, Report report, Fit.Verdict fit = null, Fit.Profile fitProfile = null)
     {
         {
             var mesh = ObjectBinary.From<SkeletalMesh>(export);
@@ -179,6 +218,11 @@ internal static class Rigging
             }
 
             Skeleton.Check(mesh, report);
+            if (fit != null)
+            {
+                var (moved, peak) = Fit.Apply(mesh, fitProfile, fit.K);
+                report.Line($"fit: {moved} vertices moved (every LOD), at most {peak:F1} cm");
+            }
             var bones = new List<BonePlan>(step.Bones);
             var regions = new List<RegionPlan>(step.Regions);
             if (placed != null)
