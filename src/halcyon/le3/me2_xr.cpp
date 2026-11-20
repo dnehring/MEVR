@@ -881,7 +881,10 @@ void MevrPublishView(const XrView& view) noexcept
     const float headP[3] = {view.pose.position.x, view.pose.position.y, view.pose.position.z};
     const bool headLook = ME2VR::CalcViewHook::GetHeadLookUserEnabled() && !cineLocked;
     const int gameMode = ME2VR::EngineProbe::ReadGameMode();
-    ::MevrSeams::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && gameMode == 0, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
+    // [MEVR] A conversation held in the world (MevrSeams::ConversationInWorld) is a head-tracked world view too: the mod's arm IK
+    // and the body under the player run in its held frame (game/SequelConversationWorld).
+    const bool mevrWorldView = gameMode == 0 || ::MevrSeams::ConversationInWorld();
+    ::MevrSeams::OnViewBuilt(!ME2VR::Menu::IsOpen() && !cineLocked && mevrWorldView, headLook, false, ME2VR::CalcViewHook::HeadLookYawUU(),
                                      ME2VR::CalcViewHook::HeadLookPitchUU(), headQ, headP, right, up, fwd, w2m,
                                      gameMode == 0 && !ME2VR::CalcViewHook::GetVrCineActive());
 }
@@ -1664,6 +1667,12 @@ void RunFrame() noexcept
         // its zoom, which is meant for director-framed shots. Applied last so the FOV hysteresis and
         // the mode-8 rule above cannot put it back. Exact class match, so nothing else is affected.
         if (ME2VR::EngineProbe::IsPhotoCamera()) cine = false;
+#if defined(MEVR_ASI)
+        // [MEVR] ME1's first-person conversations (research/69, T49's ME3 slice, the owner 2026-11-19): a conversation the mod
+        // shows in the world is no cinematic: the world in stereo as on foot, the view held at the player's place
+        // (MevrSeams::WorldViewHoldBegin), the director's camera serving the game only; its UI on our HUD panel.
+        if (::MevrSeams::ConversationInWorld()) cine = false;
+#endif
         s_fovCine = cine;
 
         // [CONVOLATCH] LE3 swaps the camera CLASS per shot (a Grissom close-up ran ~4.5s on a

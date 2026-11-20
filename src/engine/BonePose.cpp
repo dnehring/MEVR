@@ -9,6 +9,8 @@
 #include "core/ik/TwoHand.hpp"
 #include "engine/Addresses.hpp"
 #include "engine/Engine.hpp"
+#include "engine/ClipPose.hpp"
+#include "engine/HairPose.hpp"
 #include "engine/Skeleton.hpp"
 #include "ue3/Runtime.hpp"
 
@@ -1447,6 +1449,12 @@ void UpdateSkelPoseHook(Mesh* self, float deltaTime, unsigned tickFaceFx, unsign
         }
         if (self != nullptr && self == gPartMesh.load(std::memory_order_acquire)) {
             PartPost(self);  // the vent's rack: one part of the held gun moved (research/45 section 6)
+        }
+        if (clip_pose::Wants(self)) {
+        clip_pose::AfterPose(self, deltaTime);  // a generated clip first: the hair then reacts to it
+    }
+    if (hair_pose::Wants(self)) {
+            hair_pose::AfterPose(self, deltaTime);  // hair on simulated bone chains (docs/trilogy-hair-plan.md)
         }
         AfterUpdateSkelPose(self, deltaTime, caller);
     } __finally {

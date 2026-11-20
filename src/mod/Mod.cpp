@@ -65,6 +65,8 @@
 #include "game/GamepadBridge.hpp"
 #include "game/GamepadMapping.hpp"
 #include "game/GunKick.hpp"
+#include "game/AnimDriver.hpp"
+#include "game/Hair.hpp"
 #include "game/HandContact.hpp"
 #include "game/HandAim.hpp"
 #include "game/HandTargets.hpp"
@@ -98,6 +100,7 @@
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/SequelConversationWorld.hpp"
 #include "game/AuthoredMoment.hpp"
 #include "game/ConversationFlow.hpp"
 #include "game/SoundPlace.hpp"
@@ -1440,6 +1443,8 @@ void PublishStatus() {
         full += ", \"galaxyProjector\": " + game::le2_galaxy_capture::StatusJson();  // the sequels' flow (game/GalaxyProjectorFlow)
 #endif
         full += ", \"handContact\": " + game::hand_contact::StatusJson();
+        full += ", \"hair\": " + game::hair::StatusJson();
+        full += ", \"animDriver\": " + game::anim_driver::StatusJson();
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1588,6 +1593,7 @@ void Heartbeat() {
         game::traversal::LogStats();
         game::gun_kick::LogStats();
         game::hand_contact::LogStats();
+        game::hair::LogStats();
         game::combat_stance::LogStats();
         game::sprint::LogStats();
         game::fingers::LogStats();
@@ -1886,6 +1892,12 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::holsters::Tick(deltaSeconds, holsterLink);
         // The hands that touch someone buzz (research/73): the writer's last contact, after arm IK's tick.
         game::hand_contact::Tick(deltaSeconds, {holsterLink.haptic, holsterLink.hapticHz, holsterLink.hapticContinuous});
+        // Hair that moves (docs/trilogy-hair-plan.md): the people near and their hair, for the pose hook's hair stage.
+        if (game::hair::Wanted()) {
+            EnsureBonePoseHook();
+        }
+        game::hair::Tick(deltaSeconds);
+        game::anim_driver::Tick(deltaSeconds);
         // The power wheel at the left hand (research/55) before the squad's: a pinch that equips a power is never a squad pull.
         game::power_wheel::Tick(deltaSeconds, PowerWheelLink());
         game::squad_weapons::Tick(deltaSeconds, SquadLink());
@@ -1960,6 +1972,10 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         game::galaxy_map::Tick(GalaxyMapLink());
 #endif
         game::world_ui::Tick(WorldUiLink());
+#if defined(MEVR_GAME_LE3)
+        // ME3's slice of ME1's conversations in the world (T49, the owner 2026-11-19): after world_ui, its Hold is ours in mode 7.
+        game::sequel_conversation_world::Tick(ConversationWorldLink());
+#endif
         // Conversations (research/59): measured always; in the world, Shepard's view held (after world_ui: its Hold is ours in mode 5).
 #if !defined(MEVR_GAME_LE3)
         // First-person world conversations and their LE1 audio/scene hooks are not LE3 adapters.
@@ -2128,6 +2144,9 @@ MEVR_MOD_API void MevrModShutdown() {
     game::screen_reticle::Shutdown(exiting);
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
+#if defined(MEVR_GAME_LE3)
+    game::sequel_conversation_world::Shutdown(ConversationWorldLink());
+#endif
     game::conversation_flow::Shutdown();                          // the conversations' ambient flags put back
     game::authored_moment::Shutdown();                            // the move track's question taken back
     game::thespian::Shutdown();                                   // Shepard's voice no longer silenced
@@ -2185,6 +2204,8 @@ MEVR_MOD_API void MevrModShutdown() {
     ++gActionGeneration;
     game::gun_kick::Shutdown();
     game::hand_contact::Shutdown();
+    game::anim_driver::Shutdown();
+    game::hair::Shutdown();
     if (gHost != nullptr && MEVR_HOST_HAS(setVignette) && gHost->setVignette != nullptr) {
         gHost->setVignette(0.0f);  // no vignette without the mod (the host also forgets on unload)
     }

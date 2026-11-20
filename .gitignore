@@ -13,6 +13,8 @@ tools/cockpit/package/bin/
 tools/cockpit/package/obj/
 tools/conversation-scan/bin/
 tools/conversation-scan/obj/
+tools/motion/skeleton-export/bin/
+tools/motion/skeleton-export/obj/
 build/
 build-*/
 out/
@@ -109,3 +111,5 @@ external/llama-cpp/
 external/openal-soft/
 models/
 .venv-voice/
+tools/rig/bin/
+tools/rig/obj/

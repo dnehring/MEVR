@@ -30,11 +30,14 @@ endfunction()
 # Every source compiles in parallel, inside each project too (lane BLD, 2026-11-17). Without this, MSBuild hands all of a
 # project's sources to one cl.exe, which compiles them one after the other: a cold build-trilogy spent 10 minutes with 3-6
 # of 24 cores busy while the three mods' 190 files went through one at a time. MSBuild's multi-tool task gives every
-# source its own cl.exe, at most one per logical processor across all the projects the build runs at once. The compiler
-# gets the same options for each file (the task adds /FS, so the processes share a project's PDB, and drops /MP), so the
-# objects are the same. Set before any target is defined, so the external projects (LExSDKv2, RmlUi...) get it too.
+# source its own cl.exe, at most one per logical processor in each project it compiles (CL_MPCount lowers that). The
+# compiler gets the same options for each file (the task adds /FS, so the processes share a project's PDB, and drops /MP),
+# so the objects are the same. Set before any target is defined, so the external projects (LExSDKv2, RmlUi...) get it too.
+# EnforceProcessCountAcrossBuilds is left off (2026-11-19): it made every cl.exe on the machine take a slot from one named
+# semaphore, and a build killed mid-compile never gave its slots back, so every later build hung with no cl.exe running
+# (docs/knowledge/gotchas/msbuild-cross-build-semaphore.md: six builds hung for 14 hours).
 if (CMAKE_GENERATOR MATCHES "^Visual Studio")
-    list(APPEND CMAKE_VS_GLOBALS "UseMultiToolTask=true" "EnforceProcessCountAcrossBuilds=true")
+    list(APPEND CMAKE_VS_GLOBALS "UseMultiToolTask=true")
 endif ()
 
 # One source tree, one ASI per game (docs/trilogy-design.md). LE1 first.
@@ -361,6 +364,13 @@ set(MEVR_MOD_SOURCES
     src/core/ik/GoalStep.hpp
     src/core/ik/HandContact.cpp
     src/core/ik/HandContact.hpp
+    src/core/ik/Clip.cpp
+    src/core/ik/BodySpheres.cpp
+    src/core/ik/Clip.hpp
+    src/core/ik/HairChain.cpp
+    src/core/ik/HairChain.hpp
+    src/core/ik/Jiggle.cpp
+    src/core/ik/Jiggle.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -473,6 +483,10 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Session.hpp
     src/engine/BonePose.cpp
     src/engine/BonePose.hpp
+    src/engine/ClipPose.cpp
+    src/engine/ClipPose.hpp
+    src/engine/HairPose.cpp
+    src/engine/HairPose.hpp
     src/engine/CallFunction.cpp
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
@@ -569,6 +583,12 @@ set(MEVR_MOD_SOURCES
     src/game/Melee.cpp
     src/game/GunKick.cpp
     src/game/GunKick.hpp
+    src/game/AnimDriver.cpp
+    src/game/AnimDriver.hpp
+    src/game/Hair.cpp
+    src/game/Hair.hpp
+    src/game/HairLook.cpp
+    src/game/HairLook.hpp
     src/game/HandContact.cpp
     src/game/HandContact.hpp
     src/game/HandAim.cpp
@@ -635,6 +655,8 @@ set(MEVR_MOD_SOURCES
     src/game/WorldUi.hpp
     src/game/ConversationWorld.cpp
     src/game/ConversationWorld.hpp
+    src/game/SequelConversationWorld.cpp
+    src/game/SequelConversationWorld.hpp
     src/game/ConversationFlow.cpp
     src/game/ConversationFlow.hpp
     src/game/SoundPlace.cpp
@@ -1053,6 +1075,9 @@ function(mevr_add_plugin game)
     endif ()
     if (game STREQUAL "LE2")
         list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/GalaxyProjectorFlow's status (the sequels' galaxy flow)
+    endif ()
+    if (game STREQUAL "LE1")
+        list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/AnimDriver's generated clips (tools/motion)
     endif ()
     if (game STREQUAL "LE2" OR game STREQUAL "LE3")
         list(APPEND mod_sources src/core/vr/GalaxyRay.cpp src/core/vr/GalaxyRay.hpp)  # game/GalaxyRay: the map picked by a ray
@@ -1536,6 +1561,10 @@ if (MEVR_BUILD_TESTS)
         tests/TraversalTests.cpp
         tests/GoalStepTests.cpp
         tests/HandContactTests.cpp
+        tests/ClipTests.cpp
+        tests/BodySpheresTests.cpp
+    tests/HairChainTests.cpp
+    tests/JiggleTests.cpp
         tests/GameMenuBackOutTests.cpp
         tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
@@ -1569,6 +1598,10 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Fingers.cpp
         src/core/ik/GoalStep.cpp
         src/core/ik/HandContact.cpp
+        src/core/ik/Clip.cpp
+        src/core/ik/BodySpheres.cpp
+        src/core/ik/HairChain.cpp
+        src/core/ik/Jiggle.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
@@ -2062,6 +2095,24 @@ if (MEVR_BUILD_TESTS)
     target_include_directories(mevr-thespian-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(mevr-thespian-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-thespian-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+    # The hair simulation over a generated clip, offline (tools/hair-bench, tools/motion/README.md): parameter sweeps.
+    add_executable(mevr-hair-bench
+        tools/hair-bench/Main.cpp
+        src/core/Json.cpp
+        src/core/ik/Clip.cpp
+        src/core/ik/BodySpheres.cpp
+        src/core/ik/HairChain.cpp
+        src/core/ik/HandContact.cpp
+        src/core/ik/Rigid.cpp
+        src/core/ik/TwoHand.cpp
+        src/core/ik/Ik.cpp
+        src/core/ik/BoneNames.cpp
+        src/core/ik/Jiggle.cpp
+    )
+    target_include_directories(mevr-hair-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-hair-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-hair-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.

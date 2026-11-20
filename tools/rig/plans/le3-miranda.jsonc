@@ -1,0 +1,86 @@
+﻿// SPDX-License-Identifier: MIT
+// ME3's Miranda (tools/rig/README.md): her older rigged hair with hair chains, then her conversation outfit's body (her
+// Citadel apartment) with the same chain bones (the hair stage simulates on the body she follows) and breast and glute
+// bones for the jiggle (research/trilogy-jiggle.md). One package, MEVR_Miranda.pcc, built on the player's machine from
+// their own game files. Mesh space: +X forward, +Y her right, +Z up, game units (cm); azimuth 0 front, 90 her right.
+// {LE3} is the game's ME3 BioGame folder, {MEVR} %LOCALAPPDATA%\MEVR.
+{
+  "out": "{MEVR}/rig/LE3/MEVR_Miranda.pcc",
+  "steps": [
+    {
+      "id": "hair",
+      // Shoulder length: the crown at 181 cm, the tips at 142 (back) to 151 (sides); the face the open front between the
+      // front locks (nothing below 167 there). The head's share of the shipped weights fades from 1 at 174 to 0 at 154.
+      "source": "{LE3}/CookedPCConsole/BIOG_HMF_HIR_PRO.pcc",
+      "mesh": "HMF_HIR_PROMiranda_MDL_Old",
+      "name": "HMF_HIR_PROMiranda_MEVR",
+      "hair": {
+        "scalp": "Head",
+        "prefix": "HairChain",
+        "rootZ": 170,
+        "blendAboveCm": 4,
+        "joints": 4,
+        "sectorWidthDeg": 40,
+        "bandCm": 2,
+        "sectors": [
+          { "name": "Back", "az": 180 },
+          { "name": "BackLeft", "az": -145 },
+          { "name": "Left", "az": -105 },
+          { "name": "FrontLeft", "az": -65 },
+          { "name": "FrontRight", "az": 65 },
+          { "name": "Right", "az": 105 },
+          { "name": "BackRight", "az": 145 }
+        ]
+      }
+    },
+    {
+      "id": "body",
+      // Placed from her mesh's own surface (tools/rig/README.md "Placing regions"): the front peaks at x 12.5 around z
+      // 132-138 cm, y +-4..8; the back at x -12.7 around z 92-98 cm.
+      "source": "{LE3}/CookedPCConsole/BioD_CitHub_Miranda.pcc",
+      "mesh": "HMF_ARM_MIRa_MDL",
+      "name": "HMF_ARM_MIRa_MEVR",
+      "bonesOf": ["hair"],
+      // Body spheres for the hair (tools/rig/README.md "Body spheres") of 3.5 cm and up: her suit's armour folds made many
+      // small ones the hair rattled on (the walk's jitter 4.7 mm); from 3.5 cm her walk's hair sank 0.2 mm (peak 2.3) deeper
+      // than at rest against 12.4 (44) with the capsules, jitter 1.9 mm (2026-11-19).
+      "minSphereCm": 3.5,
+      "bones": [
+        { "name": "BreastLeft", "parent": "Chest2", "at": [5.5, -6.5, 133.0], "yaw": 0 },
+        { "name": "BreastRight", "parent": "Chest2", "at": [5.5, 6.5, 133.0], "yaw": 0 },
+        { "name": "GluteLeft", "parent": "Pelvis", "at": [-6.0, -7.0, 95.0], "yaw": 180 },
+        { "name": "GluteRight", "parent": "Pelvis", "at": [-6.0, 7.0, 95.0], "yaw": 180 }
+      ],
+      "regions": [
+        { "bone": "BreastLeft", "center": [9.0, -6.5, 133.5], "radius": [6.5, 7.5, 8.5], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "BreastRight", "center": [9.0, 6.5, 133.5], "radius": [6.5, 7.5, 8.5], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "GluteLeft", "center": [-9.0, -7.0, 94.0], "radius": [7.0, 8.0, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] },
+        { "bone": "GluteRight", "center": [-9.0, 7.0, 94.0], "radius": [7.0, 8.0, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] }
+      ]
+    },
+    {
+      "id": "underwear",
+      // The female underwear body of ME3's romance and cabin scenes (HMF_ARM_NKDc_MDL, the same skeleton), for judging the
+      // soft tissue on the anatomy rather than an outfit (the owner, 2026-11-19); put on by hand: `mevr hair body`. Its
+      // materials aren't loaded on the Citadel: copied. Placed from its surface: breasts peak at x 13.9 around z 132-136, y
+      // +-6 (a cleavage between them, x 10.9 at the middle); the back peaks at x -14.8 around z 96-98, y +-4..6.
+      "source": "{LE3}/CookedPCConsole/BioD_Nor_100CabinConv.pcc",
+      "mesh": "HMF_ARM_NKDc_MDL",
+      "name": "HMF_ARM_NKDc_MEVR",
+      "materials": "copy",
+      "bonesOf": ["hair"],
+      "bones": [
+        { "name": "BreastLeft", "parent": "Chest2", "at": [6.5, -6.5, 133.5], "yaw": 0 },
+        { "name": "BreastRight", "parent": "Chest2", "at": [6.5, 6.5, 133.5], "yaw": 0 },
+        { "name": "GluteLeft", "parent": "Pelvis", "at": [-7.0, -6.5, 96.0], "yaw": 180 },
+        { "name": "GluteRight", "parent": "Pelvis", "at": [-7.0, 6.5, 96.0], "yaw": 180 }
+      ],
+      "regions": [
+        { "bone": "BreastLeft", "center": [10.0, -6.5, 134.0], "radius": [6.5, 7.0, 8.0], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "BreastRight", "center": [10.0, 6.5, 134.0], "radius": [6.5, 7.0, 8.0], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "GluteLeft", "center": [-10.0, -6.5, 95.5], "radius": [7.0, 7.5, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] },
+        { "bone": "GluteRight", "center": [-10.0, 6.5, 95.5], "radius": [7.0, 7.5, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] }
+      ]
+    }
+  ]
+}

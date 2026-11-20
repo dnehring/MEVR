@@ -12,7 +12,9 @@
 
 #include "plugin/HalcyonSequelBridge.hpp"
 
+#include "core/Log.hpp"
 #include "core/vr/Colour.hpp"
+#include "core/vr/ConversationWorld.hpp"
 #include "core/vr/HudPieces.hpp"
 #include "core/vr/PowerWheel.hpp"
 #include "core/vr/SquadMenu.hpp"
@@ -40,6 +42,7 @@
 #include <d3d11.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace MevrSeams {
@@ -185,6 +188,43 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
             panel.screenPart[0] = panel.screenPart[1] = 0.0f;
             panel.screenPart[2] = panel.screenPart[3] = 1.0f;
             panel.screenForwardM = 0.0f;
+        }
+        // A conversation held in the world, first person (ME3's slice of ME1's research/59, game/SequelConversationWorld): the
+        // conversation movie (the wheel, the subtitles) on the panel, fixed in the room where it was placed when the
+        // conversation began (the owner, 2026-11-19: "not static like it is in Mass Effect 1 ... it kind of follows my head"):
+        // 0.9 m ahead of the head's facing then, 0.25 m below the eyes, facing them, 1.1 m wide.
+        if (!galaxyUi) {
+            static std::uint32_t s_placedFor = 0;
+            static XrPosef s_pose{{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+            auto const convo = mevr::vr::conversation_world::Latest(1500);
+            bool const held = convo && convo->size == sizeof(mevr::vr::conversation_world::State) && convo->active != 0;
+            if (held && convo->conversation != s_placedFor && frame.headValid) {
+                XrQuaternionf const q = headOrientation;
+                // The head's forward (-Z) in the room, flattened.
+                float const fx = -(2.0f * (q.x * q.z + q.w * q.y));
+                float const fz = -(1.0f - 2.0f * (q.x * q.x + q.y * q.y));
+                float const len = std::sqrt(fx * fx + fz * fz);
+                float const nx = len > 1e-4f ? fx / len : 0.0f;
+                float const nz = len > 1e-4f ? fz / len : -1.0f;
+                float const theta = std::atan2(-nx, -nz);  // the quad's +Z toward the eyes
+                s_pose.orientation = {0.0f, std::sin(theta * 0.5f), 0.0f, std::cos(theta * 0.5f)};
+                s_pose.position = {headPosition.x + nx * 0.9f, headPosition.y - 0.25f, headPosition.z + nz * 0.9f};
+                s_placedFor = convo->conversation;
+                mevr::log::Info("conversation world: conversation {}'s wheel and subtitles fixed in the room 0.9 m ahead, 0.25 m "
+                                "below the eyes", s_placedFor);
+            }
+            if (held && s_placedFor == convo->conversation) {
+                float const uiWidth = 1.1f;
+                panel.gameplay = true;
+                panel.screenUi = true;
+                panel.screenSpace = appSpace;
+                panel.screenPose = s_pose;
+                panel.screenSize = {uiWidth, uiWidth * static_cast<float>(mevr::host::hud_panel::Height()) /
+                    static_cast<float>(std::max(1u, mevr::host::hud_panel::Width()))};
+                panel.screenPart[0] = panel.screenPart[1] = 0.0f;
+                panel.screenPart[2] = panel.screenPart[3] = 1.0f;
+                panel.screenForwardM = 0.0f;
+            }
         }
         // The HUD keeps the movie's own layout on the panel (Halcyon's per-element HUD moves stand down), as LE1's.
         mevr::host::renderer::SetAuthoredHudLayout(panel.enabled && panel.stereo && mevr::host::hud_panel::Usable());

@@ -951,6 +951,7 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "Animations", SDK_FIELD(USkeletalMeshComponent, Animations));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", SDK_BOOL(USkeletalMeshComponent, bConsiderAllBodiesForBounds));
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
@@ -1705,6 +1706,10 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);
+    PARMS(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh");
     PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", ParameterName);
     PARAM(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter", Param);
     PARMS(UParticleSystemComponent_execSetFloatParameter_Parms, "Engine.ParticleSystemComponent.SetFloatParameter");
@@ -2268,6 +2273,23 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "Animations", SDK_FIELD(USkeletalMeshComponent, Animations));
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
+    CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));  // game/Hair: rigged bodies' followers
+    PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
+    // game/HairLook on ME2 (the same rows as ME3's).
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ElementIndex);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetVectorParameterValue_Parms, "Engine.MaterialInstanceConstant.SetVectorParameterValue", Value);
+    PARAM(UMaterialInterface_execGetScalarParameterValue_Parms, "Engine.MaterialInterface.GetScalarParameterValue", OutValue);
+    CheckField("Engine.MaterialInstance", "Parent", SDK_FIELD(UMaterialInstance, Parent));
+    CheckField("Engine.MaterialExpressionParameter", "ParameterName", SDK_FIELD(UMaterialExpressionParameter, ParameterName));
+    CheckField("Engine.RvrEffectsMaterialUser", "m_pBaseMaterial", SDK_FIELD(URvrEffectsMaterialUser, m_pBaseMaterial));
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnRotation);  // game/Hair spawn
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ActorTemplate);
+    CheckFunction("Engine.SequenceOp.ForceActivateInput");  // game/Hair fire
+    PARAM(USequenceOp_execForceActivateInput_Parms, "Engine.SequenceOp.ForceActivateInput", InputIdx);
+    CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton), true);
     CheckField("Engine.SkeletalMesh", "Sockets", SDK_FIELD(USkeletalMesh, Sockets));
@@ -2595,6 +2617,16 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);
+    PARMS(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh");
+    // ...loaded if the level didn't bring it
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectName);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectClass);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", MayFail);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ReturnValue);
+    PARMS(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject");
     // engine/SelectionGaze: both selection functions take nothing (the hook's void(this) signature, as ME3's)
     CheckParmsSize("SFXGame.BioPlayerSelection.UpdateSelection", 0);
     CheckParmsSize("SFXGame.BioPlayerSelection.FindCurrentSelectionTarget", 0);
@@ -3665,6 +3697,9 @@ void CheckLe3Dialogue() {
     CheckField("SFXGame.BioConversationController", "m_aCurrentReplyIndices", SDK_FIELD(UBioConversationController, m_aCurrentReplyIndices));
     CheckField("SFXGame.BioConversationController", "m_pSpeaker", SDK_FIELD(UBioConversationController, m_pSpeaker));
     CheckField("SFXGame.BioConversationController", "m_pPlayer", SDK_FIELD(UBioConversationController, m_pPlayer));
+    // game/SequelConversationWorld (T49's ME3 slice): the speakers kept where they stand.
+    CheckField("SFXGame.BioConversationController", "m_aSpeakerData", SDK_FIELD(UBioConversationController, m_aSpeakerData));
+    CheckPath("SFXGame.BioConversationController", {"m_aSpeakerData", "pSpeakerActor"}, SDK_AT(offsetof(FBioSpeakerData, pSpeakerActor), 8));
     CheckField("SFXGame.BioConversationController", "m_nCurrentEntry", SDK_FIELD(UBioConversationController, m_nCurrentEntry));
     CheckField("SFXGame.BioConversationController", "m_nSelectedReply", SDK_FIELD(UBioConversationController, m_nSelectedReply));
     CheckField("SFXGame.BioConversationController", "m_nDelayedReplyChoice", SDK_FIELD(UBioConversationController, m_nDelayedReplyChoice));
@@ -3751,6 +3786,62 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases));
     CheckField("Engine.SkeletalMeshComponent", "LocalAtoms", SDK_FIELD(USkeletalMeshComponent, LocalAtoms));
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
+    CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnRotation);  // game/Hair spawn
+    PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ActorTemplate);
+    CheckFunction("Engine.SequenceOp.ForceActivateInput");  // game/Hair fire
+    PARAM(USequenceOp_execForceActivateInput_Parms, "Engine.SequenceOp.ForceActivateInput", InputIdx);
+    CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // game/Hair: ME3 conversation characters
+    CheckField("SFXGame.SFXStuntActor", "BodyMesh", SDK_FIELD(ASFXStuntActor, BodyMesh));
+    CheckField("SFXGame.SFXStuntActor", "HairMesh", SDK_FIELD(ASFXStuntActor, HairMesh));
+    CheckField("SFXGame.SFXStuntActor", "HeadMesh", SDK_FIELD(ASFXStuntActor, HeadMesh));  // game/Hair: rigged bodies' followers
+    CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));
+    PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
+    // game/HairLook: a hair's own material instance and its master material's parameters.
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ReturnValue);
+    PARAM(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execSetMaterial_Parms, "Engine.MeshComponent.SetMaterial", Material);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ElementIndex);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ReturnValue);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", Value);
+    PARAM(UMaterialInstanceConstant_execSetVectorParameterValue_Parms, "Engine.MaterialInstanceConstant.SetVectorParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetVectorParameterValue_Parms, "Engine.MaterialInstanceConstant.SetVectorParameterValue", Value);
+    PARAM(UMaterialInterface_execGetScalarParameterValue_Parms, "Engine.MaterialInterface.GetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInterface_execGetScalarParameterValue_Parms, "Engine.MaterialInterface.GetScalarParameterValue", OutValue);
+    PARAM(UMaterialInterface_execGetVectorParameterValue_Parms, "Engine.MaterialInterface.GetVectorParameterValue", ParameterName);
+    PARAM(UMaterialInterface_execGetVectorParameterValue_Parms, "Engine.MaterialInterface.GetVectorParameterValue", OutValue);
+    CheckField("Engine.MaterialInstance", "Parent", SDK_FIELD(UMaterialInstance, Parent));
+    CheckField("Engine.MaterialExpressionParameter", "ParameterName", SDK_FIELD(UMaterialExpressionParameter, ParameterName));
+    CheckField("Engine.MaterialExpressionScalarParameter", "DefaultValue", SDK_FIELD(UMaterialExpressionScalarParameter, DefaultValue));
+    CheckField("Engine.MaterialExpressionVectorParameter", "DefaultValue", SDK_FIELD(UMaterialExpressionVectorParameter, DefaultValue));
+    CheckField("Engine.RvrEffectsMaterialUser", "m_pBaseMaterial", SDK_FIELD(URvrEffectsMaterialUser, m_pBaseMaterial));
+    // game/AnimDriver: a cutscene's way of animating a stunt actor (its body's MatineeAnim node), for the hair and jiggle bench.
+    CheckClass<USFXModule_Gestures>("SFXGame.SFXModule_Gestures");
+    CheckField("SFXGame.SFXModule_Gestures", "m_bInMatinee", SDK_BOOL(USFXModule_Gestures, m_bInMatinee));
+    CheckClass<UAnimSequence>("Engine.AnimSequence");
+    CheckClass<UAnimSet>("Engine.AnimSet");
+    CheckField("Engine.AnimSet", "Sequences", SDK_FIELD(UAnimSet, Sequences));
+    CheckField("Engine.AnimSequence", "SequenceName", SDK_FIELD(UAnimSequence, SequenceName));
+    CheckField("Engine.AnimSequence", "SequenceLength", SDK_FIELD(UAnimSequence, SequenceLength));
+    CheckClass<UAnimNodeSequence>("Engine.AnimNodeSequence");
+    CheckField("Engine.AnimNode", "NodeName", SDK_FIELD(UAnimNode, NodeName));
+    CheckField("Engine.AnimObject", "SkelComponent", SDK_FIELD(UAnimObject, SkelComponent));
+    CheckField("Engine.AnimNodeSequence", "CurrentTime", SDK_FIELD(UAnimNodeSequence, CurrentTime));
+    CheckField("Engine.SkeletalMeshComponent", "AnimSets", SDK_FIELD(USkeletalMeshComponent, AnimSets));
+    CheckField("Engine.SkeletalMeshComponent", "bAnimSetUpdated", SDK_BOOL(USkeletalMeshComponent, bAnimSetUpdated));
+    CheckFunction("Engine.AnimNodeSequence.SetAnim");
+    PARAM(UAnimNodeSequence_execSetAnim_Parms, "Engine.AnimNodeSequence.SetAnim", Sequence);
+    CheckFunction("Engine.AnimNodeSequence.PlayAnim");
+    PARAM(UAnimNodeSequence_execPlayAnim_Parms, "Engine.AnimNodeSequence.PlayAnim", bLoop);
+    PARAM(UAnimNodeSequence_execPlayAnim_Parms, "Engine.AnimNodeSequence.PlayAnim", InRate);
+    PARAM(UAnimNodeSequence_execPlayAnim_Parms, "Engine.AnimNodeSequence.PlayAnim", StartTime);
+    CheckFunction("Engine.AnimNodeSequence.StopAnim");
+    CheckFunction("Engine.AnimNodeSequence.SetPosition");
+    PARAM(UAnimNodeSequence_execSetPosition_Parms, "Engine.AnimNodeSequence.SetPosition", NewTime);
+    PARAM(UAnimNodeSequence_execSetPosition_Parms, "Engine.AnimNodeSequence.SetPosition", bFireNotifies);
+    CheckField("Engine.PrimitiveComponent", "HiddenGame", SDK_BOOL(UPrimitiveComponent, HiddenGame));  // game/Hair
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments));
     CheckField("Engine.SkeletalMeshComponent", "LocalToWorld", SDK_FIELD(USkeletalMeshComponent, LocalToWorld));
     CheckField("Engine.SkeletalMesh", "RefSkeleton", SDK_FIELD(USkeletalMesh, RefSkeleton));
@@ -3825,6 +3916,7 @@ void CheckFields() {
     CheckField("SFXGame.BioPlayerSelection", "m_oCurrentSelectionTarget", SDK_FIELD(UBioPlayerSelection, m_oCurrentSelectionTarget));
     CheckField("Engine.PlayerController", "PlayerCamera", SDK_FIELD(APlayerController, PlayerCamera));
     CheckField("Engine.Camera", "bLockedFOV", SDK_BOOL(ACamera, bLockedFOV));
+    CheckField("Engine.Camera", "bConstrainAspectRatio", SDK_BOOL(ACamera, bConstrainAspectRatio));  // game/SequelConversationWorld: no letterbox in a held conversation
     CheckField("Engine.Camera", "LockedFOV", SDK_FIELD(ACamera, LockedFOV));
     CheckField("Engine.Camera", "CameraCache", SDK_FIELD(ACamera, CameraCache));
     CheckField("SFXGame.SFXCameraNativeBase", "CurrentCameraMode", SDK_FIELD(ASFXCameraNativeBase, CurrentCameraMode));
@@ -4078,6 +4170,16 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
+    PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);
+    PARMS(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh");
+    // ...loaded if the level didn't bring it
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectName);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ObjectClass);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", MayFail);
+    PARAM(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject", ReturnValue);
+    PARMS(UObject_execDynamicLoadObject_Parms, "Core.Object.DynamicLoadObject");
     PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", BoneName);
     PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", Space);
     PARAM(USkeletalMeshComponent_execGetBoneLocation_Parms, "Engine.SkeletalMeshComponent.GetBoneLocation", ReturnValue);

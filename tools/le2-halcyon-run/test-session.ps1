@@ -485,7 +485,7 @@ try {
         $artifacts=@($mod,$renderer,$dll | ForEach-Object { [pscustomobject]@{path=$_;sha256=(Get-FileHash $_).Hash} })
         $complete=(Get-PreviewModConfig)
         foreach ($section in @('Colour','Controls','Holsters','Squad','Throwables','Comfort','Sights','Interact','Vent','Hud',
-            'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover','Reload')) {
+            'Mako','Cockpit','Galaxy','WorldUi','Game','SquadContext','SquadOrders','Voice','PowerWheel','Cover','Reload','Hair')) {
             $complete += "[$section]`r`nenabled=1`r`n"
         }
         $markers="hands: calibration pitch 0`r`ncolour: profile auto`r`n"

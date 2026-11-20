@@ -1,0 +1,61 @@
+﻿// SPDX-License-Identifier: MIT
+// ME2's Miranda (tools/rig/README.md): her hair (no hair bones at all: weighted to the head, neck, chest and collars only)
+// with hair chains, then her default outfit's body with the same chain bones (the hair stage simulates on the body she
+// follows) and breast and glute bones for the jiggle (research/trilogy-jiggle.md). The body is the same mesh and skeleton
+// as ME3's conversation outfit (6,370 vertices, the same rest pose), so the soft-tissue numbers are ME3's; the hair's
+// chains are generated from this hair's own geometry. One package, MEVR_Miranda.pcc, built on the player's machine from
+// their own game files. Mesh space: +X forward, +Y her right, +Z up, game units (cm); azimuth 0 front, 90 her right.
+// {LE2} is the game's ME2 BioGame folder, {MEVR} %LOCALAPPDATA%\MEVR.
+{
+  "out": "{MEVR}/rig/LE2/MEVR_Miranda.pcc",
+  "steps": [
+    {
+      "id": "hair",
+      // Shoulder length: the crown at 181 cm, the tips at 142 (back) to 151 (sides); the face the open front between the
+      // front locks (nothing below 167 there). The head's share of the shipped weights fades from 1 at 174 to 0 at 154.
+      "source": "{LE2}/CookedPCConsole/BioH_Vixen_00.pcc",
+      "mesh": "HMF_HIR_MIR_MDL",
+      "name": "HMF_HIR_MIR_MEVR",
+      "hair": {
+        "scalp": "Head",
+        "prefix": "HairChain",
+        "rootZ": 170,
+        "blendAboveCm": 4,
+        "joints": 4,
+        "sectorWidthDeg": 40,
+        "bandCm": 2,
+        "sectors": [
+          { "name": "Back", "az": 180 },
+          { "name": "BackLeft", "az": -145 },
+          { "name": "Left", "az": -105 },
+          { "name": "FrontLeft", "az": -65 },
+          { "name": "FrontRight", "az": 65 },
+          { "name": "Right", "az": 105 },
+          { "name": "BackRight", "az": 145 }
+        ]
+      }
+    },
+    {
+      "id": "body",
+      // Placed from her mesh's own surface (tools/rig/README.md "Placing regions"): the front peaks at x 12.5 around z
+      // 132-138 cm, y +-4..8; the back at x -12.7 around z 92-98 cm.
+      "source": "{LE2}/CookedPCConsole/BioH_Vixen_00.pcc",
+      "mesh": "HMF_MIR_LGTa_MDL",
+      "name": "HMF_MIR_LGTa_MEVR",
+      "bonesOf": ["hair"],
+      "bones": [
+        { "name": "BreastLeft", "parent": "Chest2", "at": [5.5, -6.5, 133.0], "yaw": 0 },
+        { "name": "BreastRight", "parent": "Chest2", "at": [5.5, 6.5, 133.0], "yaw": 0 },
+        { "name": "GluteLeft", "parent": "Pelvis", "at": [-6.0, -7.0, 95.0], "yaw": 180 },
+        { "name": "GluteRight", "parent": "Pelvis", "at": [-6.0, 7.0, 95.0], "yaw": 180 }
+      ],
+      "regions": [
+        { "bone": "BreastLeft", "center": [9.0, -6.5, 133.5], "radius": [6.5, 7.5, 8.5], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "BreastRight", "center": [9.0, 6.5, 133.5], "radius": [6.5, 7.5, 8.5], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "GluteLeft", "center": [-9.0, -7.0, 94.0], "radius": [7.0, 8.0, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] },
+        { "bone": "GluteRight", "center": [-9.0, 7.0, 94.0], "radius": [7.0, 8.0, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] }
+      ]
+    }
+  ]
+}
+

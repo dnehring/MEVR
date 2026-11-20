@@ -79,15 +79,19 @@
     "MEVR_WITH_HALCYON",
     "MEVR_WITH_MAIN_MENU"
    ],
-   "modExtra": [],
+   "modExtra": [
+    "core/Json"
+   ],
    "modModules": [
     "engine/BodyBounds",
     "engine/BonePose",
     "engine/CallFunction",
+    "engine/ClipPose",
     "engine/CodeDump",
     "engine/ConversationHooks",
     "engine/CoverAcquire",
     "engine/Engine",
+    "engine/HairPose",
     "engine/Legacy",
     "engine/NameLookup",
     "engine/NativesDump",
@@ -98,6 +102,7 @@
     "engine/Skeleton",
     "engine/VoicePlace",
     "engine/XrToUnreal",
+    "game/AnimDriver",
     "game/ArmIk",
     "game/AuthoredMoment",
     "game/BodyCalibration",
@@ -129,6 +134,8 @@
     "game/GamepadMapping",
     "game/GuiCursor",
     "game/GunKick",
+    "game/Hair",
+    "game/HairLook",
     "game/HandAim",
     "game/HandCalibration",
     "game/HandContact",
@@ -160,6 +167,7 @@
     "game/ScopeCapture",
     "game/ScopeParts",
     "game/ScreenReticle",
+    "game/SequelConversationWorld",
     "game/Sights",
     "game/SkeletonProbe",
     "game/SoundPlace",
@@ -344,10 +352,12 @@
     "engine/BodyBounds",
     "engine/BonePose",
     "engine/CallFunction",
+    "engine/ClipPose",
     "engine/CodeDump",
     "engine/ConversationHooks",
     "engine/CoverAcquire",
     "engine/Engine",
+    "engine/HairPose",
     "engine/Legacy",
     "engine/NameLookup",
     "engine/NativesDump",
@@ -358,6 +368,7 @@
     "engine/Skeleton",
     "engine/VoicePlace",
     "engine/XrToUnreal",
+    "game/AnimDriver",
     "game/ArmIk",
     "game/AuthoredMoment",
     "game/BodyCalibration",
@@ -389,6 +400,8 @@
     "game/GamepadMapping",
     "game/GuiCursor",
     "game/GunKick",
+    "game/Hair",
+    "game/HairLook",
     "game/HandAim",
     "game/HandCalibration",
     "game/HandContact",
@@ -420,6 +433,7 @@
     "game/ScopeCapture",
     "game/ScopeParts",
     "game/ScreenReticle",
+    "game/SequelConversationWorld",
     "game/Sights",
     "game/SkeletonProbe",
     "game/SoundPlace",
@@ -605,10 +619,12 @@
     "engine/BodyBounds",
     "engine/BonePose",
     "engine/CallFunction",
+    "engine/ClipPose",
     "engine/CodeDump",
     "engine/ConversationHooks",
     "engine/CoverAcquire",
     "engine/Engine",
+    "engine/HairPose",
     "engine/Legacy",
     "engine/NameLookup",
     "engine/NativesDump",
@@ -619,6 +635,7 @@
     "engine/Skeleton",
     "engine/VoicePlace",
     "engine/XrToUnreal",
+    "game/AnimDriver",
     "game/ArmIk",
     "game/AuthoredMoment",
     "game/BodyCalibration",
@@ -650,6 +667,8 @@
     "game/GamepadMapping",
     "game/GuiCursor",
     "game/GunKick",
+    "game/Hair",
+    "game/HairLook",
     "game/HandAim",
     "game/HandCalibration",
     "game/HandContact",
@@ -682,6 +701,7 @@
     "game/ScopeCapture",
     "game/ScopeParts",
     "game/ScreenReticle",
+    "game/SequelConversationWorld",
     "game/Sights",
     "game/SkeletonProbe",
     "game/SoundPlace",
@@ -861,6 +881,29 @@
    },
    "namespace": "engine::call_function"
   },
+  "engine/ClipPose": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::clip_pose"
+  },
   "engine/CodeDump": {
    "games": {
     "LE1": {
@@ -952,6 +995,29 @@
     }
    },
    "namespace": "engine"
+  },
+  "engine/HairPose": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::hair_pose"
   },
   "engine/Le2ControlHost": {
    "games": {
@@ -1251,6 +1317,29 @@
     }
    },
    "namespace": "engine"
+  },
+  "game/AnimDriver": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::anim_driver"
   },
   "game/ArmIk": {
    "games": {
@@ -1964,6 +2053,52 @@
     }
    },
    "namespace": "game::gun_kick"
+  },
+  "game/Hair": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::hair"
+  },
+  "game/HairLook": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::hair_look"
   },
   "game/HandAim": {
    "games": {
@@ -2701,6 +2836,29 @@
    },
    "namespace": "game::screen_reticle"
   },
+  "game/SequelConversationWorld": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "unreferenced"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::sequel_conversation_world"
+  },
   "game/Sights": {
    "games": {
     "LE1": {
@@ -3255,6 +3413,14 @@
   }
  },
  "names": {
+  "game/AnimDriver": {
+   "LE2": [
+    "SFXGame.SFXModule_Gestures",
+    "SFXGame.SFXStuntActor",
+    "SFXGame.SFXStuntActor:BodyMesh",
+    "SFXGame.SFXStuntActor:HairMesh"
+   ]
+  },
   "game/GameMenuRequest": {
    "LE3": [
     "Engine.BioSFHandler.HandleInputEvent",
@@ -3270,6 +3436,14 @@
    "LE3": [
     "Engine.BioSFManager:m_FocusPanel",
     "Engine.PlayerController:m_oCachedScaleFormManager"
+   ]
+  },
+  "game/Hair": {
+   "LE2": [
+    "SFXGame.SFXStuntActor",
+    "SFXGame.SFXStuntActor:BodyMesh",
+    "SFXGame.SFXStuntActor:HairMesh",
+    "SFXGame.SFXStuntActor:HeadMesh"
    ]
   },
   "game/OmniTool": {
@@ -3326,6 +3500,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationInWorld",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3584,6 +3759,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationInWorld",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3705,6 +3881,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationInWorld",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3758,6 +3935,7 @@
     "CineScreenLayers",
     "CineScreenWanted",
     "ConstantFpEye",
+    "ConversationInWorld",
     "CopyIntoImage",
     "EyeImageSize",
     "FloorViewTranslation",
@@ -3995,6 +4173,7 @@
     "rightGripFree": "WithPadMerge",
     "secondEyeIsReplay": "WithRenderer",
     "setAimRay": "WithRenderer",
+    "setConversationWorld": "BuildServices",
     "setFloorLockSample": "WithFloorLock",
     "setGalaxyHologram": "WithGalaxyHologram",
     "setGameMenuOffers": "WithMenus",
