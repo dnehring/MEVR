@@ -17,8 +17,9 @@
 //     the whole conversation (his walk to the mark withheld: the player is never moved by the game, and his head bone never
 //     moves the view); in another space (a scripted start, a mark past 40 m or another deck): the place is his mark.
 //   - The left stick walks Shepard and the view along the head's facing within 4 m of where the conversation began, never
-//     into the speakers (ME1's worldMove: cw::StepPlayer, cw::KeepClear); the right stick steers the dialogue wheel then
-//     (plugin/PadMerge on ME3).
+//     into the speakers (ME1's worldMove: cw::StepPlayer, cw::KeepClear), only while the dialogue wheel is down (it steers
+//     the wheel when it is up, latched after a pick: cw::StickWalks); the right stick turns about the drawn eyes ([Comfort]
+//     turn). ME1's sticks, the owner's answer of 2026-11-19 (research/le3-conversations-in-world.md section 9).
 //   - The host (HostServices v33 setConversationWorld, plugin/WorldUi's conversation hold) swaps that place into the player
 //     camera's POV around the main view's build only, keeps the world in stereo instead of the cinematic presentation
 //     (MevrSeams::ConversationInWorld in ME3's me2_xr.cpp) and hides Shepard's head (MevrSeams::WorldViewHeld 1).

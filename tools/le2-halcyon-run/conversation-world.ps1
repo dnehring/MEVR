@@ -61,7 +61,7 @@ try {
             ForEach-Object { $_.Line })
         Steer-Note ('interact: ' + ($selected -join ''))
         Steer-Play 'stand+a:0.15,stand:0.5'
-    } elseif ($Start -match '^fire:([A-Za-z0-9_]+):(.*)$') {
+    } elseif ($Start -match '^fire:([A-Za-z0-9_.]+):(.*)$') {
         Steer-Note ('instances: ' + (Steer-Ask ("mevr instances {0} {1}" -f $Matches[1], $Matches[2])).Trim())
         Steer-Note ('activate: ' + (Steer-Ask 'mevr activate 0 0').Trim())
     } else {

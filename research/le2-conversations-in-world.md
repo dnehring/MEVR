@@ -96,7 +96,7 @@ item 3, after the after-the-fact undo has been seen in the game.
   (`m_SpeakerList[].aSpeaker`, the owner, the speaker and listener now), the player `m_pConversationPlayer`; everything after
   the reader is ME3's code path. New on both sequels: ME1's near-plane rule. ReflectCheck rows in `CheckThespian`.
 - Host: LE2 serves HostServices v33 `setConversationWorld` (ModLoader); `plugin/WorldUi`'s conversation hold is the
-  sequels' already; the controllers' right stick steers the dialogue wheel while held (`plugin/PadMerge`, the owner's ME3
+  sequels' already; the sticks are ME1's (the owner's answer: the left stick walks only with the wheel down, `cw::StickWalks`; the right stick turns about the drawn eyes, `[Comfort] turn`; the ME3 slice's right-stick wheel in `plugin/PadMerge` removed; it had been the owner's ME3
   request kept on ME2).
 - ME2's renderer (`src/halcyon/le2`, `[MEVR]`): `me2_xr.cpp`'s cinematic decision treats a held conversation like the
   galaxy map's held cinematic (no flat panel, no 3D screen, no VR cine; `mevrConvoWorld`), and publishes it as a world view
@@ -105,7 +105,36 @@ item 3, after the after-the-fact undo has been seen in the game.
 - Our menu: Comfort > Conversations offers First person on ME2 and ME3 (it wrote nothing there before); `world` is the
   key's value, as ME1's.
 
+### 3.1 In the game (fake headset, 2026-11-19 23:36)
+
+Stretch `20261119-233023-121-LE2-fpc` (`prep.ps1 -Holder FPC`, `launch.ps1`, `load.ps1 -Save
+John_12_Soldier_190924_4ee650d\Save_0036.pcsav`: the older career on the Normandy's crew deck), then
+`conversation-world.ps1 -Start fire:SFXGame.SFXSeqAct_StartConversation:Dialog_Samara.SFXSeqAct_StartConversation_0
+-Walk 0.8` (the folder `convo-samara-*`: steer.txt, console.txt, lines.txt; snapshots `2026-11-19_23-36-*`, `23-37-*`):
+
+1. Samara's starter (`normw_starter_h`) entered mode 5 and was held in the world: `[VRSTATE] gm 5 live alive -> 3D screen
+   (MEVR)` for 0.43 s, then `-> VR` (the opening's settle; nothing publishes "a conversation is coming": FPD3's seam
+   `ConversationWorldOrComing` is the cure), `[MEVR-HELDVIEW] ... first person's hides kept`, the letterbox cleared, depth of
+   field off, the wheel's panel fixed in the room.
+2. The director's near plane was 45 and 233 units in two shots; the on-foot plane (10) was written back about 900 times.
+3. The left stick walked the player 0.98 m (`walked 98 units`); no speaker was moved by the stage (`0 undone`).
+4. Switching the mode off mid-scene (`mevr convo world auto` with the file's 3D screen) put the scene on the 3D screen at once
+   (`-> 3D screen (MEVR)`) and the held view ended: the option-off path is today's.
+5. **Wrong:** the start was fired from the corridor, 10.4 m from Samara's mark behind a wall. The slice's opening sets
+   `sightToMark = true` always, so it decided a walk-in and held the eyes where the player stood, facing a wall (the snapshot
+   `2026-11-19_23-37-02-741-left.png`). ME1 asks the line of sight (`InSight`, three lines): this would have been a cut.
+   Next: the opening's facts from `Engine.Actor.FastTrace`, as ME1's.
+6. Not seen: the body (the eyes faced a wall), the wheel's picture, Tali's meeting (the VR career's autosave is after it; Save
+   4 at the spaceport is before it, a mission's walk and fight away), the Miranda scene.
+
 ## 4. What is left, in order (each item for ME2 and ME3 alike; say what a game lacks)
+
+**The owner's answers (2026-11-19, research/le3-conversations-in-world.md section 9: all (a), every game) set the order's
+defaults:** ME1's sticks (the left stick walks only with the wheel down and steers it when up; the right stick turns: undo the
+slice's swap in `plugin/PadMerge` and gate the module's walk on the wheel, ME1's `cw::StickWalks`); ME1's moment rule for
+Shepard walked by a line or a level matinee (`worldMoments = view`, walk-along, `worldBlackMoves`), his walk withheld at the
+source (ME3: FPD3's hooks; ME2: `0x6B9C50` and the `SetPositionRotator` slot) instead of the pin, never a guided walk; scenes
+with no place for the player on the 3D screen from a generated presence table.
 
 1. **ME2 in the game** (fake headset; `tools/le2-halcyon-run`): an ordinary standing conversation, then Tali's meeting from
    the VR career's autosave, with the option on and once off. Judge by snapshots of the eyes (`tools/snapshot.ps1`), not log
@@ -118,6 +147,21 @@ item 3, after the after-the-fact undo has been seen in the game.
 4. **Walking to marks with the game's AI**: ME2 lacks ME1's `BioAiController.PushMoveToPoint`,
    `DoesGameModeAllowMovement` and `BioSeqData_MoveToPoint` (`tools/le2-name-audit.py`); ME2's own AI move is the next read
    (Ghidra: what `SFXSeqAct_MoveToPoint`-like Kismet actions call). Until then a mark is not walked to (people stay put).
+   **The shared walk helper** (asked 2026-11-19 by the coordinator for this lane and lane EXIT; not started on this branch):
+   ME1's walk lives in `game/ConversationWorld.cpp` (`StartAiWalk`, `WalkToMark`, `EndWalk`/`ReleaseAi`, `CanWalk`,
+   `HasPosture`, the answer handler `OnAllowMovement`), bound to its `Stay` records and globals (`gStay`, `gC`, `gTearingDown`).
+   The interface to extract it to, `game/AiWalk.{hpp,cpp}` with a per-game adapter:
+   - `std::optional<Walk> Start(ue3::Object* pawn, ue3::Vector to, std::string& why)`: ME1's checks (a live Pawn, a
+     BioAiController, not hidden, `HasPosture`), then the four holds raised for this walker only (the AI enable counters to 1,
+     the mode's movement ban answered true for its controller, `SetDesiredSpeed(1)`, `m_bInGestures` cleared) and
+     `PushMoveToPoint(vLoc, 10, walking, precision)`; `why` names the refusal (then the caller keeps the person put).
+   - `Step(Walk&, double dt) -> Walking | Arrived | Stalled`: arrival within the move's tolerance + 15 units, a stall when it
+     moved under 8 units in 2 s (ME1's `kAiArriveUnits`, `kAiStallS`).
+   - `End(Walk&, char const* why)`: the move terminated (`BioSeqData_MoveToPoint.Terminate`), every hold given back by as much
+     as it was raised, the gesture mode back unless the conversation is being torn down; idempotent.
+   - Adapters: ME1 the names above; ME2 lacks the four ME1 names (above); ME3 per research/le3-conversations-in-world.md 2.6.
+   ME1 must keep its behaviour: `game/ConversationWorld.cpp` then calls the helper, and its regression set
+   (`tools/conversation-audit.ps1 -Canaries`, one launch under the run lock) runs once after the move.
 5. **The circle and the squad's formation** (`cw::MakeCircle`, `cw::SquadFormation`): shared rules already; the facts
    (who speaks within 4 lines: `m_EntryList`/`m_ReplyList` exist on ME2) from the reader.
 6. **Subtitle and wheel placement** (ME1's subtitle under the speaker, the wheel at the hand): the sequels fix the

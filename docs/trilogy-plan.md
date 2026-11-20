@@ -1029,6 +1029,13 @@ These unblock the most: almost every other entry gets smaller once they land.
 - **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
   with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
   option off (snapshots and stances under `%LOCALAPPDATA%\MEVR\sessions`); then the owner's headset pass.
+- **The owner's answers, 2026-11-19** (research/le3-conversations-in-world.md section 9, all three (a), on all three games; the
+  defaults of the first-person mode): (1) the sticks are ME1's: the left stick walks only while the wheel is down and steers it
+  when it is up, the right stick turns (the slice's right-stick wheel goes); (2) Shepard walked by a line or a level matinee is
+  ME1's moment rule with ME1's current defaults (`worldMoments = view`, walk-along, the game's black moving the player with
+  curated walks excepted), Shepard's walk withheld at the source through each game's hooks instead of the slice's pin, never an
+  automatic guided walk to a mark (`worldWalkInS = -1`); (3) scenes with no place for the player go to the 3D screen from a table
+  generated from the scan (presence-based), never typed by hand.
 - **Who:** lane FPC (ME2, then ME3 on the same module), after another session's ME3 core slice (bff358d3 and its follow-ups).
 - **Rules that carry over** (the owner, 2026-11-16, "this will be a bigger deal in me2"; research/69 items 41 and 42): the
   game's fade to black always moves the player with Shepard (curated walks excepted); what Shepard stands on carries the

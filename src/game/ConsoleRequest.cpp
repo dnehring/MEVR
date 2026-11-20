@@ -2265,6 +2265,13 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return melee::Console(rest);
     }
+    if (verb == "convo") {
+        std::string rest;
+        std::getline(words, rest);
+        rest.erase(0, rest.find_first_not_of(' '));
+        if (rest.rfind("world", 0) == 0) rest = rest.substr(5);
+        return sequel_conversation_world::Console(rest);  // `mevr convo [world] [on|off|auto]`: the sequels' module (T49)
+    }
     if (verb == "instances") {
         return InstancesLe2(words);  // a scene's Kismet start, for the cinema screen's checks (research/le2-cinema.md)
     }

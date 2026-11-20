@@ -15,6 +15,11 @@
 #include "core/vr/SettingsFile.hpp"
 #include "engine/GameAdapter.hpp"
 #include "game/DepthOfFieldHold.hpp"
+#include "game/HandCalibration.hpp"
+#include "core/vr/Comfort.hpp"
+#if defined(MEVR_GAME_LE3)
+#include "game/Le3Gui.hpp"
+#endif
 #include "engine/ProcessEvent.hpp"
 #include "engine/SettingsFile.hpp"
 #include "engine/Skeleton.hpp"
@@ -170,6 +175,12 @@ struct Conversation {
     unsigned yieldedTotal = 0;
     unsigned refusedMoves = 0;   // SetLocation said no
     std::string why;             // why not placed (yet)
+    // ME1's sticks (the owner's answer, 2026-11-19): the left stick walks only while the wheel is down and steers it when it is
+    // up (latched after a pick until let go: cw::StickWalks); the right stick turns ([Comfort] turn, about the drawn eyes).
+    cw::StickLatch latch;
+    vr::comfort::SnapTurn snap;
+    double turnedDeg = 0.0;
+    unsigned wheelHeld = 0;      // ticks the wheel kept the left stick
 };
 Conversation gC;
 depth_of_field::Hold gDof{"conversation world"};
@@ -211,6 +222,19 @@ ue3::Object* LiveConversation(ue3::Object* controller) {
             !gEnded.ReadBool(conversation).value_or(true)
         ? conversation
         : nullptr;
+}
+
+// The dialogue wheel is up (game/Thespian's reader of the conversation handler, each game's own).
+bool WheelUp(ue3::Object* controller) {
+    static ue3::FunctionRef getHandler{"SFXGame.SFXGUIInteraction.GetConversationHandler", ue3::kEveryGame};
+    static ue3::FieldRef displaying{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
+    auto* const manager = le3_gui::Manager();
+    auto* const function = getHandler.Get();
+    if (controller == nullptr || manager == nullptr || function == nullptr) return false;
+    ue3::Params params(ue3::runtime::Get(), function);
+    if (!params.Valid() || !params.Set("oPlayerController", controller) || !ue3::runtime::Call(manager, function, params)) return false;
+    auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
+    return handler != nullptr && ue3::runtime::IsAlive(handler) && displaying.ReadBool(handler).value_or(false);
 }
 
 // One element's actor, guarded: the array's storage is the engine's.
@@ -256,6 +280,20 @@ ue3::Object* LiveConversation(ue3::Object* controller) {
 
 ue3::Object* ConversationPlayer(ue3::Object* conversation) {
     return gPlayer.Read<ue3::Object*>(conversation).value_or(nullptr);
+}
+
+// The dialogue wheel is up (game/Thespian's ME2 reader: the GUI manager's conversation handler).
+bool WheelUp(ue3::Object* controller) {
+    static ue3::FieldRef managerField{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
+    static ue3::FunctionRef getHandler{"SFXGame.MassEffectGuiManager.GetConversationHandler", ue3::kEveryGame};
+    static ue3::FieldRef displaying{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
+    auto* const manager = controller != nullptr ? managerField.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    auto* const function = getHandler.Get();
+    if (manager == nullptr || !ue3::runtime::IsAlive(manager) || function == nullptr) return false;
+    ue3::Params params(ue3::runtime::Get(), function);
+    if (!ue3::runtime::Call(manager, function, params)) return false;
+    auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
+    return handler != nullptr && ue3::runtime::IsAlive(handler) && displaying.ReadBool(handler).value_or(false);
 }
 
 // The people of the conversation (ME1's m_SpeakerList, its owner, the speaker and listener now), the player's left out.
@@ -571,7 +609,32 @@ void Tick(conversation_world::Link const& link) {
         vr::controllers::State const pads = vr::controllers::Latest();
         vr::host_view::State const view = vr::host_view::Latest();
         auto const frame = HeldFrame();
+        bool const wheelUp = WheelUp(controller);
+        double const magnitude = pads.active ? std::hypot(pads.left.stickX, pads.left.stickY) : 0.0;
+        bool const walks = cw::StickWalks(gC.latch, wheelUp, magnitude);
+        if (!walks) ++gC.wheelHeld;
+        // ME1's turn: the right stick turns the held facing about the drawn eyes ([Comfort] turn: smooth or snap).
         if (pads.active && frame && view.valid && dt > 0.0) {
+            vr::comfort::Settings const comfort = hand_calibration::GetComfort();
+            float const x = pads.right.stickX;
+            bool const snap = comfort.turn == vr::comfort::TurnStyle::Snap;
+            double const degrees = snap ? vr::comfort::StepSnap(gC.snap, x, static_cast<double>(now) / 1000.0, comfort)
+                                        : vr::comfort::SmoothTurnDegrees(x, dt, comfort);
+            if (degrees != 0.0) {
+                // The eyes' place in the room turns with the held view: the pin moves so the drawn eyes stay where they are.
+                engine::Basis const before = engine::ToBasis(engine::UnrealRotation{0, gC.facing.yaw, 0});
+                gC.facing.yaw += static_cast<std::int32_t>(degrees * 65536.0 / 360.0);
+                engine::Basis const after = engine::ToBasis(engine::UnrealRotation{0, gC.facing.yaw, 0});
+                double const f = view.offsetForward, r = view.offsetRight;
+                gC.pin.x += static_cast<float>((before.forward.x - after.forward.x) * f + (before.right.x - after.right.x) * r);
+                gC.pin.y += static_cast<float>((before.forward.y - after.forward.y) * f + (before.right.y - after.right.y) * r);
+                if (gC.turnedDeg == 0.0) {
+                    log::Info("conversation world: conversation {}: the right stick turns you ({})", gC.serial, snap ? "snap" : "smooth");
+                }
+                gC.turnedDeg += std::abs(degrees);
+            }
+        }
+        if (walks && pads.active && frame && view.valid && dt > 0.0) {
             engine::Basis const headAxes = engine::ToBasis(view.head.orientation);
             engine::UnrealVector const forward = engine::Apply(frame->rotation, headAxes.forward);
             double const yawDeg = std::atan2(forward.y, forward.x) * (180.0 / 3.14159265358979323846);

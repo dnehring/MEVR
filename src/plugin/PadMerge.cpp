@@ -168,29 +168,9 @@ XINPUT_GAMEPAD Merge(XINPUT_GAMEPAD const& real, vr::controllers::State const& c
         options.countKept = false;
     }
     XINPUT_GAMEPAD touch = gp::FromControllers(controllers, gLatches, options);
-#if defined(MEVR_WITH_HALCYON_LE2) || defined(MEVR_WITH_HALCYON_LE3)
-    // A conversation held in the world, first person (game/SequelConversationWorld): the left stick walks the player (the mod
-    // reads it from the controllers), so the right stick steers the game's dialogue wheel, which reads the pad's left stick
-    // (the owner, 2026-11-19, on ME3; ME2 the same since lane FPC). The game sees no right stick meanwhile (nothing else in a
-    // conversation takes it).
-    {
-        auto const convo = vr::conversation_world::Latest(1500);
-        bool const held = convo && convo->size == sizeof(vr::conversation_world::State) && convo->active != 0 && controllers.active;
-        static bool s_heldLogged = false;
-        if (held) {
-            touch.sThumbLX = touch.sThumbRX;
-            touch.sThumbLY = touch.sThumbRY;
-            touch.sThumbRX = 0;
-            touch.sThumbRY = 0;
-        }
-        if (held != s_heldLogged) {
-            s_heldLogged = held;
-            log::Info("halcyon bridge: {}", held ? "a conversation held in the world: the right stick steers the dialogue wheel (the "
-                                                   "game's left stick), the left stick walks the player"
-                                                 : "the conversation in the world ended: the sticks are the game's as on foot");
-        }
-    }
-#endif
+    // A conversation held in the world (game/SequelConversationWorld) keeps ME1's sticks (the owner, 2026-11-19): the game's left
+    // stick steers the dialogue wheel when it is up, the mod walks the player with it only while the wheel is down, and turns the
+    // player with the right stick. The ME3 slice's swap (the right stick to the wheel) is gone.
     if (gLatches.rightClickKept && !gPowerClickKeptLogged) {
         gPowerClickKeptLogged = true;
         log::Info("halcyon bridge: first right stick click kept from the game: its hold is the power wheel's (the mod's), "
