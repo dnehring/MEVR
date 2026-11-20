@@ -30,6 +30,8 @@ std::string PlayerTrackMatinee();
 std::string PlayerTrackPath();
 // The move track instance that last moved the player's pawn (inside the SeqAct_Interp playing it; null if none). Game thread.
 void* PlayerTrackInstance();
+// The move track itself (the floor marker asks where its walk ends: engine/ConversationHooks' MoveTrackEnd). Game thread.
+void const* PlayerTrack();
 // `mevr moment`: what is being watched and the last moment's numbers.
 std::string Command(std::string const& rest);
 void LogStats();
