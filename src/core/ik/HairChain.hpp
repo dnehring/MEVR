@@ -51,6 +51,10 @@ struct Chain {
     bool started = false;
     double carry = 0.0;            // simulated time not yet stepped (s)
     int resets = 0;
+    // The body's surface (Input::surface) at rest: each point's distance from each sphere's centre when the chain was last
+    // reset (point i, sphere k at i * spheres + k), the hair lying on the body as authored. While the body moves, a point is
+    // never let deeper into a sphere than that (its animated place, carried by the head, swings into the shoulders on a walk).
+    std::vector<double> surfaceRest;
     int body = -1;                          // the upper-body bone lower joints follow (Settings::followBody); Discover sets it
     std::vector<Transform> followRest;      // each bone relative to `body` (metres): the bind pose's, set by the caller; else
                                             // recorded at the first step
@@ -69,8 +73,9 @@ struct Input {
     // The person's own body (world space, metres): the hair is kept out of it, but never further than its animated point
     // sits (hair at rest lies on the scalp, inside the skull's capsule; that rest stays reachable).
     std::span<hand_contact::Capsule const> body;
-    // The body's surface fitted from its mesh (ik::body_spheres, spheres as capsules with both ends at the centre): as `body`,
-    // the hair kept out but never further than its animated point sits from each sphere, on that point's side.
+    // The body's surface fitted from its mesh (ik::body_spheres, spheres as capsules with both ends at the centre, the same
+    // list every step): the hair kept out of each sphere to its whole radius, or as far as the point sat from it at the chain's
+    // last reset if less (Chain::surfaceRest), on its animated point's side.
     std::span<hand_contact::Capsule const> surface;
     // Anything else (the player's hands and arms): the hair is kept out by the whole radius.
     std::span<hand_contact::Capsule const> colliders;

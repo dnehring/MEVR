@@ -70,6 +70,29 @@ void ResetTo(Chain& chain) {
     chain.carry = 0.0;
 }
 
+// `p` pushed out of the body's surface spheres (Input::surface): to each sphere's radius plus the point's, or as far as the point
+// sat from that sphere at rest (`rest`, one per sphere) if less; on the animated point's side.
+int CollideSurface(Vec3& p, Vec3 target, double radius, std::span<hand_contact::Capsule const> spheres, double const* rest) {
+    int pushes = 0;
+    for (std::size_t k = 0; k < spheres.size(); ++k) {
+        hand_contact::Capsule const& c = spheres[k];
+        double const reach = (std::min)(c.radius + radius, rest[k]);
+        Vec3 const away = p - c.a;
+        double const d = Length(away);
+        if (d >= reach) {
+            continue;
+        }
+        Vec3 dir = d > 1e-9 ? away * (1.0 / d) : Normalize(target - c.a, {0.0, 0.0, 1.0});
+        Vec3 const restAway = target - c.a;
+        if (Length(restAway) > 1e-9 && Dot(dir, restAway) < 0.0) {
+            dir = Normalize(restAway, dir);
+        }
+        p = c.a + dir * reach;
+        ++pushes;
+    }
+    return pushes;
+}
+
 // `p` pushed out of every capsule: by the capsule's radius plus the point's; with `keepRest` (the person's own body) never
 // further than the animated point itself sits from the axis (hair at rest lies on the scalp, inside the skull's capsule).
 int Collide(Vec3& p, Vec3 target, double radius, std::span<hand_contact::Capsule const> colliders, bool restSide,
@@ -203,6 +226,15 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
     }
     chain.lastAnchor = anchor;
     chain.target = target;
+    // The surface at rest: recorded at a reset (the hair as authored on the body), and whenever the sphere list changes.
+    if (!input.surface.empty() && (reset || chain.surfaceRest.size() != target.size() * input.surface.size())) {
+        chain.surfaceRest.resize(target.size() * input.surface.size());
+        for (std::size_t i = 0; i < target.size(); ++i) {
+            for (std::size_t k = 0; k < input.surface.size(); ++k) {
+                chain.surfaceRest[i * input.surface.size() + k] = Length(target[i] - input.surface[k].a);
+            }
+        }
+    }
     if (reset) {
         ResetTo(chain);
         chain.started = true;
@@ -294,7 +326,10 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
                 // never further than the point's own animated place sits from each sphere. The rigged hair's bones run inside its
                 // volume, 3-5 cm under Miranda's skin at rest, and the authored mesh doesn't clip there: what clips is a strand the
                 // simulation moves deeper than that (the bench's extra sink).
-                stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.surface, true, true);
+                if (!input.surface.empty() && chain.surfaceRest.size() == n * input.surface.size()) {
+                    stats.collisions += CollideSurface(chain.pos[i], now[i], settings.radiusM, input.surface,
+                        &chain.surfaceRest[i * input.surface.size()]);
+                }
                 stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.colliders, false, false);
             }
         }

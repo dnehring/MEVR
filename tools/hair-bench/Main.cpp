@@ -124,6 +124,7 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
     long long jitterCount = 0;
     double lastMovingT = 0;
     std::vector<ik::Vec3> prevTip(chains.size()), prevPrevTip(chains.size());
+    std::vector<std::vector<double>> restDistance;  // per chain: point i, sphere k at i * spheres + k (the first step)
     for (int k = 0; k <= steps; ++k) {
         double const t = k * dt;
         double const walkT = std::min(t, seconds);
@@ -162,6 +163,17 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
         if (gSurface) in.surface = surface;
         in.dt = k == 0 ? 0.0 : dt;
         double sink = 0;
+        if (k == 0) {
+            // Each point's distance from each sphere at rest (the first step), for the sink.
+            restDistance.assign(chains.size(), {});
+            for (std::size_t c = 0; c < chains.size(); ++c) {
+                std::vector<ik::Vec3> rest;
+                for (std::size_t b = 0; b < chains[c].bones.size(); ++b) rest.push_back(metres[static_cast<std::size_t>(chains[c].bones[b])].translation);
+                for (std::size_t i = 0; i < rest.size(); ++i) {
+                    for (hc::Capsule const& sphere : surface) restDistance[c].push_back(ik::Length(rest[i] - sphere.a));
+                }
+            }
+        }
         std::vector<ik::Vec3> tips;
         double worstOff = 0;
         for (std::size_t c = 0; c < chains.size(); ++c) {
@@ -190,10 +202,13 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
             prevTip[c] = tip;
             for (std::size_t i = 1; i < chains[c].pos.size(); ++i) {
                 ik::Vec3 const p = hair::Shown(chains[c], i);
-                ik::Vec3 const rest = chains[c].target[i];
-                for (hc::Capsule const& sphere : surface) {
-                    // Deeper than its animated place sits from this sphere (only where that place is near it).
-                    double const restClear = ik::Length(rest - sphere.a) - sphere.radius;
+                for (std::size_t q = 0; q < surface.size(); ++q) {
+                    hc::Capsule const& sphere = surface[q];
+                    // Deeper into this sphere than the point sat at rest (the first step: the hair as authored), where that
+                    // rest was near it: what shows as the strand going into the body.
+                    std::size_t const at = i * surface.size() + q;
+                    if (at >= restDistance[c].size()) continue;
+                    double const restClear = restDistance[c][at] - sphere.radius;
                     if (restClear > 0.03) continue;
                     sink = std::max(sink, restClear - (ik::Length(p - sphere.a) - sphere.radius));
                 }
@@ -392,7 +407,7 @@ int JiggleReport(Skeleton const& sk, ik::clip::Clip const& clip, std::map<std::s
 
 int main(int argc, char** argv) {
     std::map<std::string, std::string> a{{"--fps", "72"}, {"--seconds", "8"}, {"--hold", "2"}, {"--stiffness", "0.06"},
-        {"--damping", "0.10"}, {"--inertia", "1.0"}, {"--bend", "50"}, {"--gravity", "0"}, {"--rates", ""}};
+        {"--damping", "0.10"}, {"--inertia", "1.0"}, {"--bend", "50"}, {"--gravity", "0"}, {"--rates", ""}, {"--follow", "0.7"}};
     for (int i = 1; i + 1 < argc; i += 2) {
         a[argv[i]] = argv[i + 1];
     }
@@ -460,6 +475,7 @@ int main(int argc, char** argv) {
                 s.stiffness = stiffness;
                 s.damping = damping;
                 s.inertia = inertia;
+                s.followBody = std::stod(a["--follow"]);  // as game/Hair's followBody (0.7)
                 s.maxBendDeg = std::stod(a["--bend"]);
                 s.gravity = std::stod(a["--gravity"]);
                 Run const r = Simulate(sk, *clip, s, fps, seconds, hold);
