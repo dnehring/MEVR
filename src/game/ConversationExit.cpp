@@ -147,6 +147,9 @@ void RefreshSettings() {
     if (auto const text = ini::Get(loaded.file, "Cinematics", "conversations")) {
         s.world = cw::ParseMode(text->c_str(), cw::Mode::Screen) == cw::Mode::World;
     }
+#if !defined(MEVR_GAME_LE1)
+    s.world = sequel_conversation_world::WantsHooks();  // the file's word, or the session's (`mevr convo world on|off|auto`)
+#endif
     if (auto const text = ini::Get(loaded.file, "Cinematics", "worldExit")) {
         s.mode = cx::ParseMode(text->c_str(), cx::Mode::Walk);
     }
@@ -1130,10 +1133,10 @@ std::string Command(std::string const& rest) {
     } else if (w == "trace on" || w == "trace off") {
         gTraceWalks = w == "trace on";
         return std::format("convo exit: a call trace of the AI's move for each walk away {}", gTraceWalks ? "on" : "off");
-#if !defined(MEVR_GAME_LE1)
+#if defined(MEVR_GAME_LE2)
     } else if (w == "end") {
-        // A test aid (ME1's `mevr convo end`): the world's own early end of the conversation now, so its start action's outputs
-        // run (the script's removals at its end) without playing every line.
+        // A test aid (ME1's `mevr convo end`; ME2 only: ME3 has no BioWorldInfo.EndCurrentConversation): the world's own early
+        // end of the conversation now, so its start action's outputs run (the script's removals at its end) without every line.
         static ue3::FunctionRef endCurrent{"SFXGame.BioWorldInfo.EndCurrentConversation", ue3::kEveryGame};
         ue3::Object* const pawn = player::Pawn(player::Controller());
         ue3::Object* const world = pawn != nullptr ? gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr) : nullptr;

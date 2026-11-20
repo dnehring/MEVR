@@ -366,6 +366,82 @@ post-handler: the change itself lands later) takes out a level holding someone i
 6. **Line hides and holograms** (Saren's hologram going off at the hearing's end; ME3's 773 line visibility tracks): left as
    authored (built: noticed and counted, not held)? Recommendation: leave holograms, hold people hidden by a line (ME3 first).
 
+## 9. The sequels, built (lane EXIT2, 2026-11-20)
+
+One module for the three games: `game/ConversationExit` is ME1's adapter plus the sequels' differences in `#if` blocks (ME1's
+tokens unchanged; its compiled objects compared with main's build: identical code and data except the four that carry the build's
+commit or time). The rule is section 4's, unchanged.
+
+**What reaches the hook, per game (Ghidra, numbers only).**
+
+| | ME1 | ME2 | ME3 |
+|---|---|---|---|
+| The level script's op | `BioSeqAct_ModifyPropertyPawn`, row "Active" (`aBehaviorFunctions`) | the same op, row "Active" mapped to an object function (`aObjectFunctions`) | `BioSeqAct_SetActive` (no ModifyPropertyPawn in ME3) |
+| The function | `SFXGame.BioActorBehavior.SetActive(bSetActive)` on the behaviour | `Engine.Actor.SetActive(bActive)` on the pawn | `Engine.Actor.SetActive(bActive)` on the target actor |
+| How it is called | the op's native Activated, its row helper through the behaviour's vtable slot 0x250 (ProcessEvent) | the InteractProperty ops' native Activated (`0xA7A010`, every target in reverse; `0xA79D50`, the first target: four and three
+class vtables point at them, [verify] which is ModifyPropertyPawn's in the game with `mevr vslot`), each row of type 4 through a helper (`0xA7FC60`, `0xA7F4C0`) calling the pawn's vtable slot **0x240**, ME2's `UObject::ProcessEvent` (`0xD8D50`) | **UnrealScript**: `BioSeqAct_SetActive.Activated` is a script event whose body is `foreach Targets: Actor(target).SetActive(bSetActive)` (read with `tools/conversation-scan --game LE3 --script BioSeqAct_SetActive.Activated`); the native is called by the script VM on that script's own frame |
+| The native hooked | `UBioActorBehavior::execSetActive` `0xBAAB60` | `AActor::execSetActive` **`0x4BC510`** (its C++ `SetActive` at the actor's slot 0x340) | `AActor::execSetActive` **`0x4BFAF0`** (slot 0x330) |
+| The frame the hook reads | ProcessEvent's (Node `SetActive`, Locals the parameters) | the same | the calling script's (Node `BioSeqAct_SetActive.Activated`, Object the op): `engine/ExitHooks`' script path |
+
+Each address is pinned in `engine/Addresses.hpp` with a pattern that runs to the thunk's call through the C++ slot (every
+bool-taking exec thunk begins alike), unique in each game's `.text` (`tools/rva-patterns.py` found none shorter; the scratch
+search over the dumps confirmed one match each).
+
+**ME3's script path (`engine/ExitHooks`, `SetScriptProvider`).** The script calls the native with its own frame, so withholding
+it must leave that frame where the call would have: the hook asks the provider with the target and the op (the op's
+`bSetActive` is the value: the script passes it unchanged), and a withheld call makes the thunk's own steps without its last
+call: `P_GET_UBOOL` (the next token's native through `GNatives`, the value into a local), the `EX_EndFunctionParms` byte, and an
+`EX_DebugInfo` (0x41) after it through `GNatives[0x41]`, exactly as `0x4BFAF0` does (Ghidra). Our own apply calls
+`Engine.Actor.SetActive` through ProcessEvent, the other path. [verify] in the game.
+
+**The sequels' adapter (`game/ConversationExit.cpp`).**
+
+1. The hook's object is the actor itself; each person's "behaviour" is the pawn (`Person::behaviors[0]`), so ME1's lookups,
+   the hold, the swap check and the apply work unchanged; the apply is `Engine.Actor.SetActive(bActive = false)`.
+2. The people: `sequel_conversation_world::ScenePeople` (the sequels' reader: ME2's `m_SpeakerList`, owner, speaker and listener;
+   ME3's `m_aSpeakerData`), read only in the conversation mode (ME2's `m_oCurrentConversation` can outlive its end; the 2 s
+   window covers the end's tick).
+3. Present: ME2 the behaviour's `bActive` (through `oBioComponent`) [verify that ME2's actor SetActive changes it], ME3 the pawn's
+   own `BioPawn.bActive`; both with `bHidden` and the level's streaming.
+4. The game's black screen: a ProcessEvent post-handler on `BioSeqAct_BlackScreen.Activated` (ME1's route; ME3's line track and
+   start flags are not read: research/le3-conversations-in-world.md 5.4).
+5. The dip: `conversation_world::DipFromBlack` forwards to the sequels' module (`gCutSerial`), which publishes it held or, on
+   foot, in the armed word (`PublishArmed` carries `cut` and publishes while it is new); the sequels' fade seam
+   (`plugin/HalcyonSequelBridge` `TransitionFadeLayer`) reads `FootCut()` on foot as LE1's does.
+6. The world mode: the sequels' module's word (the file's `[Cinematics] conversations`, or `mevr convo world on|off|auto`).
+7. The walk: `game/AiWalk`'s adapters (ME2 `BioAiController.PrecisionMoveTo`, ME3 `MoveToSlot`) behind ME1's reachability check.
+8. Test aid: `mevr convo exit end` (the sequels): `BioWorldInfo.EndCurrentConversation`, the world's own early end, so a start
+   action's outputs run without playing every line. Runner: `tools/le2-halcyon-run/conversation-exit.ps1`.
+
+**ME2's fixture (the scratch scan, 171 deactivations reachable within 6 ops of a start's outputs).** Tali's reintroduction on
+Freedom's Progress: `BioD_ProFre_201Tali`, sequence `Tali_Conversation`: `SFXSeqAct_StartConversation_0` (`profre_tali_intro_d_dlg`)
+`Out` -> `SeqAct_Gate_2` -> `BioSeqAct_PMExecuteTransition_1` ("Tali_Left -> True") -> **`BioSeqAct_ModifyPropertyPawn_0`, Active
+false on Tali (`hench_tali`, the owner), Prazza (`profre_quar_leader`) and two guards**, no delay, no black screen. Reached by
+script from the VR career's `Save_0004` (lane FPC2's route: `mevr setloc` into the room, the chain fired from its
+`BioSeqAct_CancelHint`). The Normandy's debriefs are the next (Miranda, Jacob and the Illusive Man's hologram after each
+`nor*_debrief_d_dlg`), from a Normandy save.
+
+**ME3's line visibility tracks (count only; owner question 6).** A scratch scan of every ME3 package's `InterpTrackVisibility`
+inside a conversation's line matinees (base game and DLC, deduplicated by conversation and track): 2,461 tracks in 198
+conversations (section 3's 773 in 147 counted fewer packages). 1,187 only show. Of the 1,274 that hide (a Hide or Toggle key), by
+the actor their group names or finds (`m_nmFindActor`):
+
+| what is hidden | tracks | conversations | of which hidden after the line's start (a pop mid-line) |
+|---|---|---|---|
+| one of the conversation's people (a speaker tag, the owner, or a group named for one: a double can't be told apart in the data) | 220 | 37 | 50 tracks in 17 conversations |
+| a squadmate (`hench_*`) | 67 | 18 | 11 in 4 |
+| someone else (guards, soldiers, extras by name) | 220 | 56 | 99 in 25 |
+| the player | 45 | 15 | 5 in 4 |
+| a hologram, screen or vision | 70 | 23 | 39 in 16 |
+| a camera, light or effect | 77 | 24 | 59 in 20 |
+| a prop or unknown (Reapers, doors, glass, ships, backdrops) | 575 | 101 | 220 in 58 |
+
+So **about 287 tracks in about 50 conversations hide people of the scene (220 people, 67 squadmates)**, 61 of them mid-line; a
+hide at the line's start (time 0) is the composition of a new shot (who is in it), not a person leaving in view. Classification
+by names, an estimate. Not built (owner question 6).
+
+**Checked in the game:** see section 10.
+
 ## Log
 
 - 2026-11-19/20: the packages read and counted for the three games; Udina's case found; the natives read in an isolated copy of
