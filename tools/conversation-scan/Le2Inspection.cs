@@ -97,11 +97,18 @@ internal static class Le2Inspection
     {
         var walks = new List<Dictionary<string, object>>();
         var moves = new List<Dictionary<string, object>>();
+        var actors = new List<string>();
         foreach (ObjectProperty t in groupProps.GetProp<ArrayProperty<ObjectProperty>>("InterpTracks") ?? new ArrayProperty<ObjectProperty>("InterpTracks"))
         {
             if (pcc.GetEntry(t.Value) is not ExportEntry track)
                 continue;
             PropertyCollection tp = track.GetProperties();
+            // Whom the line's tracks act on (BioEvtSysTrack*'s m_nmFindActor: "Player", "Owner", a tag): the presence table's facts
+            // (research/le2-conversations-in-world.md section 7: a conversation none of whose lines acts on the player has no place
+            // for the player).
+            string findActor = tp.GetProp<NameProperty>("m_nmFindActor")?.Value.Instanced;
+            if (findActor != null && findActor != "None" && !actors.Contains(findActor))
+                actors.Add(findActor);
             if (track.ClassName == "BioEvtSysTrackGesture")
             {
                 var anims = new List<string>();
@@ -148,5 +155,7 @@ internal static class Le2Inspection
             group["walkGestures"] = walks;
         if (moves.Count > 0)
             group["moves"] = moves;
+        if (actors.Count > 0)
+            group["actors"] = actors;
     }
 }

@@ -7,7 +7,8 @@ namespace mevr::hook {
 class Context;
 }
 
-// Two of the game's conversation decisions the mod takes part in (research/69, read with Ghidra; LE1 only):
+// Two of the game's conversation decisions the mod takes part in (research/69, read with Ghidra; LE1's, ME2's all three, ME3's
+// controller's placement and move track: research/le2-conversations-in-world.md sections 2 and 6, le3- section 3):
 //
 // - UBioConversation::SetPositionRotator (0xC862D0, the class's vtable slot 0x2C0; this, actor, FVector*, FRotator*) is the
 //   one place a conversation puts a person on a stage mark: ABioStage::PlaceActors (0xC93B60, once, when a conversation that
@@ -35,7 +36,8 @@ class Context;
 // The hooks run on the game thread, inside the engine's own code; the providers must be quick and never call script.
 namespace mevr::engine::conversation_hooks {
 
-// True: this actor of this conversation stays where it stands (the call's place is `location`, never zero here).
+// True: this actor of this conversation stays where it stands (the call's place is `location`, never zero here). On ME3
+// `conversation` may be null (an interp track's per-key placement): the provider keys on the actor.
 using KeepProvider = bool (*)(void const* conversation, void const* actor, float const* location);
 // True: the current conversation is not ended for `newcomer` (null: the distance or owner test's interruption).
 using InterruptProvider = bool (*)(void const* worldInfo, void const* newcomer);
@@ -48,14 +50,20 @@ bool Install(hook::Context& init);
 // False: still live (or a call still inside one after waiting), so this module must stay loaded.
 bool Uninstall(hook::Context& init, bool waitForCalls);
 bool Installed();
+// The move track's hook alone (it goes in whenever its address is known; the others need not be).
+bool MoveTrackInstalled();
 
 void SetKeepProvider(KeepProvider provider);
 void SetInterruptProvider(InterruptProvider provider);
 void SetMoveTrackProvider(MoveTrackProvider provider);
-// Where a move track wants its actor at `time` (the track's own UInterpTrackMove::GetLocationAtTime, its vtable slot +0x390,
+// Where a move track wants its actor at `time` (the track's own UInterpTrackMove::GetLocationAtTime, its vtable slot +0x390
+// on LE1, +0x388 on ME2, +0x398 on ME3,
 // as the hooked function calls it: track, instance, time, FVector* place, FRotator* rotation): for a provider that withholds
 // the move and still has to know where the script has the actor. False if the call could not be made or said no.
 bool MoveTrackPlace(void const* track, void const* instance, float time, float place[3]);
+// Where a move track's walk ends: its position curve's last key (Engine.InterpTrackMove.PosTrack's Points), asked of the track
+// at that time (MoveTrackPlace). Game thread, outside the engine's physics step (the floor marker of a scripted walk).
+bool MoveTrackEnd(void const* track, void const* instance, float place[3]);
 
 // Since the hooks went in (cumulative: game/ConversationWorld and game/ConversationFlow each keep what they last saw).
 struct Stats {

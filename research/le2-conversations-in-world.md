@@ -192,6 +192,132 @@ with no place for the player on the 3D screen from a generated presence table.
 8. **The rest of ME1's walking scenes**: walk-along (`worldWalkAlong`), the game's black moving the player
    (`worldBlackMoves`), rides (`RideBase`, `Actor.Base`), seats (`StepSeat`), eye height over his floor.
 
+## 6. Lane FPC2 (2026-11-20): at the source, moments, the presence table, the floor marker
+
+The brief's items 1, 2, 3 and 5, built on both sequels on the one module; checked in the game on ME2 (fake headset), not yet on
+ME3 (section 6.7). Numbers only from the decompiler; no code quoted.
+
+### 6.1 The placements at the source (item 1)
+
+**ME2's natives, found** (the live objects' vtables read in the game: `mevr convo vtables`, a probe in the sequels' console that
+prints a live object's vtable slot as an exe offset, whether .pdata calls it a function start, and its first bytes):
+
+| What | ME2 RVA | How | Pattern (offset 0) |
+|---|---|---|---|
+| `UBioConversation::SetPositionRotator` (LE1 0xC862D0) | **0xA2D180** | the live conversation's vtable 0x1252488, slot 0x2B8 (the class's own vtable 0x1252840, stored by its InternalConstructor 0xA29410, holds `_purecall` there: an offline search through the class registration finds the wrong vtable); decompiled: (conversation, actor, FVector*, FRotator*), a pawn stopped, moved only for a place that is not zero, dropped to the floor, turned: LE1's shape | `48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 48 8D 6C 24 A9 48 81 EC 90 00 00 00` |
+| `ABioWorldInfo::InterruptConversation` (LE1 0xB60460) | **0xB06390** | the live BioWorldInfo's vtable 0x1292CA8, slot 0x8D0 | `48 89 5C 24 08 57 48 83 EC 20 48 8B D9 48 8B FA 48 8B 89 4C` (LE1's first 16 bytes) |
+| `AActor::MoveWithInterpMoveTrack` (LE1 0x4B75F0) | **0x6B9C50** | LE1's first 16 bytes, unique; the track's `GetLocationAtTime` at vtable +0x388 | `48 8B C4 55 53 56 57 41 56 41 57 48 8D A8 58 FE` |
+
+ME3's (research/le3-conversations-in-world.md section 3) are pinned the same way: the controller's `SetPositionRotator` 0xA29DF0
+(five arguments, a null controller from two interp tracks' per-key placements) and `MoveWithInterpMoveTrack` 0x6BAFF0 (+0x398).
+ME3's interruption is the manager's four-argument `InterruptAmbientConversations`: not hooked (nothing flows on ME3 yet).
+
+`engine/ConversationHooks` (one file, per-game typedefs): the placement hook no longer needs the interruption's address; the move
+track's place slot is per game (`kTrackPlaceSlot`); `MoveTrackEnd` (new) asks a track where its walk ends (its position curve's
+last key, `Engine.InterpTrackMove.PosTrack.Points[].InVal`, then `MoveTrackPlace` at that time).
+
+`game/SequelConversationWorld` answers both questions (`KeepAtSource`, `OnMoveTrack`): after the opening the stage never places
+Shepard nor the people kept (the facing still applied: the game's own zero-place path), a track never moves Shepard (ME1's
+`trackHeld`), and every actor a track moves is noted so the after-the-fact undo leaves its authored walk alone (ME1's
+`trackWalks`); `cw::Insists` from the core replaced the slice's copy. The pin and the undo stay as the fallback, counted apart in
+the conversation's end line (`at the source: Shepard's placements N, people's N, Shepard's track moves N; ... put back N times
+after the fact`). What only the fallback covers: ME2's gesture walks' root motion [verify which conversations still count there].
+
+**Mod.cpp:** on ME2 the sequels' module owns the hooks and their providers; ME1's `ConversationWorld`, `ConversationFlow` and
+`AuthoredMoment` no longer tick on ME2 (their handles are ME1's, `ue3` without `kEveryGame`; ME1's module published its armed
+state after the sequels' every tick, and would have set the move track's provider to ME1's). ME1's `InWorld`, `BodyAway` and
+`MomentViewOn` answer with the sequels' module on ME2 and ME3, so arm IK runs in a held conversation's frame and the body follows
+the player (ArmIk.cpp's gate asked ME1's `InWorld`, false on the sequels until now).
+
+### 6.2 Moments: the level cutscenes that walk Shepard (item 2)
+
+ME1's rule (`worldMoments = view`), in the sequels' module (`TickMoment`): in the cinematic mode, once a matinee's move track walks
+Shepard's pawn (the move-track hook notes it; `cw::StepProvisional`: wait for a track while the game's camera is still the
+player's, a quarter of a second once a camera of the scene's own has the view, at most 6 s), the script's Shepard walks as
+authored (nothing withheld: the level counts on where it puts him) and the view stays the player's where the player stood:
+head-tracked, both eyes, ME1's sticks (the left walks inside 4 m of Shepard's place, the right turns about the eyes), his pawn
+hidden while the view stands more than 0.6 m from it, the body the player's (`BodyAway`). At the end the view joins him (a dip from
+black, `cw::State::cut`, when farther than 1.5 m: ME1's opening limit), and its place is the place on foot for the conversation
+that follows (its opening judges from there). Left to the 3D screen by rule: no track of Shepard's (`mevr convo world`'s "without
+a track of Shepard's"), his pawn hidden by the script (no place for the player), a cutscene not begun from the player's own view
+(around a load, a movie, a screen). The host: the armed bit covers the cinematic mode (`MevrSeams::ConversationWorldOrComing`;
+ME2's `me2_xr.cpp` mode 6 through it, `[MEVR]`), and the sequels' `TransitionFadeLayer` dips on the state's `cut` as LE1's does.
+
+**Tali's reintroduction, in the game** (fake headset, 2026-11-20 01:16-01:28, stretch `20261120-011558-816-LE2-fpc2-tali`;
+`load.ps1 -Save VR_31_Soldier_141126_336072f\Save_0004.pcsav`, `god`, `mevr setloc` 8.5 m north of `SFXDoor_5` to stream
+`BioD_ProFre_201Tali` in, then a second `mevr setloc 0 -9600 15250 -12060` just inside the room, `conversation-world.ps1 -Start
+fire:SFXGame.BioSeqAct_CancelHint:Tali_Conversation`):
+
+1. `[VRSTATE] gm 6 live alive -> VR` from the cutscene's first frame (no 3D-screen frame), `moment N: a matinee's move track walks
+   Shepard 0.0 s into the cutscene: held in first person`; snapshots `2026-11-20_01-27-09` to `01-27-17` show the scene in stereo
+   from the player's place in the room: Miranda walking past, Tali, Prazza and the quarians, Jacob with his gun.
+2. **ME2's ANIMCUTSCENE parks Shepard's pawn at the world origin** for the cutscene (`mevr state` mid-cutscene: the pawn at (0, 0,
+   0)); his part is played by the matinee's own `PC_`/`HMF_PC_` actor. So the moment's "apart" is the whole level: his pawn is
+   hidden by the rule, nothing is drawn at the origin, and the script's three teleports put him at the conversation's place.
+3. The moment ended `a conversation began after 13.2 s: the view joins Shepard 8.76 m away under a dip`; `transition fade: the world
+   -> the world: from black over 0.35 s`; the conversation opened `stay` from the moment's place (`gm 5 -> VR`).
+4. Not yet: a test that opens `SFXDoor_5` the way play does (the chain fired from its `CancelHint` leaves the door shut: from
+   outside the view faced the closed door for 13 s, the first two runs); whether the stand-in `PC_` actor is drawn where the player
+   stands (the snapshots show nobody at the player's place) [verify with a stance record].
+
+**Counts (offline, the scans):** ME2 has 214 level matinees that move Shepard (lane FPC's scan) and ME3 100 that move him more than
+1.5 m of the 910 that bind him (lane FPD3's): all of them are held by rule unless the run-time rules above say otherwise; nothing is
+listed by hand. In the game this session: ME2, 3 moments held (Tali's re-intro three times), 0 to the screen. The per-cutscene
+counts by reason come from `mevr convo world` (`moments N held, N without a track of Shepard's, N with his pawn hidden, N not from
+the player's view`) in a sweep; no sweep ran.
+
+### 6.3 Scenes with no place for the player: the presence table (item 3)
+
+`tools/conversation-scan` records each line group's actors (`actors`: every track's `m_nmFindActor`), and reads ME3's
+conversations with ME2's inspection (the plain scan, `--game LE3`, since this lane). `tools/conversation-presence.py --game LE2|LE3
+<scans> --write` classifies every conversation and writes `src/core/vr/ConversationPresence.inc`: a conversation the game plays in
+its conversation mode (a starting entry that is not ambient) none of whose lines acts on the player (no actor `Player`, no group
+named for him) has no place for him. `cw::NoPlaceForPlayer(name, game)` (unit-tested) sends it to the 3D screen at its start
+(`mevr convo world`'s count; log `none of its lines acts on the player (the presence table)`).
+
+| | conversations | ambient only | played in the conversation mode | of which no place for the player |
+|---|---|---|---|---|
+| ME2 (CookedPCConsole and DLC) | 1,225 | 600 | 625 | **109** (the Illusive Man's calls, the squad's comm remarks, dossier videos, tutorials) |
+| ME3 (CookedPCConsole and DLC) | 2,240 | 1,397 | 842 | **156** (the docking officer's `tempsf_citadel_docking_v`, Anderson's logs, the endings' radio) |
+
+**Proposal for ME1 (not built):** the same criterion over ME1's scan would replace the curated `cw::IsSetPiece` table; ME1's
+current table was chosen after its own criterion (camera share) and the owner's scene reviews, so the change needs their yes.
+
+### 6.4 The floor marker (item 5)
+
+`cw::StepMarker` (core, unit-tested, `TestFloorMarker`): in a first-person scene only, a need in the owner's order (the scene waits
+for the player somewhere, a place the game's black screen would take him, where Shepard's scripted walk ends), fading in over
+0.4 s, out over 0.5 s once the player stands within 0.3 m (back when he walks 0.6 m off) or the need passes. `cw::State` carries
+it (`marker`, `markerNeed`, `markerAt` in tracking space, `markerAlpha`, `markerRadiusM`: host and mod deploy together), and
+`plugin/SquadPlaceDraw` draws it in squad placement's own layer when the squad's arc is not up (all three hosts, no swapchain of its
+own): a thin pale ring and a fainter inner one, a hair above the floor; snapshot `"squadPlace"."floorMarker"`. Sources built: the
+walk's end in a moment, on the sequels (`TickMoment`); ME1's (`StepMomentMarker`, the lane's commit 1553434b) is not on main
+until ME1's regression set and the council walk have run with it. Log `convo: marker:`.
+**Not built:** the "waits" source (which trigger or volume the script waits on) and the "black move" source (the teleport's place
+before the black), on any game. **In the game:** on ME2's Tali the track's last key came back as (0, 0, 0) (the ANIMCUTSCENE's
+pawn parked at the origin, item 6.2.2), refused by the marker's sanity check (`no walk's end, no marker`): no marker drawn. ME1's
+walk with Anderson to the council is the check left (not run: ME1's regression set and the marker need one ME1 stretch).
+
+### 6.5 What else changed
+
+- The sequels' state's `cut` is a module-wide counter (`gCutSerial`): a Cut opening and a moment's join past 1.5 m dip.
+- A held conversation's end leaves its place as the place on foot (gFoot, gFootPov), for a moment or an opening right after it.
+
+### 6.6 What a snapshot of the conversation shows (open)
+
+Tali's conversation in first person (snapshot `2026-11-20_01-27-20-617-left.png`): two dark shapes fill the bottom corners: the
+inside of Shepard's own shoulders (the slice's eyes 8 units ahead and 4 above his head bone, `PlaceFromHead`). ME1's rule is
+`StepEyeHeight` (item 44) and the first-person eye offset: port it next (the eyes at the player's height over his floor, ahead of
+the collar).
+
+### 6.7 Not done in this lane
+
+ME3's checks (an ordinary Citadel conversation, a walking one, Joker seated, the docking officer to the screen) and an ME3 stretch;
+looks at the player's eyes (ME2 `BioPawn.SetLookAtTarget`, ME3 `SFXModule_LookAt`); the circle and the squad's formation with
+`game/AiWalk`; subtitle and wheel placement and `ConversationHandover`; walk-along (the matinee paused when the player falls
+behind), the game's black moving the player, rides and seats on the sequels; the stance records and `scene_audit` rules on the
+sequels; a canary per new rule.
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,

@@ -885,6 +885,16 @@ Headset checks the ME2 and ME3 plans named that had no line here (ME3 had none a
 [docs/trilogy-plan.md](../docs/trilogy-plan.md) "Headset-only checks"; T-numbers are its features. ME2's earlier lines
 stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs the feature seen working by script first.
 
+### First-person conversations and moments on ME2 and ME3 (lane FPC2, 2026-11-20; research/le2-conversations-in-world.md section 6)
+- [ ] ME2, Freedom's Progress, Tali's reintroduction with Comfort > Conversations > First person: open the door, the cutscene
+      plays around you in first person (you stay where you stood; the cutscene's Shepard isn't drawn where you are), a dip from
+      black as it ends and the conversation begins with Tali in front of you. Say whether being left where you stood while the
+      scene walks on feels right, and whether the dip is welcome.
+- [ ] The same conversation: are the bottom corners of the view filled by Shepard's own shoulders (a snapshot showed them)?
+- [ ] A floor marker (a thin pale ring on the floor) where a scripted walk you follow ends: small and quiet enough? (ME1's
+      source, the walk with Anderson to the council, waits on main for ME1's regression set: FPC2's commit 1553434b.)
+- [ ] ME3: a conversation the presence table sends to the 3D screen (the docking officer at the Citadel's arrival) does go there.
+
 ### One settings file for the three games (lane SET, 2026-11-18; research/25 section 20)
 
 Claude can check the first three alone on the fake headset (section 7's runs; back up `%LOCALAPPDATA%\MEVR` first, or use

@@ -24,11 +24,20 @@
 //     camera's POV around the main view's build only, keeps the world in stereo instead of the cinematic presentation
 //     (MevrSeams::ConversationInWorld in ME3's me2_xr.cpp) and hides Shepard's head (MevrSeams::WorldViewHeld 1).
 //   - Arm IK and the body under the player keep running in the held frame (view_anchor::Hold).
-//   - People kept where they stand (ME1's worldStay): after the opening, a speaker the stage moves by more than 0.3 m and less
-//     than 6 m in one camera update is put back with Actor.SetLocation before the frame is drawn; a placement the game repeats
-//     at once is its own (ME1's cw::Insists) and stays.
-// Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's walk, the
-// subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), moments. Game thread.
+//   - People kept where they stand (ME1's worldStay, worldStaySource): after the opening, the stage's placements of Shepard and
+//     of the conversation's people are withheld at the source (engine/ConversationHooks: ME3's controller's SetPositionRotator;
+//     ME2's placement function isn't pinned yet), the facing still applied, and so are a move track's moves of Shepard (ME1's
+//     trackHeld; both sequels); someone else a track moves walks as authored. After the fact, as the fallback: a speaker moved
+//     by more than 0.3 m and less than 6 m in one camera update by anything else is put back with Actor.SetLocation before the
+//     frame is drawn (a placement the game repeats at once is its own, cw::Insists), and Shepard is kept on the player's place
+//     (ME2's gesture walks' root motion is what remains there [verify]).
+//   - Conversations with no place for the player (the generated presence table, cw::NoPlaceForPlayer) stay on the 3D screen.
+//   - Moments (ME1's worldMoments = view): a level cutscene whose move track walks Shepard is held in first person from the
+//     player's place (his pawn hidden while apart, the body the player's), joined at its end under a dip; the floor marker
+//     (cw::StepMarker) where his walk ends (research/le2-conversations-in-world.md section 6).
+// Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's
+// walk, the subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), walk-along, the game's
+// black moving the player, rides, seats, the eyes at the player's height. Game thread.
 namespace mevr::game::sequel_conversation_world {
 
 // The camera-update handler; after ue3::runtime::Up.
@@ -39,5 +48,12 @@ void Shutdown(conversation_world::Link const& link);
 std::string Console(std::string_view args);
 // A conversation is shown in the world now.
 bool InWorld();
+// The world mode is wanted: engine/ConversationHooks goes in (Mod.cpp), and this module answers its questions.
+bool WantsHooks();
+// A moment's first-person view is up (a level cutscene a matinee walks Shepard in; ME1's conversation_world::MomentViewOn).
+bool MomentViewOn();
+// The body under the player in a conversation shown in the world or a moment (ME1's conversation_world::BodyAway, which on the
+// sequels answers with this: arm IK and the body follower).
+conversation_world::BodyAwayState BodyAway();
 
 } // namespace mevr::game::sequel_conversation_world

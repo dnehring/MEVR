@@ -60,7 +60,7 @@ internal static class Scan
             {
                 using IMEPackage pcc = InspectionContext.Open(file);
                 string packageHash = null;
-                if (InspectionContext.IsLe2)
+                if (InspectionContext.IsSequel)
                 {
                     using var bytes = File.OpenRead(file);
                     packageHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
@@ -70,12 +70,12 @@ internal static class Scan
                 {
                     Dictionary<string, object> record = export.ClassName switch
                     {
-                        "BioConversation" => seen.Add((InspectionContext.IsLe2 ? package + ":" : "") + export.InstancedFullPath) ? Conversation(pcc, export) : null,
-                        "BioEvtSysTrackInterrupt" when InspectionContext.IsLe2 => Le2Inspection.Interrupt(pcc, export),
+                        "BioConversation" => seen.Add((InspectionContext.IsSequel ? package + ":" : "") + export.InstancedFullPath) ? Conversation(pcc, export) : null,
+                        "BioEvtSysTrackInterrupt" when InspectionContext.IsSequel => Le2Inspection.Interrupt(pcc, export),
                         "BioSeqAct_StartConversation" => Start(pcc, export),
                         // ME2's level scripts start most staged conversations with their own action (Tali's meeting at Freedom's
                         // Progress): the same Conv, Owner and Stage links (research/le2-conversations-in-world.md).
-                        "SFXSeqAct_StartConversation" when InspectionContext.IsLe2 => Start(pcc, export),
+                        "SFXSeqAct_StartConversation" when InspectionContext.IsSequel => Start(pcc, export),
                         "BioSeqEvt_ConvNode" => Cinematic(pcc, export),
                         "BioTriggerStream" => Volume(export),
                         "BioSeqAct_FaceOnlyVO" => VoiceOver(pcc, export),
@@ -88,9 +88,9 @@ internal static class Scan
                     if (record != null)
                     {
                         record["package"] = package;
-                        if (InspectionContext.IsLe2)
+                        if (InspectionContext.IsSequel)
                         {
-                            record["game"] = "LE2";
+                            record["game"] = Program.GameName;
                             record["packageSha256"] = packageHash;
                             record["packageFile"] = Path.GetFullPath(file);
                             record["exportIndex"] = export.UIndex;
@@ -106,9 +106,9 @@ internal static class Scan
                             ["kind"] = "trigger", ["name"] = export.InstancedFullPath, ["class"] = export.ClassName, ["package"] = package,
                             ["at"] = new[] { triggerAt.GetProp<FloatProperty>("X")?.Value ?? 0, triggerAt.GetProp<FloatProperty>("Y")?.Value ?? 0, triggerAt.GetProp<FloatProperty>("Z")?.Value ?? 0 },
                         };
-                        if (InspectionContext.IsLe2)
+                        if (InspectionContext.IsSequel)
                         {
-                            trigger["game"] = "LE2";
+                            trigger["game"] = Program.GameName;
                             trigger["packageSha256"] = packageHash;
                             trigger["packageFile"] = Path.GetFullPath(file);
                             trigger["exportIndex"] = export.UIndex;
@@ -129,7 +129,7 @@ internal static class Scan
             }
         }
         Console.WriteLine($"{packages} packages read ({failed} failed), {lines} records -> {outPath}");
-        return failed > 0 || (InspectionContext.IsLe2 && lines == 0) ? 1 : 0;
+        return failed > 0 || (InspectionContext.IsSequel && lines == 0) ? 1 : 0;
     }
 
     // Conversations live in the English localised packages; starts, stages and matinees in the levels' own. The other
@@ -188,7 +188,7 @@ internal static class Scan
                 ["replies"] = node.GetProp<ArrayProperty<StructProperty>>("ReplyListNew")?.Select(r => r.GetProp<IntProperty>("nIndex")?.Value ?? -1).ToList()
                               ?? new List<int>(),
             });
-            if (InspectionContext.IsLe2) Le2Inspection.ExtendNode(nodes[^1], node.Properties, true);
+            if (InspectionContext.IsSequel) Le2Inspection.ExtendNode(nodes[^1], node.Properties, true);
         }
         foreach (StructProperty node in replies ?? new ArrayProperty<StructProperty>("m_ReplyList"))
         {
@@ -206,7 +206,7 @@ internal static class Scan
                 ["script"] = node.GetProp<IntProperty>("nScriptIndex")?.Value ?? -1,
                 ["entries"] = node.GetProp<ArrayProperty<IntProperty>>("EntryList")?.Select(e => e.Value).ToList() ?? new List<int>(),
             });
-            if (InspectionContext.IsLe2) Le2Inspection.ExtendNode(replyNodes[^1], node.Properties, false);
+            if (InspectionContext.IsSequel) Le2Inspection.ExtendNode(replyNodes[^1], node.Properties, false);
         }
         var result = new Dictionary<string, object>
         {
@@ -223,7 +223,7 @@ internal static class Scan
             ["nodes"] = nodes,
             ["replyNodes"] = replyNodes,
         };
-        if (InspectionContext.IsLe2)
+        if (InspectionContext.IsSequel)
             result["matineeSequence"] = Le2Inspection.Identity(pcc.GetEntry(props.GetProp<ObjectProperty>("MatineeSequence")?.Value ?? 0));
         return result;
     }
@@ -239,7 +239,7 @@ internal static class Scan
             ["conv"] = conv?.InstancedFullPath,
             ["comment"] = props.GetProp<ArrayProperty<StrProperty>>("m_aObjComment")?.FirstOrDefault()?.Value,
         };
-        if (InspectionContext.IsLe2) record["startClass"] = export.ClassName;
+        if (InspectionContext.IsSequel) record["startClass"] = export.ClassName;
         foreach (ExportEntry variable in Linked(pcc, props, "Owner"))
         {
             // The owner link is a SeqVar_Object (its ObjValue the actor) or a SeqVar_Player / a named variable (found at run time).
@@ -324,7 +324,7 @@ internal static class Scan
         bool movesPlayer = ((List<object>)record["groups"]).Cast<Dictionary<string, object>>().Any(g =>
             ((List<string>)g["tracks"]).Contains("InterpTrackMove") && ((string)g["name"] ?? "").Contains("player", StringComparison.OrdinalIgnoreCase));
         // ME2's cutscenes name Shepard's group PC_, HMM_PC_, HMF_PC_ (its imported ANIMCUTSCENE matinees).
-        if (InspectionContext.IsLe2 && !movesPlayer)
+        if (InspectionContext.IsSequel && !movesPlayer)
             movesPlayer = ((List<object>)record["groups"]).Cast<Dictionary<string, object>>().Any(g =>
                 ((List<string>)g["tracks"]).Contains("InterpTrackMove") && Le2Inspection.IsShepardGroup((string)g["name"]));
         if (movesPlayer && Upstream(pcc, export) is { } via)
@@ -590,12 +590,12 @@ internal static class Scan
                     ["name"] = groupProps.GetProp<NameProperty>("GroupName")?.Value.Instanced,
                     ["tracks"] = tracks,
                 };
-                if (InspectionContext.IsLe2) Le2Inspection.ExtendGroup(pcc, groupRecord, groupProps);
+                if (InspectionContext.IsSequel) Le2Inspection.ExtendGroup(pcc, groupRecord, groupProps);
                 groups.Add(groupRecord);
             }
         }
         var result = new Dictionary<string, object> { ["path"] = interp.InstancedFullPath, ["length"] = length, ["groups"] = groups };
-        if (InspectionContext.IsLe2) result["data"] = dataLinks;
+        if (InspectionContext.IsSequel) result["data"] = dataLinks;
         return result;
     }
 

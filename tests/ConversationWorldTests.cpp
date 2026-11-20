@@ -150,6 +150,14 @@ void TestSetPieces() {
     CHECK(!cw::IsSetPiece("BioConversation sta60_stripperseat_D.sta60_stripperseat_dlg"));
     CHECK(cw::IsSeatedScene("BioConversation sta60_stripperseat_D.sta60_stripperseat_dlg") && cw::IsSeatedScene("STA60_StripperSeat"));
     CHECK(!cw::IsSeatedScene("sta60_scenicview") && !cw::IsSeatedScene("jug20_sal_captainkirrahe") && !cw::IsSeatedScene(""));
+    // The sequels' presence table (generated): the docking officer's radio talk on ME3 and the Illusive Man's call on ME2 have no
+    // place for the player; Tali's reintroduction on Freedom's Progress and Samara's starter do; ME1 is never asked this way.
+    CHECK(cw::NoPlaceForPlayer("BioConversation tempsf_citadel_docking_v_D.tempsf_citadel_docking_v_dlg", 3));
+    CHECK(cw::NoPlaceForPlayer("pronor_illusive_c_d.pronor_illusive_c_dlg", 2));
+    CHECK(!cw::NoPlaceForPlayer("profre_tali_intro_d.profre_tali_intro_d_dlg", 2));
+    CHECK(!cw::NoPlaceForPlayer("normw_starter_h.normw_starter_h_dlg", 2));
+    CHECK(!cw::NoPlaceForPlayer("pronor_illusive_c_d.pronor_illusive_c_dlg", 3) && !cw::NoPlaceForPlayer("pronor_illusive_c", 1));
+    CHECK(!cw::NoPlaceForPlayer("", 2));
     CHECK(cw::IsStagedScene("sta90_council_saren") && cw::IsStagedScene("sta90_council_spectre_induction"));
     // The council shown as the walk with Anderson begins (research/69 item 36): by the moment's move track, its own matinee only.
     {
@@ -1076,8 +1084,60 @@ void TestLatest() {
 
 } // namespace
 
+// The floor marker (cw::StepMarker): only in a scene with a need, fades in, out once the player stands in it, back when he walks
+// off again, the need's order, out after the need passes.
+void TestFloorMarker() {
+    cw::MarkerState st;
+    cw::MarkerFacts f;
+    f.player = {0, 0, 0};
+    f.walkEnd = cw::Vec3{300, 0, 0};
+    cw::Marker m = cw::StepMarker(st, f, 0.1);
+    CHECK(m.alpha == 0.0 && m.need == cw::MarkerNeed::None);  // an ordinary scene, or none: nothing
+    f.scene = true;
+    m = cw::StepMarker(st, f, 0.1);
+    CHECK(m.changed && m.need == cw::MarkerNeed::WalkEnd && std::abs(m.alpha - 0.25) < 1e-9);
+    m = cw::StepMarker(st, f, 0.35);
+    CHECK(!m.changed && m.alpha == 1.0 && m.at.x == 300.0);
+    f.blackMove = cw::Vec3{0, 500, 0};
+    m = cw::StepMarker(st, f, 0.1);
+    CHECK(m.changed && m.need == cw::MarkerNeed::BlackMove && m.at.y == 500.0);
+    f.waits = cw::Vec3{-400, 0, 0};
+    m = cw::StepMarker(st, f, 0.1);
+    CHECK(m.changed && m.need == cw::MarkerNeed::Waits);
+    f.waits.reset();
+    f.blackMove.reset();
+    m = cw::StepMarker(st, f, 0.1);
+    CHECK(m.changed && m.need == cw::MarkerNeed::WalkEnd);
+    f.walkEnd = cw::Vec3{310, 5, 0};  // the walk's end refined a little: the same marker
+    m = cw::StepMarker(st, f, 0.1);
+    CHECK(!m.changed && m.at.x == 310.0);
+    f.player = {290, 0, 0};  // standing in it (within 0.3 m): it fades out
+    m = cw::StepMarker(st, f, 0.25);
+    CHECK(m.alpha < 1.0 && st.stoodIn);
+    m = cw::StepMarker(st, f, 1.0);
+    CHECK(m.alpha == 0.0 && m.need == cw::MarkerNeed::WalkEnd);
+    f.player = {350, 0, 0};  // 0.4 m off it: still in (hysteresis)
+    m = cw::StepMarker(st, f, 0.5);
+    CHECK(m.alpha == 0.0);
+    f.player = {400, 0, 0};  // walked off it: back
+    m = cw::StepMarker(st, f, 0.5);
+    CHECK(m.alpha == 1.0 && !st.stoodIn);
+    f.walkEnd.reset();  // the need passes: it fades out, then forgets
+    m = cw::StepMarker(st, f, 0.25);
+    CHECK(m.alpha == 0.5 && m.need == cw::MarkerNeed::WalkEnd);
+    m = cw::StepMarker(st, f, 0.25);
+    m = cw::StepMarker(st, f, 0.1);
+    CHECK(m.alpha == 0.0 && m.need == cw::MarkerNeed::None);
+    f.walkEnd = cw::Vec3{300, 0, 0};
+    f.scene = false;  // out of the scene: nothing
+    m = cw::StepMarker(st, f, 1.0);
+    CHECK(m.alpha == 0.0);
+    CHECK(std::string(cw::Name(cw::MarkerNeed::WalkEnd)).find("walk") != std::string::npos);
+}
+
 int RunConversationWorldTests() {
     gFailures = 0;
+    TestFloorMarker();
     TestParseMode();
     TestSetPieces();
     TestFlowEntries();

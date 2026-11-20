@@ -779,6 +779,17 @@ bool IsSetPiece(std::string_view name) {
     return std::find(std::begin(kSetPieces), std::end(kSetPieces), key) != std::end(kSetPieces);
 }
 
+namespace {
+#include "core/vr/ConversationPresence.inc"
+} // namespace
+
+bool NoPlaceForPlayer(std::string_view name, int game) {
+    std::string const key = ConversationKey(name);
+    if (game == 2) return std::binary_search(std::begin(kNoPlaceLe2), std::end(kNoPlaceLe2), std::string_view(key));
+    if (game == 3) return std::binary_search(std::begin(kNoPlaceLe3), std::end(kNoPlaceLe3), std::string_view(key));
+    return false;
+}
+
 bool IsSeatedScene(std::string_view name) {
     // The scan's SEATED_IN_WORLD (tools/conversation-scan.py). The dancer's seat at Chora's Den: the game fades, sits Shepard in
     // front of the dancer (a gesture track) and lets him get up again.
@@ -1354,6 +1365,62 @@ Guide StepGuide(GuideState& state, bool wanted, bool stickUsed, bool progressed,
         return Guide::GaveUp;
     }
     return Guide::Walk;
+}
+
+char const* Name(MarkerNeed need) {
+    switch (need) {
+    case MarkerNeed::Waits: return "the scene waits for the player there";
+    case MarkerNeed::BlackMove: return "the game's black screen would take the player there";
+    case MarkerNeed::WalkEnd: return "Shepard's walk ends there";
+    case MarkerNeed::None: break;
+    }
+    return "none";
+}
+
+Marker StepMarker(MarkerState& state, MarkerFacts const& facts, double dtS, MarkerLimits const& limits) {
+    MarkerNeed need = MarkerNeed::None;
+    Vec3 at = state.at;
+    if (facts.scene) {
+        if (facts.waits) {
+            need = MarkerNeed::Waits;
+            at = *facts.waits;
+        } else if (facts.blackMove) {
+            need = MarkerNeed::BlackMove;
+            at = *facts.blackMove;
+        } else if (facts.walkEnd) {
+            need = MarkerNeed::WalkEnd;
+            at = *facts.walkEnd;
+        }
+    }
+    Marker out;
+    if (need != MarkerNeed::None) {
+        bool const moved = std::hypot(at.x - state.at.x, at.y - state.at.y) > limits.movedUnits;
+        if (need != state.need || moved) {
+            out.changed = true;
+            state.need = need;
+            state.at = at;
+            state.stoodIn = false;
+        } else {
+            state.at = at;  // small moves follow (a walk's end the track refines)
+        }
+        double const away = std::hypot(facts.player.x - state.at.x, facts.player.y - state.at.y);
+        if (away <= limits.inUnits) {
+            state.stoodIn = true;
+        } else if (state.stoodIn && away > limits.againUnits) {
+            state.stoodIn = false;
+        }
+    } else if (state.need != MarkerNeed::None && state.alpha <= 0.0) {
+        state.need = MarkerNeed::None;  // faded out after its need passed
+        state.stoodIn = false;
+    }
+    bool const wanted = need != MarkerNeed::None && !state.stoodIn;
+    double const step = std::max(0.0, dtS);
+    state.alpha = wanted ? std::min(1.0, state.alpha + (limits.fadeInS > 0.0 ? step / limits.fadeInS : 1.0))
+                         : std::max(0.0, state.alpha - (limits.fadeOutS > 0.0 ? step / limits.fadeOutS : 1.0));
+    out.need = state.need;
+    out.at = state.at;
+    out.alpha = state.alpha;
+    return out;
 }
 
 bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {

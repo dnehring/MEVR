@@ -25,7 +25,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
   3, as on Mass Effect 1: you stand where you engaged the conversation, in stereo, with your own body; the left stick walks
   while the dialogue wheel is down and chooses a reply when it is up, the right stick turns you, and the scene's near plane no
   longer cuts away the floor or your arms. The 3D
-  cinema screen stays the default. Walking scenes such as Tali's meeting play their cutscene on the 3D screen for now.
+  cinema screen stays the default. Walking scenes such as Tali's meeting play their cutscene around you in first person too:
+  you stay where you stood while the scene walks on, and join Shepard (a short fade from black) when the conversation begins.
+  Conversations with no place for you (a radio call, the Illusive Man's holo calls, a squadmate's comment over the comm) stay
+  on the 3D screen.
 - **A stick-click crouch while you stand keeps your hands on your controllers.** In all three games, when the left stick
   click crouches Shepard while you stay standing, his body now rises to your view, his legs straightening, so his hands reach
   your controllers; before, it stayed more than half a metre under you and his arms fell short. The game still has him

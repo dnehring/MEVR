@@ -11,6 +11,7 @@ internal static class InspectionContext
 {
     internal static bool IsLe2 => Program.GameName == "LE2";
     internal static bool IsLe3 => Program.GameName == "LE3";
+    internal static bool IsSequel => IsLe2 || IsLe3;  // ME2's inspection, ME3's plain scan too
     internal static MEGame Game => IsLe2 ? MEGame.LE2 : IsLe3 ? MEGame.LE3 : MEGame.LE1;
 
     internal static void Initialize() => LegendaryExplorerCoreLib.InitLib(TaskScheduler.Default,
