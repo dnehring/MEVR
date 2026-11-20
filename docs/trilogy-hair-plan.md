@@ -450,3 +450,33 @@ skeleton). So:
   Miranda through the same plan format (her hair has no hair bones at all: the hair step alone; her body the bones);
   the players' install of a rig (MEVR Setup building the plan's package on the player's machine, docs section 7); other
   characters by a plan each.
+
+## 12. Jiggle on every female character, ME1-3 (the owner, 2026-11-19)
+
+After judging Miranda (suit and underwear) and Liara (her romance-scene body) in the headset: jiggle good, full intensity
+preferred (`jiggleIntensity` 1); Liara needs no changes; "we would want to make this change for all female characters in
+me1-3", reduced in armour ("full gear"), full in a bodysuit, casual clothes or underwear. Decided: armour keeps a quarter,
+told by the body mesh's name (`game/Hair` `OutfitJiggle`, `[Hair] jiggleArmour`, `armourBodies`, `fullBodies`; built,
+892c8249). Hairless characters (asari) simulate on the body (3402bc7c, 55954bd3).
+
+What's left, in order:
+
+1. **Automatic placement in the rig tool.** Today the breast and glute bones and their weight regions are placed by hand per
+   mesh from its surface (`inspect --dump`, then the front peaks per side in z 120-145 and the back peaks in z 85-105, as in
+   `plans/le3-miranda.jsonc` and `plans/le3-liara.jsonc`). A `"bones": "auto"` step (or a `place` verb) finds them: per side,
+   the front's furthest vertex in the chest band (y 2..12 cm off the middle) is the breast peak, the bone 7.5 cm behind it
+   on the parent `Chest2`, the region centred 3.5 cm behind the peak, radius (6.5, 7.0, 8.0); the back's furthest vertex in the
+   hip band is the glute peak, bone 7.5 cm inside it on `Pelvis`, region (7.0, 7.5, 10.0); the bands scaled by the skeleton's
+   `Chest2` and `Pelvis` heights (a krogan or a child stands otherwise). Check each against the hand placements of Miranda
+   (MIRa, NKDc) and Liara (LIAd): within 1 cm.
+2. **The female bodies of each game.** A `find`-driven list per game (`mevr-rig find <CookedPCConsole> *.pcc <regex>`):
+   ME3 `HMF_ARM_*` and `ASA_ARM_*` bodies (squad, NPC, player female armour sets), ME2 `HMF_*`/`ASA_*` (character outfits like
+   `HMF_MIR_LGTa`, the female armour sets), ME1 likewise; male and non-humanoid skeletons left out (no `Chest2`/`Pelvis`, or
+   `HMM_`). One generated plan per game (`plans/<game>-females.jsonc`), one package per game (`MEVR_Bodies_<GAME>.pcc`).
+3. **Stand-ins by name, not a table.** `engine/GameAdapter.hpp` `kHairStandIns` lists Miranda's meshes by hand; for every
+   body, `game/Hair` looks for `MEVR_Bodies_<GAME>.<mesh>_MEVR` (loaded through the TOC like Miranda's) and swaps it in;
+   the hand table stays for hair. Bodies in another body's package (a level's own copy) match by mesh name.
+4. **ME1 and ME2.** The hair module and the jiggle stage run on LE2 (Miranda at Freedom's Progress); LE1 needs its
+   `HairPose` stage wired the same way (check `engine/BonePose`'s hook for it).
+5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
+   (`mevr-hair-bench --jiggle`), then the owner in the headset on a sample: one armour, one bodysuit, one casual per game.
