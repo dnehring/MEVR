@@ -29,7 +29,7 @@ NEAR_PLANE_MAX = 15    # units: the frame's near plane over this cuts the floor 
 # transient" went into the first baseline (2026-11-12), and in the owner's headset session the same opening left the body up to
 # 5.7 m away for 225 of the hearing's 227 seconds (2026-11-13, research/69 "The body that stayed at the mark"): a baseline
 # compares a run with the last one, it is no judgement of what the player sees.
-ABSOLUTE = ('eyes-off-body', 'hands-off-controllers', 'body-not-drawn', 'near-plane')
+ABSOLUTE = ('eyes-off-body', 'hands-off-controllers', 'body-not-drawn', 'near-plane', 'vanished-in-view')
 
 RULES = {
     'look-at-body': (3, "a look meant for the player lands on Shepard's hidden body"),
@@ -44,6 +44,9 @@ RULES = {
     'body-not-drawn': (3, "the player's body is in view but no view drew it"),
     'person-not-drawn': (3, 'someone of the scene the player can see was not drawn'),
     'near-plane': (3, "the frame's near plane cuts away what stands near the eyes"),
+    # A person of the scene in sight in one record, gone (or hidden) in the next with no dip between (research/conversation-exits.md:
+    # Udina popping out after the council hearing's aftermath, 2026-11-19). The live rule (game/ConversationExit) watches every tick.
+    'vanished-in-view': (3, 'someone of the scene the player could see vanished without a dip from black'),
 }
 
 
@@ -239,6 +242,20 @@ def findings(records):
         walk = st.get('walkAlong') or {}
         if moment and walk.get('beside', 0) >= 1 and not walk.get('paused') and (walk.get('gapM') or 0) > WALK_LEFT_M:
             add('walk-left-behind', st, 'the walk', f"{walk['gapM']:.1f} m from Shepard's track place, not paused")
+    # Someone in sight and shown in a record, gone or hidden in the next, the next not after a dip (an `after-dip` record, or one
+    # the mod wrote on a cut: its `cut` counter changed). Bystanders (`others`) count too: a pop in view is a pop.
+    for before, after in zip(records, records[1:]):
+        if after.get('tag') in ('after-dip',) or (before.get('cut') is not None and before.get('cut') != after.get('cut')):
+            continue
+        shown_after = {q['name']: q for q in after['people'] + (after.get('others') or []) if not q.get('hidden')}
+        eyes = before['player'].get('eyes') or before['player']['at']
+        near = [q for q in (before.get('others') or []) if q.get('at') and math.dist(q['at'][:2], eyes[:2]) < 1500]
+        for q in before['people'] + near:  # (the bystanders' list ends at 20 m: one walking out of it is no pop)
+            if q.get('shepard') or q.get('hidden') or not q.get('inSight'):
+                continue
+            if q['name'] not in shown_after:
+                add('vanished-in-view', after, q['name'], f"in sight at {before.get('seconds', 0.0):.1f} s ({before.get('tag', '?')}), "
+                    f"gone at {after.get('seconds', 0.0):.1f} s ({after.get('tag', '?')}) with no dip between")
     if len(gap_records) >= 2:
         st, worst = max(gap_records, key=lambda r: r[1])
         add('eyes-off-body', st, 'Shepard', f"{len(gap_records)} records at {BODY_AWAY_M} m or more, at most {worst:.2f} m")

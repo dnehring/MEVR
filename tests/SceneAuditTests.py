@@ -79,6 +79,21 @@ check('too-close' in rules([record(0.0, 'begin', 0.08, [close]), record(2.0, 'op
 squad_back = person('Tali', (-120.0, 5.0), 100, target='Chorban', role='bystander', squad=True)
 check('squad-behind' in rules([record(2.0, 'opening', 0.08, [squad_back])]), 'a squadmate right behind')
 
+# Someone in sight in one record and gone in the next without a dip: vanished-in-view (Udina after the hearing, 2026-11-19);
+# hidden in the next likewise; after a dip, or out of sight before, nothing.
+udina = lambda: dict(person('Udina', (200.0, 50.0), 10, target='Anderson', role='bystander'), inSight=True)
+gone = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'line-1', 0.08, [ahead(10)])]
+check('vanished-in-view' in rules(gone), 'someone in sight gone in the next record is vanished-in-view')
+hid = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'line-1', 0.08, [ahead(10), dict(udina(), hidden=True)])]
+check('vanished-in-view' in rules(hid), 'someone in sight hidden in the next record is vanished-in-view')
+dipped = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'after-dip', 0.08, [ahead(10)])]
+check('vanished-in-view' not in rules(dipped), 'gone under a dip is no finding')
+unseen = [record(0.0, 'begin', 0.08, [ahead(10), dict(udina(), inSight=False)]), record(3.0, 'line-1', 0.08, [ahead(10)])]
+check('vanished-in-view' not in rules(unseen), 'gone while out of sight is no finding')
+stays = [record(0.0, 'begin', 0.08, [ahead(10), udina()]), record(3.0, 'line-1', 0.08, [ahead(10), udina()])]
+check('vanished-in-view' not in rules(stays), 'still there is no finding')
+check('vanished-in-view' in sa.ABSOLUTE, 'a pop in view is never excused by a baseline')
+
 # A scripted walk: left behind while someone walks beside Shepard and the walk is not paused; paused often.
 walk_rec = lambda t, gap, paused, pauses: record(t, 'moment', gap, [], opening='moment', detached=True, conversation='moment_x',
                                                   walk={'paused': paused, 'gapM': gap, 'beside': 1, 'line': False, 'pauses': pauses, 'pausedS': 3.0})

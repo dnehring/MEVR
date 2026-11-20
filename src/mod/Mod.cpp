@@ -32,6 +32,7 @@
 #include "engine/VoicePlace.hpp"
 #include "engine/CoverAcquire.hpp"
 #include "engine/ConversationHooks.hpp"
+#include "engine/ExitHooks.hpp"
 #include "engine/SelectionGaze.hpp"
 #include "engine/Engine.hpp"
 #include "engine/GameAdapter.hpp"
@@ -99,6 +100,8 @@
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
+#include "game/AiWalk.hpp"
+#include "game/ConversationExit.hpp"
 #include "game/ConversationWorld.hpp"
 #include "game/SequelConversationWorld.hpp"
 #include "game/AuthoredMoment.hpp"
@@ -218,6 +221,9 @@ bool gSelectionHookTried = false;
 bool gSelectionHooked = false;
 bool gConversationHooksTried = false;
 bool gConversationHooked = false;
+// People leaving a first-person conversation (engine/ExitHooks, game/ConversationExit): goes in once it is first wanted.
+bool gExitHookTried = false;
+bool gExitHooked = false;
 // The sound source update (engine/VoicePlace): goes in once the conversation hooks or game/SoundPlace (people near the player,
 // the gun; research/69 A1, A2) first want it.
 bool gVoicePlaceTried = false;
@@ -396,8 +402,10 @@ void TryInstallScriptHooks() {
     game::galaxy_dump::TryStartup();  // the galaxy map's Flash calls, traced on request (research/51 section 8)
     game::le3_galaxy_retention::Startup(*gInit);
     game::world_ui::TryStartup();  // the camera-update handler that holds Shepard's view while a game screen stands in the room
+    game::ai_walk::TryStartup();  // the shared AI walk's movement-ban answer (ME1), before the CallFunction hook goes in
 #if !defined(MEVR_GAME_LE3)
     game::conversation_world::TryStartup();  // ... and the one that holds it through a conversation in the world (research/59)
+    game::conversation_exit::TryStartup();   // people leaving a conversation in the world walk away first (its hook's provider)
 #endif
 #if defined(MEVR_GAME_LE3)
     game::le3_galaxy_capture::TryStartup();  // ME3's: the sequels' flow over the CIC's projector (game/GalaxyProjectorFlow)
@@ -484,6 +492,20 @@ void EnsureConversationHooks() {
     if (!gConversationHooksTried && game::conversation_world::WantsHooks()) {
         gConversationHooksTried = true;
         gConversationHooked = engine::conversation_hooks::Install(*gInit);
+    }
+}
+
+// A person's removal held back while the player sees them (research/conversation-exits.md): the hook on BioActorBehavior's
+// SetActive native, and for the walk away the CallFunction hook (game/AiWalk's movement-ban answer) and the name lookup.
+void EnsureExitHook() {
+    using namespace mevr;
+    if (!gExitHookTried && game::conversation_exit::WantsHook()) {
+        gExitHookTried = true;
+        gExitHooked = engine::exit_hooks::Install(*gInit);
+    }
+    if (gExitHooked && game::conversation_exit::WantsWalks()) {
+        EnsureCallFunctionHook();
+        EnsureNameLookup();
     }
 }
 
@@ -1445,6 +1467,7 @@ void PublishStatus() {
         full += ", \"handContact\": " + game::hand_contact::StatusJson();
         full += ", \"hair\": " + game::hair::StatusJson();
         full += ", \"animDriver\": " + game::anim_driver::StatusJson();
+        full += ", \"conversationExit\": " + game::conversation_exit::StatusJson();
         full += ", \"traversal\": " + game::traversal::StatusJson() + "}";
     }
     gHost->setStatus(full.c_str());
@@ -1604,6 +1627,7 @@ void Heartbeat() {
         game::squad_place::LogStats();
     game::body_scale::LogStats();
         game::conversation_world::LogStats();
+        game::conversation_exit::LogStats();
         game::authored_moment::LogStats();
         game::sound_place::LogStats();
         if (MEVR_HOST_HAS(logWorldUiStats) && gHost->logWorldUiStats != nullptr) gHost->logWorldUiStats();
@@ -1982,6 +2006,8 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
         EnsureConversationHooks();
         EnsureVoicePlaceHook();
         game::conversation_world::Tick(deltaSeconds, ConversationWorldLink());
+        EnsureExitHook();
+        game::conversation_exit::Tick(deltaSeconds);  // after the scene's tick: who is in it, what the eyes see
 #endif
         game::thespian::Tick(deltaSeconds, ThespianLink());  // shared panel and selection policy, native game adapter
 #if !defined(MEVR_GAME_LE3)
@@ -2143,6 +2169,7 @@ MEVR_MOD_API void MevrModShutdown() {
     game::spectator::Shutdown(exiting);  // its capture and the head it hid, on the game thread
     game::screen_reticle::Shutdown(exiting);
     game::world_ui::Shutdown(WorldUiLink());  // the host forgets the screen
+    game::conversation_exit::Shutdown(exiting);                   // every held removal made (before the scene module goes)
     game::conversation_world::Shutdown(ConversationWorldLink());  // the host forgets the conversation's held view
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     game::sequel_conversation_world::Shutdown(ConversationWorldLink());
@@ -2159,6 +2186,10 @@ MEVR_MOD_API void MevrModShutdown() {
         removed(engine::voice_place::Uninstall(*gInit, !exiting),
             "the sound source hook couldn't be removed, or a call was still inside it");
     }
+    if (gInit && gExitHooked) {  // after game/ConversationExit took its provider back
+        removed(engine::exit_hooks::Uninstall(*gInit, !exiting), "the conversation exit hook couldn't be removed, or a call was still inside it");
+    }
+    gExitHookTried = gExitHooked = false;
     gVoicePlaceTried = gVoicePlaceHooked = false;
     gConversationHooksTried = gConversationHooked = false;
     game::power_wheel::Shutdown(PowerWheelLink());  // the host's wheel closed

@@ -91,6 +91,7 @@
     "engine/ConversationHooks",
     "engine/CoverAcquire",
     "engine/Engine",
+    "engine/ExitHooks",
     "engine/HairPose",
     "engine/Legacy",
     "engine/NameLookup",
@@ -119,6 +120,7 @@
     "game/CombatStance",
     "game/Comfort",
     "game/ConsoleRequest",
+    "game/ConversationExit",
     "game/ConversationFlow",
     "game/ConversationWorld",
     "game/DepthOfFieldHold",
@@ -358,6 +360,7 @@
     "engine/ConversationHooks",
     "engine/CoverAcquire",
     "engine/Engine",
+    "engine/ExitHooks",
     "engine/HairPose",
     "engine/Legacy",
     "engine/NameLookup",
@@ -386,6 +389,7 @@
     "game/CombatStance",
     "game/Comfort",
     "game/ConsoleRequest",
+    "game/ConversationExit",
     "game/ConversationFlow",
     "game/ConversationWorld",
     "game/DepthOfFieldHold",
@@ -626,6 +630,7 @@
     "engine/ConversationHooks",
     "engine/CoverAcquire",
     "engine/Engine",
+    "engine/ExitHooks",
     "engine/HairPose",
     "engine/Legacy",
     "engine/NameLookup",
@@ -654,6 +659,7 @@
     "game/CombatStance",
     "game/Comfort",
     "game/ConsoleRequest",
+    "game/ConversationExit",
     "game/ConversationFlow",
     "game/ConversationWorld",
     "game/DepthOfFieldHold",
@@ -998,6 +1004,29 @@
     }
    },
    "namespace": "engine"
+  },
+  "engine/ExitHooks": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ungated"
+    }
+   },
+   "namespace": "engine::exit_hooks"
   },
   "engine/HairPose": {
    "games": {
@@ -1711,6 +1740,29 @@
     }
    },
    "namespace": "game::console_request"
+  },
+  "game/ConversationExit": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "ready"
+    }
+   },
+   "namespace": "game::conversation_exit"
   },
   "game/ConversationFlow": {
    "games": {

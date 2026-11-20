@@ -12250,6 +12250,8 @@ int RunScreenMatrixTests();
 int RunFlareWindowTests();
 // tests/ConversationWorldTests.cpp: conversations in the world (research/59).
 int RunConversationWorldTests();
+// tests/ConversationExitTests.cpp: people leaving a first-person conversation (research/conversation-exits.md).
+int RunConversationExitTests();
 // tests/SoundPlaceTests.cpp: where sounds come from on foot (research/69 A1).
 int RunSoundPlaceTests();
 int RunGuiEventsTests();
@@ -12493,6 +12495,7 @@ int main() {
     gFailures += RunScreenMatrixTests();
     gFailures += RunFlareWindowTests();
     gFailures += RunConversationWorldTests();
+    gFailures += RunConversationExitTests();
     gFailures += RunSoundPlaceTests();
     gFailures += RunGuiEventsTests();
     gFailures += RunOmniPadTests();

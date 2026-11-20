@@ -258,6 +258,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   over; tutorial pop-ups. (research/53 section 3)
 
 ### Galaxy map, conversations (session: VR mod for Mass Effect Legendary Edition)
+- [ ] 2026-11-20 People leaving a first-person conversation (lane EXIT; research/conversation-exits.md): John02 slot 80, the
+  council hearing played to its end in first person (`conversations = world`; `worldExit` is walk by default). After the
+  conversation with Anderson and Udina, Udina should turn and walk off across the chamber and be gone once out of your view,
+  not vanish beside Anderson; looking at him the whole time, he goes after a few seconds under a short fade. Also Wrex at
+  Fist's door (slot 87). Does the walk look like his own (no slide), does the fade feel justified, and is anyone the next scene
+  needs ever missing? `mevr convo exit off` is the old pop, for comparison.
 - [ ] 2026-11-17 ME3's map on the CIC's projector (lane GX3; docs/galaxy-projector-handoff.md "travel, the opening and closing"):
   from the Normandy's CIC console, A: the camera's flight into the map should not show (the CIC stays, 2.5 s), then the map on
   the projector with no blue band over the pit. Fly to the Pax system's Mass Relay, travel to another cluster: the relay's movie

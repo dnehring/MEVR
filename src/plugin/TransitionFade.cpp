@@ -178,9 +178,16 @@ namespace MevrSeams {
 const void* TransitionFadeLayer(void* session, void* viewSpace, ID3D11DeviceContext* context, int view) noexcept {
     static std::uint32_t lastCut = 0;
     bool cut = false;
-    if (auto const convo = mevr::host::conversation_world::Current(); convo && convo->cut != lastCut) {
-        cut = lastCut != 0 || convo->cut != 0;
-        lastCut = convo->cut;
+    // A scene's counter, else the on-foot word's (the same counter: game/ConversationExit's dip over a removal on foot).
+    std::optional<std::uint32_t> now;
+    if (auto const convo = mevr::host::conversation_world::Current()) {
+        now = convo->cut;
+    } else {
+        now = mevr::vr::conversation_world::FootCut();
+    }
+    if (now && *now != lastCut) {
+        cut = lastCut != 0 || *now != 0;
+        lastCut = *now;
     }
     return mevr::host::transition_fade::Layer(session, viewSpace, context, view, cut);
 }

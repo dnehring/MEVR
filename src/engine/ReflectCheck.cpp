@@ -1538,6 +1538,7 @@ void CheckFunctions() {
         "Core.Object.GetStateName",  // game/ConversationWorld: worldWalkLog's probe of a walker's controller
         "SFXGame.BioPawn.SetDesiredSpeed",  // ... and a walker's speed under a paused controller
         "SFXGame.BioActorBehavior.AbilityEnable",  // ... and its AI switched on the game's way
+        "SFXGame.BioActorBehavior.SetActive",  // game/ConversationExit: a held deactivation made later through ProcessEvent
         "SFXGame.BioSubtitles.DisplaySubtitle",  // game/ConversationFlow: a flowed line's subtitle
         "SFXGame.BioBaseSquad.SquadHandleChatterEvent",
         "SFXGame.BioPawn.PlaySoundSet",
@@ -1709,6 +1710,9 @@ void CheckFunctions() {
 }
 
 void CheckParams() {
+    // game/ConversationExit (research/conversation-exits.md): the held SetActive's value read in its frame, and made again
+    PARAM(UBioActorBehavior_execSetActive_Parms, "SFXGame.BioActorBehavior.SetActive", bSetActive);
+    PARMS(UBioActorBehavior_execSetActive_Parms, "SFXGame.BioActorBehavior.SetActive");
     // game/Hair (docs/trilogy-hair-plan.md): a rigged hairstyle put on its hair component
     PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", NewMesh);
     PARAM(USkeletalMeshComponent_execSetSkeletalMesh_Parms, "Engine.SkeletalMeshComponent.SetSkeletalMesh", bKeepSpaceBases);

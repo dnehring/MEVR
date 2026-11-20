@@ -1044,6 +1044,12 @@ These unblock the most: almost every other entry gets smaller once they land.
   of the types of sit down based interactions that happen across all three games"; research/69 item 43). ME2's lifts,
   shuttle rides, cockpit chairs and bar and couch scenes make these the port's first checks; sits inside a matinee (no
   conversation) are not covered yet.
+- **People leaving a scene walk away first** (the owner, 2026-11-19, of Udina vanishing after the council hearing; lane EXIT,
+  research/conversation-exits.md): the shared rule `core/vr/ConversationExit` (unit-tested), ME1's adapter
+  `game/ConversationExit` with `engine/ExitHooks` (the deactivation, BioActorBehavior.SetActive through ProcessEvent),
+  `[Cinematics] worldExit = walk` by default with the first-person mode. ME2: the same Kismet action but its `Active` row is
+  `Engine.Actor.SetActive` (`AActor::execSetActive` `0x4BC510`); ME3: its own `BioSeqAct_SetActive` (`0x4BFAF0` [verify] the
+  route) and 773 line visibility tracks; teleports of a person in view next on all three (section 7 there).
 
 #### T50 Audio: two ears, and sounds placed where they are [G37, G38]
 - **State:** LE1 done · LE2 check first · LE3 check first
