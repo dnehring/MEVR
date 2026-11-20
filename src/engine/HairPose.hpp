@@ -28,7 +28,7 @@ struct Object;
 // of the body, Y right, Z up), its offset and turn written over the animation's pose of it.
 namespace mevr::engine::hair_pose {
 
-inline constexpr int kMaxTargets = 8;
+inline constexpr int kMaxTargets = 16;  // a club's dancers (game/Hair clubMaxPeople) as well as the hair near
 
 // One hair component to simulate, published by game/Hair each tick.
 struct Target {
@@ -41,6 +41,10 @@ struct Target {
     std::vector<ik::body_spheres::Sphere> spheres;
     // The soft tissue's share of Request::jiggleIntensity for this body's outfit (game/Hair OutfitJiggle: armour a quarter).
     double jiggleScale = 1.0;
+    // The club dancers' size (core/ik/ClubBoost, game/Hair): each Breast* / Glute* bone drawn grown by 1 + this about its
+    // region's pivot (Request::breastPivot, glutePivot), with or without the jiggle; 0 leaves it as the animation has it.
+    double breastGrow = 0.0;
+    double gluteGrow = 0.0;
 };
 struct Request {
     std::vector<Target> targets;  // at most kMaxTargets
@@ -50,7 +54,12 @@ struct Request {
     std::vector<ik::hand_contact::BonePart> playerParts;    // its hand, forearm and upper-arm parts
     bool playerPushes = true;
     bool jiggle = true;               // the soft-tissue bones move
-    double jiggleIntensity = 1.0;     // 0..1 (ik::jiggle::Settings::intensity)
+    double jiggleIntensity = 1.0;     // 0..1 (ik::jiggle::Settings::intensity; a target's jiggleScale may take it past 1)
+    // Where each region grows from (core/ik/ClubBoost::Grow): an offset from the soft-tissue bone in the body's bind frame,
+    // game units (x forward, y left, z up; a glute bone's region the same axes): the top of the region, so it grows forward
+    // (back) and down.
+    ik::Vec3 breastPivot{0.0, 0.0, 5.0};
+    ik::Vec3 glutePivot{0.0, 0.0, 5.0};
 };
 // Game thread: from the next call on; Clear stops the stage (the hair is the animation's alone again).
 void Publish(Request request);
@@ -72,6 +81,7 @@ struct SoftInfo {
     double peakM = 0.0;      // since the last LogStats
     int resets = 0;
     int clampHits = 0;
+    double grow = 0.0;       // the club growth drawn (core/ik/ClubBoost: the bone grown by 1 + this)
 };
 struct TargetInfo {
     ue3::Object* hair = nullptr;

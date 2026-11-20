@@ -399,3 +399,41 @@ player's own pawn is never simulated, so this matters only for an NPC dressed so
 **A cost to watch.** `DynamicLoadObject` of one object loads its whole package with the packages it imports: one package of
 every female body, importing each body's materials from the game's own packages, may load all of those at the first lookup of
 each level (a hitch, memory). [verify] in the game; one package per body (or per character) would avoid it.
+
+## The clubs (2026-11-20, lane D of section 12)
+
+The owner: every female NPC in a club gets 2x jiggle and a natural size boost (docs/trilogy-hair-plan.md section 12, "The
+clubs"). Built offline (branch dancers-runtime); not run in a game.
+
+**Which levels are clubs** (`[Hair] clubLevels`, name parts of a level package's name, matched against an actor's object path
+and the loaded streaming levels), read from the cooked folders with `mevr-rig contents`:
+
+| Game | Club | Levels | How sure |
+| --- | --- | --- | --- |
+| ME1 | Chora's Den | `BIOA_STA60_05*` (`_05`, `_05A`, `_05B`, `_05women_DSG`) | high: research/50 puts Chora's Den in STA60 area 05; `_05women_DSG` holds 11 BioPawns in `HMF_ARM_NKDb` |
+| ME2 | Afterlife (Omega) | `BioD_OmgHub_2*` (200Den, 210DenEntrance, 220DenBar, 221GarrusAcq, 225Aria, 230DenDance, 240DenHall), `BioD_OmgHub_500DenVIP`, art `BioA_OmgHub200_barentry` .. `500_bartwo`, `900_VIP` | high for the Den levels by name; the dance floor has 10 BioPawns, 16 SFXSkeletalMeshActors, 46 SFXSkeletalMeshActorMATs |
+| ME3 | Purgatory (Citadel) | `BioD_CitHub_WardsFlux*` (its Dancer_1 archetypes, `HMF_AM_Towny_AM_DanceSexy*` animations), `BioA_CitHub_Afterlife` (Purgatory's sign and club art) | high: the art level is named Afterlife but holds Purgatory_Sign; the D levels kept Flux's name |
+| ME3 | Afterlife (Omega DLC) | `BioD_Omg004_900Afterlife`, `_910AfterlifeP`, `BioA_Omg004_900_AfterLife` | medium: by name only |
+
+Not included: ME2's Eternity (Illium) and Dark Star. **A club's dancers are mostly not pawns**: ME2's dance floor and ME3's
+Purgatory place them as `SkeletalMeshActor`s (one SkeletalMeshComponent, animated by its own AnimNodeSequence), so game/Hair
+scans the world's skeletal mesh actors once a second while a club level is loaded (only then), keeping those in a club level
+with a female body (`hmf_`/`asa_` mesh). An actor spawned at run time lives in the persistent level and is not matched.
+
+**The growth.** The owner wanted breasts to grow forward and down rather than evenly (the first sheets: rounder and higher).
+`USkeletalMeshComponent::SpaceBases` are FBoneAtoms (rotation, translation, one uniform scale: engine/Skeleton `BoneAtom`), and
+the skinning builds each bone's matrix from that atom, so a bone can only grow its vertices uniformly about a point. The point
+is chosen: each region grows by 1 + a about a pivot at its top (`clubBreastPivot`, `clubGlutePivot`, 5 game units above the bone
+in the body's bind frame), a vertex's share on the bone going to Q + (1 + a)(v - Q): forward (back) and down, never up; sideways
+as much as forward. engine/HairPose writes it into the same atom as the jiggle (`ik::club::Grow`: scale by 1 + a, translation
+moved by -a R q, so Q stays where the bone draws it), with or without the jiggle. A shape that grows more forward than
+sideways would need more bones per region, or a morph target in the rigged package (UE3's MorphTargetSet, its weight per
+component: per dancer), a larger job.
+**Lane C's renders differ from this.** Lane C's before-and-after sheets (dancers-rig 76361efe) were made with directional
+growth (x by 1 + a kFwd, y by 1 + a kSide, z by 1 + a kUp, a sag shear kDrop; breasts 1.0, 0.45, 0.15, 0.18, glutes 1.0, 0.35,
+0.3, 0.15), which the game's bone atoms can't draw; the runtime's pivot growth grows sideways as much as forward, so the
+headset will look wider than those sheets. To match them: render the pivot growth too, or build a morph target.
+
+**Cost and limits.** In a club the stage takes up to `clubMaxPeople` 12 within `clubRangeM` 15 (HairPose's kMaxTargets went
+from 8 to 16); a dancer past them keeps the game's body and pops when she comes in range. [verify] in the game: the actors'
+paths (the level package first), the dancers' bodies in the rigged bodies' index, and the look.

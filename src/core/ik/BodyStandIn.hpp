@@ -37,11 +37,15 @@ public:
     std::size_t Size() const { return exact_.size(); }
     // The rig's object path in the package (lower case: "mevr_bodies_le3.hmf_arm_mira_mdl_mevr"), or empty.
     std::string RigFor(std::string_view meshPath) const;
+    // The body's breast cap for the club boost (core/ik/ClubBoost: the LE3 Liara romance mesh's size over this body's, an
+    // entry's optional "breastMax"), or nullopt (the index has none for it).
+    std::optional<double> BreastMaxFor(std::string_view meshPath) const;
 
 private:
     std::string package_;
     std::unordered_map<std::string, std::string> exact_;    // lower path -> rig name
     std::unordered_map<std::string, std::string> shorter_;  // lower path without its first part -> rig name ("" ambiguous)
+    std::unordered_map<std::string, double> breastMax_;     // rig name -> its entry's breastMax
 };
 
 // The engine's side of a lookup (game thread). Each returns an object or nullptr.

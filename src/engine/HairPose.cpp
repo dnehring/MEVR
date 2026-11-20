@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/BodySpheres.hpp"
+#include "core/ik/ClubBoost.hpp"
 #include "core/ik/Rigid.hpp"
 #include "engine/Skeleton.hpp"
 
@@ -51,6 +52,7 @@ struct Sim {
         std::uint64_t key = 0;
         std::string name;
         bool glute = false;
+        ik::Transform bind;  // its bind pose in the component (game units): the club growth's pivot is turned into its axes
         ik::jiggle::State state;
     };
     std::vector<Soft> soft;
@@ -240,6 +242,13 @@ void Discover(ue3::Object* hairMesh, ue3::Object const* asset, int boneCount, Si
             s.key = skeleton::RefBoneKey(hairMesh, s.bone);
             s.name = n;
             s.glute = glute;
+            if (skel->local.size() == skel->names.size()) {
+                ik::Transform bind = skel->local[i];
+                for (int p = skel->parents[i]; p >= 0; p = skel->parents[static_cast<std::size_t>(p)]) {
+                    bind = ik::Compose(bind, skel->local[static_cast<std::size_t>(p)]);
+                }
+                s.bind = bind;
+            }
             sim.soft.push_back(std::move(s));
         }
     }
@@ -309,6 +318,8 @@ void AfterPose(ue3::Object* component, float deltaTime) {
     bool playerPushes = false;
     bool jiggle = false;
     double jiggleIntensity = 0.0;
+    ik::Vec3 breastPivot;
+    ik::Vec3 glutePivot;
     DWORD thread = 0;
     ULONGLONG published = 0;
     bool found = false;
@@ -328,6 +339,8 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         playerPushes = gRequest.playerPushes;
         jiggle = gRequest.jiggle;
         jiggleIntensity = gRequest.jiggleIntensity;
+        breastPivot = gRequest.breastPivot;
+        glutePivot = gRequest.glutePivot;
         thread = gThread;
         published = gTimeMs;
     }
@@ -472,8 +485,10 @@ void AfterPose(ue3::Object* component, float deltaTime) {
     }
     // Soft tissue: each bone a spring in its own animated frame (its rest axes are the body's), its offset and turn written
     // over the animation's pose of it.
-    sim.info.soft.resize(jiggle ? sim.soft.size() : 0);
-    for (std::size_t s = 0; jiggle && s < sim.soft.size(); ++s) {
+    // The club dancers' growth (core/ik/ClubBoost) rides on the same write, with or without the jiggle.
+    bool const grows = target.breastGrow > 0.0 || target.gluteGrow > 0.0;
+    sim.info.soft.resize(jiggle || grows ? sim.soft.size() : 0);
+    for (std::size_t s = 0; (jiggle || grows) && s < sim.soft.size(); ++s) {
         Sim::Soft& soft = sim.soft[s];
         if (soft.bone < 0 || soft.bone >= boneCount ||
             !KeysMatchGuarded(component, &soft.bone, &soft.key, 1)) {
@@ -488,7 +503,10 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         in.frame.rotation = animated.rotation;
         in.frame.translation = animated.translation;
         in.dt = stepSeconds;
-        ik::jiggle::Output const out = ik::jiggle::Step(soft.state, tissue, in);
+        ik::jiggle::Output out;
+        if (jiggle) {
+            out = ik::jiggle::Step(soft.state, tissue, in);
+        }
         ik::Quat const worldRotation = ik::Normalize(animated.rotation * out.rotation);
         ik::Vec3 const worldPlace = animated.translation + ik::Rotate(animated.rotation, out.translation);
         ik::Quat const q = ik::Normalize(toLocalRotation * worldRotation);
@@ -502,6 +520,15 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         atom.ty = static_cast<float>(t.y);
         atom.tz = static_cast<float>(t.z);
         atom.scale = static_cast<float>(animated.scale);
+        if (double const grow = soft.glute ? target.gluteGrow : target.breastGrow; grow > 0.0) {
+            ik::Transform bone{q, t, animated.scale};
+            ik::Vec3 const pivot = ik::club::PivotLocal(soft.bind, soft.glute ? glutePivot : breastPivot);
+            ik::Transform const grown = ik::club::Grow(bone, grow, pivot);
+            atom.tx = static_cast<float>(grown.translation.x);
+            atom.ty = static_cast<float>(grown.translation.y);
+            atom.tz = static_cast<float>(grown.translation.z);
+            atom.scale = static_cast<float>(grown.scale);
+        }
         bones.push_back(soft.bone);
         atoms.push_back(atom);
         SoftInfo& si = sim.info.soft[s];
@@ -510,6 +537,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         si.peakM = (std::max)(si.peakM, si.offsetM);
         si.resets = soft.state.resets;
         si.clampHits = soft.state.clampHits;
+        si.grow = soft.glute ? target.gluteGrow : target.breastGrow;
         if (tracing) {
             double const tt = (GetTickCount64() - gTraceStartMs) / 1000.0;
             gTrace << std::format("{:.4f},{:#x},soft,{},{:.5f},{:.5f},{:.5f},{:.5f},{:.5f},{:.5f},{},0\n", tt,

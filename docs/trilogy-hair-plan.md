@@ -494,5 +494,18 @@ group `BIOG_ASA_ARM_LIAb_R` (only `BioD_Exp1Lvl5_200Cabin`), full; her Shadow Br
 quarter. ME3's Citadel DLC loads no Liara body but her usual LIAa. A swapped body's share is read from the game's own mesh. Left: the package's load
 cost at the first lookup per level [verify], and step 5.
 
+**The clubs** (the owner, 2026-11-19/20; built offline on branch dancers-runtime, not run in a game): every female NPC in a club
+level keeps `[Hair] clubJiggle` (2, "we may tone it back") times her outfit's jiggle, and with `clubSize = 1` a size boost, her
+own on every visit (core/ik/ClubBoost, a hash of her actor's object path and her body mesh): breasts from `clubBreastMin` (0.4)
+to all of the way to her body's cap (the rig index's `breastMax`, lane C: 10% larger than the ME3 Liara romance body; 1.15 when
+missing), glutes `clubGluteRange` 0.10-0.16 around `clubGlute` 0.12. **How they grow:** the owner asked for growth forward
+and down instead of evenly (the first renders looked rounder and higher). The game's skinning takes each bone as an FBoneAtom
+(rotation, translation, one uniform scale), so a bone can't grow one direction more than another; each region grows uniformly
+about a pivot at its top (`clubBreastPivot`, `clubGlutePivot`: 0, 0, 5 game units from the bone in the body's frame), so it
+grows forward (back) and down, never up: a larger copy of its own shape hanging from its upper edge. Growth that differs by
+direction would need either more bones per region or a morph target in the rigged package. Clubs: `clubLevels`, name parts of
+the levels' packages (research/trilogy-hair.md "The clubs"); a club's skeletal mesh actors (most dancers) are found too;
+there `clubMaxPeople` 12 within `clubRangeM` 15. `mevr hair bodies` shows each person's club facts.
+
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
    (`mevr-hair-bench --jiggle`), then the owner in the headset on a sample: one armour, one bodysuit, one casual per game.

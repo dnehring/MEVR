@@ -955,6 +955,12 @@ void CheckFields() {
     // game/Hair on ME1 (docs/trilogy-hair-plan.md section 12): a rigged body's followers re-attached (its head is m_oHeadMesh).
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // game/Hair: a body's other followers
+    // game/Hair: the clubs' skeletal mesh actors (core/ik/ClubBoost) and which club levels are loaded.
+    CheckClass<ASkeletalMeshActor>("Engine.SkeletalMeshActor");
+    CheckField("Engine.SkeletalMeshActor", "SkeletalMeshComponent", SDK_FIELD(ASkeletalMeshActor, SkeletalMeshComponent));
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
     CheckField("Engine.SkeletalMeshComponent", "bConsiderAllBodiesForBounds", SDK_BOOL(USkeletalMeshComponent, bConsiderAllBodiesForBounds));
     CheckField("Engine.SkeletalMeshComponent", "Attachments", SDK_FIELD(USkeletalMeshComponent, Attachments), true);
     CheckField("Engine.SkeletalMesh", "Bounds", SDK_FIELD(USkeletalMesh, Bounds));
@@ -2279,6 +2285,12 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));  // game/Hair: rigged bodies' followers
     CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // game/Hair: a body's other followers
+    // game/Hair: the clubs' skeletal mesh actors (core/ik/ClubBoost) and which club levels are loaded.
+    CheckClass<ASkeletalMeshActor>("Engine.SkeletalMeshActor");
+    CheckField("Engine.SkeletalMeshActor", "SkeletalMeshComponent", SDK_FIELD(ASkeletalMeshActor, SkeletalMeshComponent));
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     // game/HairLook on ME2 (the same rows as ME3's).
     PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
@@ -3801,6 +3813,12 @@ void CheckFields() {
     CheckField("SFXGame.SFXStuntActor", "HeadMesh", SDK_FIELD(ASFXStuntActor, HeadMesh));  // game/Hair: rigged bodies' followers
     CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));
     CheckField("Engine.Actor", "AllComponents", SDK_FIELD(AActor, AllComponents));  // game/Hair: a body's other followers
+    // game/Hair: the clubs' skeletal mesh actors (core/ik/ClubBoost) and which club levels are loaded.
+    CheckClass<ASkeletalMeshActor>("Engine.SkeletalMeshActor");
+    CheckField("Engine.SkeletalMeshActor", "SkeletalMeshComponent", SDK_FIELD(ASkeletalMeshActor, SkeletalMeshComponent));
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     // game/HairLook: a hair's own material instance and its master material's parameters.
     PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);

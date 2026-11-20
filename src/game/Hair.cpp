@@ -6,6 +6,8 @@
 #include "core/WriteJournal.hpp"
 #include "core/ik/BodySpheres.hpp"
 #include "core/ik/BodyStandIn.hpp"
+#include "core/ik/ClubBoost.hpp"
+#include "core/ik/Jiggle.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
 #include "core/vr/SettingsFile.hpp"
@@ -35,6 +37,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -103,7 +106,24 @@ constexpr char kBlock[] =
     "asa_arm_lia:0.25, hmf_arm_crb:0.25\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
-    "followBody = 0.7\n";
+    "followBody = 0.7\n"
+    "; The clubs (the owner, 2026-11-19/20): every female NPC in a club level (clubLevels: name parts of the levels' packages;\n"
+    "; Chora's Den, Afterlife, Purgatory) keeps clubJiggle times her outfit's jiggle, and with clubSize = 1 a natural size boost\n"
+    "; on her rigged body's breast and glute bones, her own on every visit: breasts a share from clubBreastMin to all of the way\n"
+    "; to her body's cap (10% larger than the ME3 Liara romance body, from the rigged bodies' index), glutes clubGluteRange with\n"
+    "; clubGlute in the middle (0.12: 12% larger). Each region grows from its pivot (game units from its bone, x forward, y left,\n"
+    "; z up: its top, so it grows forward and down). In a club up to clubMaxPeople people within clubRangeM are included.\n"
+    "clubJiggle = 2\n"
+    "clubSize = 1\n"
+    "clubLevels = bioa_sta60_05, biod_omghub_2, biod_omghub_500denvip, bioa_omghub200_, bioa_omghub300_, bioa_omghub400_, "
+    "bioa_omghub500_, bioa_omghub900_, biod_cithub_wardsflux, bioa_cithub_afterlife, biod_omg004_9, bioa_omg004_900_afterlife\n"
+    "clubBreastMin = 0.4\n"
+    "clubGlute = 0.12\n"
+    "clubGluteRange = 0.10, 0.16\n"
+    "clubBreastPivot = 0, 0, 5\n"
+    "clubGlutePivot = 0, 0, 5\n"
+    "clubMaxPeople = 12\n"
+    "clubRangeM = 15\n";
 
 struct Settings {
     bool on = true;
@@ -123,6 +143,17 @@ struct Settings {
     std::vector<std::pair<std::string, double>> bodyJiggle{{"hmf_arm_ashc", 1.0}, {"asa_arm_liad", 1.0}, {"asa_arm_liab", 1.0}, {"_edi", 0.0},
         {"asa_spr_", 0.5}, {"asa_arm_sam", 0.5}, {"_ksm", 0.25}, {"hmf_jck_", 1.0}, {"hmf_arm_ash", 0.25},
         {"asa_arm_lia", 0.25}, {"hmf_arm_crb", 0.25}};
+    // The clubs' dancers (core/ik/ClubBoost; the owner, 2026-11-19/20).
+    double clubJiggle = 2.0;
+    bool clubSize = true;
+    std::vector<std::string> clubLevels{"bioa_sta60_05", "biod_omghub_2", "biod_omghub_500denvip", "bioa_omghub200_",
+        "bioa_omghub300_", "bioa_omghub400_", "bioa_omghub500_", "bioa_omghub900_", "biod_cithub_wardsflux", "bioa_cithub_afterlife",
+        "biod_omg004_9", "bioa_omg004_900_afterlife"};
+    ik::club::SizeSettings clubSizes;
+    ik::Vec3 clubBreastPivot{0.0, 0.0, 5.0};
+    ik::Vec3 clubGlutePivot{0.0, 0.0, 5.0};
+    int clubMaxPeople = 12;
+    double clubRangeM = 15.0;
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
 
@@ -197,6 +228,28 @@ void RefreshSettings() {
             if (auto share = ini::Number(item.substr(colon + 1))) s.bodyJiggle.emplace_back(part, std::clamp(*share, 0.0, 1.0));
         }
     }
+    if (auto v = num("clubJiggle")) s.clubJiggle = std::clamp(*v, 0.0, ik::jiggle::kMaxIntensity);
+    if (auto v = num("clubSize")) s.clubSize = *v != 0.0;
+    if (auto v = ini::Get(loaded.file, "Hair", "clubLevels")) s.clubLevels = NameParts(*v);
+    if (auto v = num("clubBreastMin")) s.clubSizes.breastMin = std::clamp(*v, 0.0, 1.0);
+    if (auto v = num("clubGlute")) s.clubSizes.gluteMid = std::clamp(*v, 0.0, 0.4);
+    auto numbers = [&](char const* key) {
+        std::vector<double> out;
+        if (auto v = ini::Get(loaded.file, "Hair", key)) {
+            for (std::string const& item : NameParts(*v)) {
+                if (auto n = ini::Number(item)) out.push_back(*n);
+            }
+        }
+        return out;
+    };
+    if (auto r = numbers("clubGluteRange"); r.size() == 2) {
+        s.clubSizes.gluteLow = std::clamp(r[0], 0.0, 0.4);
+        s.clubSizes.gluteHigh = std::clamp(r[1], 0.0, 0.4);
+    }
+    if (auto p = numbers("clubBreastPivot"); p.size() == 3) s.clubBreastPivot = {p[0], p[1], p[2]};
+    if (auto p = numbers("clubGlutePivot"); p.size() == 3) s.clubGlutePivot = {p[0], p[1], p[2]};
+    if (auto v = num("clubMaxPeople")) s.clubMaxPeople = static_cast<int>(std::clamp(*v, 1.0, static_cast<double>(hp::kMaxTargets)));
+    if (auto v = num("clubRangeM")) s.clubRangeM = std::clamp(*v, 0.5, 40.0);
     s.look = ini::Get(loaded.file, "Hair", "look");
     s.sim.windMS = {s.wind, 0.0, 0.0};
     if (gOverride) s.on = *gOverride;
@@ -597,6 +650,9 @@ struct Person {
     ue3::Object* body = nullptr;
     double distanceM = 0.0;
     ue3::Object* head = nullptr;
+    bool club = false;              // a female NPC in a club level (core/ik/ClubBoost)
+    ik::club::Sizes sizes;          // her growth there (0: none)
+    double breastMax = 0.0;         // her body's cap from the rigged bodies' index (0: none listed, the default)
 };
 std::vector<Person> gPeople;
 std::string gStatus = "not run yet";
@@ -665,6 +721,76 @@ std::vector<ue3::Object*> const& StuntActors(ue3::Object* world) {
     return gStunts;
 }
 
+// ---- The clubs (core/ik/ClubBoost) ------------------------------------------------------------------------------------
+// A club's dancers and crowd are often not pawns: ME2's Afterlife dance floor holds 16 SFXSkeletalMeshActors and 46
+// SFXSkeletalMeshActorMATs beside its 10 BioPawns, ME3's Purgatory (BioD_CitHub_WardsFlux) its Dancer_1 archetypes; a skeletal
+// mesh actor's one SkeletalMeshComponent is its body (its head and hair, if any, follow it among AllComponents).
+ue3::ClassRef gSkelActorClass{"Engine.SkeletalMeshActor", ue3::kEveryGame};
+ue3::FieldRef gSkelActorMesh{"Engine.SkeletalMeshActor", "SkeletalMeshComponent", ue3::kEveryGame};
+ue3::FieldRef gWorldStreaming{"Engine.WorldInfo", "StreamingLevels", ue3::kEveryGame};
+ue3::FieldRef gStreamPackage{"Engine.LevelStreaming", "PackageName", ue3::kEveryGame};
+ue3::FieldRef gStreamLoaded{"Engine.LevelStreaming", "LoadedLevel", ue3::kEveryGame};
+
+struct ClubScan {
+    ue3::Object const* world = nullptr;
+    std::uint64_t at = 0;
+    bool loaded = false;                 // a club level is loaded (the persistent one or a streamed one)
+    std::vector<ue3::Object*> actors;    // its skeletal mesh actors with a female body
+};
+ClubScan gClub;
+std::unordered_set<ue3::Object*> gClubLogged;  // the club's people logged this level
+
+bool InClubPath(std::string const& lowerPath) {
+    return ik::club::InClub(lowerPath, gSettings.clubLevels);
+}
+
+// Once a second: is a club level loaded in this world, and its skeletal mesh actors with a female body.
+ClubScan const& Club(ue3::Object* world) {
+    std::uint64_t const now = GetTickCount64();
+    if (world == gClub.world && now < gClub.at) {
+        return gClub;
+    }
+    gClub.world = world;
+    gClub.at = now + 1000;
+    gClub.loaded = false;
+    gClub.actors.clear();
+    if (world == nullptr || gSettings.clubLevels.empty() || (gSettings.clubJiggle == 1.0 && !gSettings.clubSize)) {
+        return gClub;
+    }
+    gClub.loaded = InClubPath(Lower(PathOf(world)));
+    if (auto const levels = gWorldStreaming.ElementsOf(world)) {
+        for (std::int32_t i = 0; i < levels->count && !gClub.loaded; ++i) {
+            ue3::Object* const level = *static_cast<ue3::Object**>(levels->At(i));
+            if (level == nullptr || !ue3::runtime::IsAlive(level) || gStreamLoaded.Read<ue3::Object*>(level).value_or(nullptr) == nullptr) {
+                continue;
+            }
+            if (auto const name = gStreamPackage.Read<ue3::Name>(level)) {
+                gClub.loaded = InClubPath(Lower(ue3::runtime::NameText(*name)));
+            }
+        }
+    }
+    ue3::Class* const cls = gSkelActorClass.Get();
+    if (!gClub.loaded || cls == nullptr) {
+        return gClub;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o == nullptr || !r.IsAlive(o) || !r.IsA(o, cls) || gWorldInfo.Read<ue3::Object*>(o).value_or(nullptr) != world) {
+            continue;  // archetypes and class defaults have no WorldInfo
+        }
+        if (!InClubPath(Lower(PathOf(o)))) {
+            continue;
+        }
+        ue3::Object* const body = gSkelActorMesh.Read<ue3::Object*>(o).value_or(nullptr);
+        if (body == nullptr || !ue3::runtime::IsAlive(body) || !ik::club::FemaleBody(Lower(PathOf(player::SkeletalMesh(body))))) {
+            continue;
+        }
+        gClub.actors.push_back(o);
+    }
+    return gClub;
+}
+
 bool HasSoftTissueBones(ue3::Object* mesh);
 
 // A body we can make jiggle: rigged already, or with a rigged body named after its mesh (asked once a level).
@@ -679,22 +805,25 @@ bool SoftTissueOrRigged(ue3::Object* body) {
 // half, Kasumi a quarter); then armour keeps jiggleArmour (a heavy, medium or light armour type in the mesh's name, or an
 // armourBodies part), everything else (a bodysuit, casual clothes, underwear) all of it; a fullBodies part (a character outfit
 // named like armour but a bodysuit) wins over the armour rules. The rigged body keeps its source mesh's name.
-double OutfitJiggle(ue3::Object* body) {
-    if (body == nullptr) return 1.0;
-    // A swapped body is judged by the game's own mesh (its path names the character's outfit; the rig's name may not).
+// The game's own mesh of a body: a swapped body's original (its path names the character's outfit; the rig's name may not).
+ue3::Object* GameMesh(ue3::Object* body) {
     ue3::Object* mesh = player::SkeletalMesh(body);
     for (Swapped const& s : gSwapped) {
         if (s.component == body && s.standIn == mesh && ue3::runtime::IsAlive(s.original)) {
-            mesh = s.original;
-            break;
+            return s.original;
         }
     }
-    return ShareForPath(Lower(PathOf(mesh)));
+    return mesh;
 }
 
-std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world) {
+double OutfitJiggle(ue3::Object* body) {
+    if (body == nullptr) return 1.0;
+    return ShareForPath(Lower(PathOf(GameMesh(body))));
+}
+
+std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world, double rangeM) {
     std::vector<Person> found;
-    double const range = gSettings.rangeM * engine::kUnitsPerMeter;
+    double const range = rangeM * engine::kUnitsPerMeter;
     int guard = 0;
     for (ue3::Object* p = gPawnList.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
          p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
@@ -744,6 +873,21 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
             ue3::Object* const head = gStuntHead.Read<ue3::Object*>(s).value_or(nullptr);
             found.push_back({s, hair, body != nullptr && ue3::runtime::IsAlive(body) ? body : nullptr, d / engine::kUnitsPerMeter,
                              head != nullptr && ue3::runtime::IsAlive(head) ? head : nullptr});
+        }
+    }
+    // A club's skeletal mesh actors (its dancers and crowd): a body that can jiggle, no hair of ours.
+    for (ue3::Object* const a : Club(world).actors) {
+        if (!ue3::runtime::IsAlive(a) || gHidden.ReadBool(a).value_or(true)) {
+            continue;
+        }
+        ue3::Object* const body = gSkelActorMesh.Read<ue3::Object*>(a).value_or(nullptr);
+        std::optional<ue3::Vector> const there = player::Location(a);
+        if (body == nullptr || !ue3::runtime::IsAlive(body) || !there || gHiddenGame.ReadBool(body).value_or(false)) {
+            continue;
+        }
+        double const d = Distance(*there, at);
+        if (d <= range && SoftTissueOrRigged(body)) {
+            found.push_back({a, nullptr, body, d / engine::kUnitsPerMeter, nullptr});
         }
     }
     std::sort(found.begin(), found.end(), [](Person const& a, Person const& b) { return a.distanceM < b.distanceM; });
@@ -1176,13 +1320,18 @@ void Tick(double /*deltaSeconds*/) {
         gStandInMissing.clear();
         gBodies.Forget();
         gBodiesIndexRead = false;
+        gClubLogged.clear();
+        gClub = {};
         hair_look::Forget();
         hp::Clear();
         gPublished = 0;
     }
-    std::vector<Person> people = FindPeople(playerPawn, *at, world);
-    if (people.size() > static_cast<std::size_t>(gSettings.maxPeople)) {
-        people.resize(static_cast<std::size_t>(gSettings.maxPeople));
+    bool const inClub = Club(world).loaded;
+    std::vector<Person> people =
+        FindPeople(playerPawn, *at, world, inClub ? (std::max)(gSettings.rangeM, gSettings.clubRangeM) : gSettings.rangeM);
+    int const most = inClub ? (std::max)(gSettings.maxPeople, gSettings.clubMaxPeople) : gSettings.maxPeople;
+    if (people.size() > static_cast<std::size_t>(most)) {
+        people.resize(static_cast<std::size_t>(most));
     }
     hp::Request request;
     request.settings = gSettings.sim;
@@ -1190,6 +1339,8 @@ void Tick(double /*deltaSeconds*/) {
     request.playerPushes = gSettings.hands;
     request.jiggle = gSettings.jiggle;
     request.jiggleIntensity = gSettings.jiggleIntensity;
+    request.breastPivot = gSettings.clubBreastPivot;
+    request.glutePivot = gSettings.clubGlutePivot;
     if (gSettings.hands) {
         if (ue3::Object* const mesh = player::Mesh(playerPawn); mesh != nullptr) {
             if (Parts const* parts = PartsOf(mesh)) {
@@ -1198,7 +1349,7 @@ void Tick(double /*deltaSeconds*/) {
             }
         }
     }
-    for (Person const& person : people) {
+    for (Person& person : people) {
         // The body first (a rigged body carries the hair chains and soft-tissue bones the hair and jiggle stages drive), its
         // followers re-attached to it, then the hair.
         if (ApplyStandIn(person.body, player::SkeletalMesh(person.body), true)) {
@@ -1241,6 +1392,27 @@ void Tick(double /*deltaSeconds*/) {
                 t.spheres = parts->spheres;
             }
             t.jiggleScale = OutfitJiggle(person.body);
+            // A female NPC in a club (core/ik/ClubBoost): more jiggle, and her own growth, from her actor's path and her body.
+            std::string const actorPath = Lower(PathOf(person.pawn));
+            std::string const meshPath = Lower(PathOf(GameMesh(person.body)));
+            person.club = inClub && InClubPath(actorPath) && ik::club::FemaleBody(meshPath);
+            if (person.club) {
+                t.jiggleScale *= gSettings.clubJiggle;
+                if (gSettings.clubSize) {
+                    bsi::Index const* const index = gBodies.GetIndex();
+                    std::optional<double> const cap = index != nullptr ? index->BreastMaxFor(meshPath) : std::nullopt;
+                    person.breastMax = cap.value_or(0.0);
+                    person.sizes = ik::club::SizesFor(actorPath + "|" + meshPath, person.breastMax, gSettings.clubSizes);
+                    t.breastGrow = person.sizes.breast;
+                    t.gluteGrow = person.sizes.glute;
+                }
+                if (gClubLogged.insert(person.pawn).second) {
+                    log::Info("hair: club: {} ({}) jiggle x{:.2f}, breasts +{:.0f}% (cap {}), glutes +{:.0f}%", PathOf(person.pawn),
+                        meshPath, t.jiggleScale, person.sizes.breast * 100.0,
+                        person.breastMax > 0.0 ? std::format("{:.2f}", person.breastMax) : std::string("the default"),
+                        person.sizes.glute * 100.0);
+                }
+            }
         }
         request.targets.push_back(std::move(t));
     }
@@ -1524,8 +1696,12 @@ std::string Command(std::string const& args) {
                 if (s.component == p.body && s.standIn == worn) swapped = &s;
             }
             if (swapped != nullptr) {
-                out += std::format("\n  [{}] {} at {:.2f} m wears {} instead of {} ({}), jiggle x{:.2f}", i, PathOf(p.pawn), p.distanceM,
-                    PathOf(worn), PathOf(swapped->original), swapped->byName ? "the bodies' index" : "the hand table", OutfitJiggle(p.body));
+                out += std::format("\n  [{}] {} at {:.2f} m wears {} instead of {} ({}), jiggle x{:.2f}{}", i, PathOf(p.pawn), p.distanceM,
+                    PathOf(worn), PathOf(swapped->original), swapped->byName ? "the bodies' index" : "the hand table",
+                    OutfitJiggle(p.body) * (p.club ? gSettings.clubJiggle : 1.0),
+                    p.club ? std::format("; club: breasts +{:.0f}% (cap {}), glutes +{:.0f}%", p.sizes.breast * 100.0,
+                                 p.breastMax > 0.0 ? std::format("{:.2f}", p.breastMax) : std::string("default"), p.sizes.glute * 100.0)
+                           : std::string());
                 continue;
             }
             auto const e = gBodies.Entries().find(PathOf(worn));
