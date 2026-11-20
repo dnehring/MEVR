@@ -366,6 +366,8 @@ set(MEVR_MOD_SOURCES
     src/core/ik/HandContact.hpp
     src/core/ik/Clip.cpp
     src/core/ik/BodySpheres.cpp
+    src/core/ik/BodyStandIn.cpp
+    src/core/ik/BodyStandIn.hpp
     src/core/ik/Clip.hpp
     src/core/ik/HairChain.cpp
     src/core/ik/HairChain.hpp
@@ -1563,6 +1565,7 @@ if (MEVR_BUILD_TESTS)
         tests/HandContactTests.cpp
         tests/ClipTests.cpp
         tests/BodySpheresTests.cpp
+        tests/BodyStandInTests.cpp
     tests/HairChainTests.cpp
     tests/JiggleTests.cpp
         tests/GameMenuBackOutTests.cpp
@@ -1600,6 +1603,7 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/HandContact.cpp
         src/core/ik/Clip.cpp
         src/core/ik/BodySpheres.cpp
+        src/core/ik/BodyStandIn.cpp
         src/core/ik/HairChain.cpp
         src/core/ik/Jiggle.cpp
         src/core/ik/Melee.cpp

@@ -475,8 +475,11 @@ What's left, in order:
    `HMM_`). One generated plan per game (`plans/<game>-females.jsonc`), one package per game (`MEVR_Bodies_<GAME>.pcc`).
 3. **Stand-ins by name, not a table.** `engine/GameAdapter.hpp` `kHairStandIns` lists Miranda's meshes by hand; for every
    body, `game/Hair` looks for `MEVR_Bodies_<GAME>.<mesh>_MEVR` (loaded through the TOC like Miranda's) and swaps it in;
-   the hand table stays for hair. Bodies in another body's package (a level's own copy) match by mesh name.
+   the hand table stays for hair. Bodies in another body's package (a level's own copy) match by mesh name. **Built**
+   (lane B, research/trilogy-hair.md "Rigged bodies by path, and ME1"): by the mesh's path through the package's index
+   `MEVR_Bodies_<GAME>.json`, the hand table first; `mevr hair bodies`.
 4. **ME1 and ME2.** The hair module and the jiggle stage run on LE2 (Miranda at Freedom's Progress); LE1 needs its
-   `HairPose` stage wired the same way (check `engine/BonePose`'s hook for it).
+   `HairPose` stage wired the same way (check `engine/BonePose`'s hook for it). **Done** (lane B): it already ran there; the
+   head's field (`m_oHeadMesh`) and a reflect row were what a body swap lacked.
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
    (`mevr-hair-bench --jiggle`), then the owner in the headset on a sample: one armour, one bodysuit, one casual per game.
