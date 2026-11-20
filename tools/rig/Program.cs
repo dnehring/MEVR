@@ -73,6 +73,7 @@ internal static class Program
             "rig" => Rigging.Run(args),
             "contents" => Contents.Run(args),
             "find" => Contents.Find(args),
+            "colliders" => Colliders.Run(args),
             _ => Usage(),
         };
     }

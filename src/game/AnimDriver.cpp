@@ -87,9 +87,17 @@ struct Driven {
     int direction = 1;
     bool paused = false;
     int turns = 0;
+    // The facing shown: eased toward the wanted one (the turn, the walk's turnaround) at kTurnRadPerS, never at once (an
+    // instant 90 or 180 degrees reset the hair simulation: the owner, 2026-11-19).
+    double shownFacing = 0.0;
     std::shared_ptr<ik::clip::Clip const> clip;  // a generated clip played by engine/ClipPose (no node, no animation sets)
 };
 std::optional<Driven> gDriven;
+constexpr double kTurnRadPerS = 240.0 * 3.14159265358979323846 / 180.0;
+// The character's own facing when it was first driven: a clip's `turn` is from it, not from where the last clip left it (so
+// 0, 90 and 180 are facing the player, side-on and facing away whatever played before).
+ue3::Object* gBaseActor = nullptr;
+double gBaseYaw = 0.0;
 double gSlowmo = 1.0;  // `mevr anim slowmo`: our clip, hair and walk all at this share of real time (footage)
 ue3::Object const* gWorld = nullptr;
 
@@ -396,6 +404,7 @@ std::string Play(std::istringstream& words) {
     d.rangeM = std::max(0.5, range);
     d.origin = player::Location(actor).value_or(ue3::Vector{});
     d.yaw = static_cast<double>(player::Rotation(actor).value_or(ue3::Rotator{}).yaw) * (2.0 * kPi / 65536.0);
+    d.shownFacing = d.yaw;
     gDriven = d;
     gWorld = world;
     log::Info("anim driver: {} plays {} (rate {:.2f}, walk {:.2f} m/s over {:.1f} m)", PathOf(actor), d.sequence, rate, d.walkMS, d.rangeM);
@@ -484,12 +493,15 @@ std::string PlayClip(std::istringstream& words) {
     d.walkMS = std::max(0.0, walk);
     d.rangeM = std::max(0.5, range);
     d.origin = player::Location(actor).value_or(ue3::Vector{});
-    d.yaw = static_cast<double>(player::Rotation(actor).value_or(ue3::Rotator{}).yaw) * (2.0 * kPi / 65536.0) + turnDeg * kPi / 180.0;
+    double const nowYaw = static_cast<double>(player::Rotation(actor).value_or(ue3::Rotator{}).yaw) * (2.0 * kPi / 65536.0);
+    if (actor != gBaseActor) {
+        gBaseActor = actor;
+        gBaseYaw = nowYaw;
+    }
+    d.yaw = gBaseYaw + turnDeg * kPi / 180.0;
+    d.shownFacing = nowYaw;  // turns from where it stands now, eased (Tick)
     gDriven = d;
     gWorld = world;
-    if (turnDeg != 0.0) {
-        Place(*gDriven);  // faces the turned way at once
-    }
     log::Info("anim driver: {} plays the clip {} ({} frames, loop {}..{}, {:.2f} m/s in the clip), rate {:.2f}, walk {:.2f} m/s",
         PathOf(actor), file.string(), clip->frames, clip->loopStart, clip->loopEnd, pace, rate, d.walkMS);
     return std::format("{} plays the clip {} (loop {}..{}, {:.2f} s; the clip walks {:.2f} m/s){}", PathOf(actor), clip->name,
@@ -503,7 +515,7 @@ void Place(Driven& d) {
     if (setLocation == nullptr || setRotation == nullptr) {
         return;
     }
-    double const facing = d.yaw + (d.direction < 0 ? kPi : 0.0);
+    double const facing = d.shownFacing;
     ue3::Vector to = d.origin;
     to.x += static_cast<float>(std::cos(d.yaw) * d.along * engine::kUnitsPerMeter);
     to.y += static_cast<float>(std::sin(d.yaw) * d.along * engine::kUnitsPerMeter);
@@ -626,7 +638,19 @@ void Tick(double deltaSeconds) {
         log::Info("anim driver: the driven character is gone (a level change)");
         return;
     }
+    // The facing eased toward the wanted one.
+    bool turning = false;
+    if (deltaSeconds > 0.0) {
+        double const want = d.yaw + (d.direction < 0 ? kPi : 0.0);
+        double diff = std::remainder(want - d.shownFacing, 2.0 * kPi);
+        double const step = kTurnRadPerS * std::min(deltaSeconds, 0.1) * gSlowmo;
+        if (std::abs(diff) > 1e-4) {
+            d.shownFacing += std::clamp(diff, -step, step);
+            turning = true;
+        }
+    }
     if (d.paused || d.walkMS <= 0.0 || !(deltaSeconds > 0.0)) {
+        if (turning && !d.paused) Place(d);
         return;
     }
     d.along += d.direction * d.walkMS * std::min(deltaSeconds, 0.1) * gSlowmo;

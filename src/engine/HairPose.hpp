@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "core/ik/BodySpheres.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
 #include "core/ik/Jiggle.hpp"
@@ -35,6 +36,9 @@ struct Target {
     ue3::Object const* asset = nullptr;   // its SkeletalMesh when published (another mesh: refused, re-discovered)
     ue3::Object* body = nullptr;          // the owner's body SkeletalMeshComponent (its capsules), or null
     std::vector<ik::hand_contact::BonePart> bodyParts;  // that body's parts kept off (skull, neck, collars, spine, upper arms)
+    // That body's surface fitted from its mesh (tools/rig's spheres, ik::body_spheres), bound to its skeleton; empty: the
+    // capsules above alone (then with the spine, neck and collars).
+    std::vector<ik::body_spheres::Sphere> spheres;
 };
 struct Request {
     std::vector<Target> targets;  // at most kMaxTargets
@@ -44,7 +48,7 @@ struct Request {
     std::vector<ik::hand_contact::BonePart> playerParts;    // its hand, forearm and upper-arm parts
     bool playerPushes = true;
     bool jiggle = true;               // the soft-tissue bones move
-    double jiggleIntensity = 0.5;     // 0..1 (ik::jiggle::Settings::intensity)
+    double jiggleIntensity = 1.0;     // 0..1 (ik::jiggle::Settings::intensity)
 };
 // Game thread: from the next call on; Clear stops the stage (the hair is the animation's alone again).
 void Publish(Request request);

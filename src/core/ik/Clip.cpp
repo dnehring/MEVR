@@ -123,18 +123,27 @@ Sample At(Clip const& c, double seconds) {
     double const f = phase - i;
     Clip::Frame const& a = c.clip[static_cast<std::size_t>(c.loopStart + i)];
     Clip::Frame const& b = c.clip[static_cast<std::size_t>((std::min)(c.loopStart + i + 1, c.loopEnd))];
+    Clip::Frame const& first = c.clip[static_cast<std::size_t>(c.loopStart)];
+    Clip::Frame const& last = c.clip[static_cast<std::size_t>(c.loopEnd)];
+    // The loop closed: a loop's last frame is never exactly its first (the loop finder takes the nearest pair), so the wrap
+    // jumped by their difference, and the hair simulation felt every wrap as a kick (the owner, 2026-11-19: "it would almost
+    // like re-trigger the animation for the hair ... needs to better end and start loop"). That difference is spread over
+    // the whole loop instead: each bone turned by the share `phase / span` of the turn from the last frame to the first, the
+    // height likewise, so the loop's end meets its start exactly.
+    double const t = phase / span;
     s.locals.resize(a.locals.size());
     for (std::size_t k = 0; k < a.locals.size(); ++k) {
-        s.locals[k] = Slerp(a.locals[k], b.locals[k], f);
+        Quat delta = Normalize(first.locals[k] * Conjugate(last.locals[k]));
+        if (delta.w < 0.0) delta = {-delta.x, -delta.y, -delta.z, -delta.w};
+        Quat const close = Slerp(Quat{0.0, 0.0, 0.0, 1.0}, delta, t);
+        s.locals[k] = Normalize(close * Slerp(a.locals[k], b.locals[k], f));
     }
     // The root: the loop's straight horizontal travel taken out (the body walks on the spot; whoever plays the clip moves
     // the character), its bob and sway kept. Without it the end of each loop would jump back.
-    Clip::Frame const& first = c.clip[static_cast<std::size_t>(c.loopStart)];
-    Clip::Frame const& last = c.clip[static_cast<std::size_t>(c.loopEnd)];
     Vec3 const drift{last.root.x - first.root.x, last.root.y - first.root.y, 0.0};
     Vec3 const root = a.root + (b.root - a.root) * f;
-    Vec3 const line = first.root + drift * (phase / span);
-    s.root = {root.x - line.x, root.y - line.y, root.z};
+    Vec3 const line = first.root + drift * t;
+    s.root = {root.x - line.x, root.y - line.y, root.z + (first.root.z - last.root.z) * t};
     return s;
 }
 

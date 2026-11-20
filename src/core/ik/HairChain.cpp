@@ -72,9 +72,11 @@ void ResetTo(Chain& chain) {
 
 // `p` pushed out of every capsule: by the capsule's radius plus the point's; with `keepRest` (the person's own body) never
 // further than the animated point itself sits from the axis (hair at rest lies on the scalp, inside the skull's capsule).
-int Collide(Vec3& p, Vec3 target, double radius, std::span<hand_contact::Capsule const> colliders, bool keepRest) {
+int Collide(Vec3& p, Vec3 target, double radius, std::span<hand_contact::Capsule const> colliders, bool restSide,
+    bool keepRest) {
     int pushes = 0;
-    for (hand_contact::Capsule const& c : colliders) {
+    for (std::size_t k = 0; k < colliders.size(); ++k) {
+        hand_contact::Capsule const& c = colliders[k];
         Vec3 const onAxis = hand_contact::ClosestOnSegment(p, c.a, c.b);
         Vec3 const away = p - onAxis;
         double const d = Length(away);
@@ -86,7 +88,7 @@ int Collide(Vec3& p, Vec3 target, double radius, std::span<hand_contact::Capsule
             continue;
         }
         Vec3 dir = d > 1e-9 ? away * (1.0 / d) : Normalize(target - onAxis, {0.0, 0.0, 1.0});
-        if (keepRest) {
+        if (restSide) {
             // Out on the rest point's side: a point that crossed the axis (a strand flicked through the neck) pushed out on
             // its own side would stay there, the pull home never getting it back across (Miranda's two neck strands held
             // 7 and 16 cm off, 2026-11-19).
@@ -287,8 +289,13 @@ StepStats Step(Chain& chain, Settings const& settings, Input const& input) {
                 parentTurn = FromTo(animDir[i], dir);
             }
             for (std::size_t i = 1; i < n; ++i) {
-                stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.body, true);
-                stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.colliders, false);
+                stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.body, true, true);
+                // The body's surface fitted from its mesh (ik::body_spheres), by the capsules' rule: out on the rest point's side,
+                // never further than the point's own animated place sits from each sphere. The rigged hair's bones run inside its
+                // volume, 3-5 cm under Miranda's skin at rest, and the authored mesh doesn't clip there: what clips is a strand the
+                // simulation moves deeper than that (the bench's extra sink).
+                stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.surface, true, true);
+                stats.collisions += Collide(chain.pos[i], now[i], settings.radiusM, input.colliders, false, false);
             }
         }
         before = now;

@@ -130,7 +130,14 @@ stood (90 with walk 0: walking in place side-on to the camera, the angle for jud
 out of a fixed camera's view, so for footage walk in place. `mevr anim slowmo <f>` slows our motion only (the clip, the hair
 simulation, the driver's walk) by f; the world's `TimeDilation` didn't reach a conversation character's pose updates.
 
-Not yet: a blend in and out, playing a clip once (no loop), and a compact binary form if clips ship.
+Seamless since 2026-11-19 (the owner: the hair "re-triggers" when the animation restarts): the loop is closed (`clip::At`:
+the turn and height from its last frame to its first spread over the whole loop, so the wrap has no jump), a new clip blends in
+over 0.4 s from the clip before or the game's own pose (`engine/ClipPose`), and `turn` is eased at 240 degrees a second and
+counted from the character's facing when it was first driven (0, 90, 180: facing the player, side-on, facing away, whatever
+played before; the walk's turnarounds eased too). The hair simulation resets on a head jump past 0.5 m or a turn past 60
+degrees in one step: an instant turn or pose did that.
+
+Not yet: a blend out, playing a clip once (no loop), and a compact binary form if clips ship.
 
 ## Footage
 

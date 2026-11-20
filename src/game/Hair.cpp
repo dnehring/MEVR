@@ -4,6 +4,7 @@
 #include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/BodySpheres.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
 #include "core/vr/SettingsFile.hpp"
@@ -26,6 +27,8 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <format>
 #include <optional>
 #include <sstream>
@@ -77,9 +80,9 @@ constexpr char kBlock[] =
     "standIns = 1\n"
     "; Soft tissue (research/trilogy-jiggle.md): bodies rigged by tools/rig (ME3's Miranda) have breast and glute bones that\n"
     "; lag, bounce and settle with the body's motion. jiggle = 0 holds them to the animation; jiggleIntensity 0..1 scales how\n"
-    "; far they move (never how fast they settle).\n"
+    "; far they move (never how fast they settle). 1 since the owner's headset check (2026-11-19: full is a little better).\n"
     "jiggle = 1\n"
-    "jiggleIntensity = 0.5\n"
+    "jiggleIntensity = 1\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
     "followBody = 0.7\n";
@@ -93,7 +96,7 @@ struct Settings {
     bool hands = true;
     bool standIns = true;
     bool jiggle = true;
-    double jiggleIntensity = 0.5;
+    double jiggleIntensity = 1.0;
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
 Settings gSettings;
@@ -185,7 +188,38 @@ struct Parts {
     int boneCount = -1;
     std::vector<hc::BonePart> body;
     std::vector<hc::BonePart> arms;
+    std::vector<ik::body_spheres::Sphere> spheres;  // the body's surface fitted by the rig tool, if it built this mesh
 };
+
+// The rig tool's spheres for a body it built (tools/rig/README.md "Body spheres"): MEVR/rig/<GAME>/colliders/<mesh>.json
+// under LOCALAPPDATA, bound to skel. Empty without a file (a body of the game's own: its capsules alone).
+std::vector<ik::body_spheres::Sphere> SpheresFor(ue3::Object const* asset, engine::skeleton::RefSkeleton const& skel) {
+    std::string name = ue3::runtime::FullName(asset);
+    if (auto const dot = name.find_last_of(". "); dot != std::string::npos) name = name.substr(dot + 1);
+    wchar_t local[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH) == 0) return {};
+    std::filesystem::path const file = std::filesystem::path(local) / L"MEVR" / L"rig" / MEVR_GAME_NAME_W / L"colliders" /
+        (std::wstring(name.begin(), name.end()) + L".json");
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return {};
+    std::string const text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    auto const fitted = ik::body_spheres::Parse(text, &error);
+    if (!fitted) {
+        log::Warn("hair: {}'s body spheres unreadable ({}): its capsules alone", name, error);
+        return {};
+    }
+    std::vector<ik::Transform> bind(skel.local.size());
+    for (std::size_t i = 0; i < bind.size(); ++i) {
+        int const p = skel.parents[i];
+        bind[i] = p >= 0 ? ik::Compose(skel.local[i], bind[static_cast<std::size_t>(p)]) : skel.local[i];
+    }
+    int missing = 0;
+    std::vector<ik::body_spheres::Sphere> spheres = ik::body_spheres::Bind(*fitted, skel.names, bind, &missing);
+    log::Info("hair: {}'s surface: {} spheres fitted from its mesh{} (the hair lies on it; its spine, neck and collar capsules "
+              "stand down)", name, spheres.size(), missing > 0 ? std::format(", {} on bones it lacks left out", missing) : "");
+    return spheres;
+}
 std::unordered_map<ue3::Object const*, Parts> gParts;
 ue3::Object const* gWorld = nullptr;
 
@@ -202,9 +236,13 @@ Parts const* PartsOf(ue3::Object* mesh) {
     Parts parts;
     parts.boneCount = count;
     if (auto const skel = engine::skeleton::ReadRefSkeleton(mesh)) {
+        parts.spheres = SpheresFor(asset, *skel);
         for (hc::BonePart const& p : hc::PartsFor(skel->names, skel->parents)) {
             bool const leg = p.part == hc::Part::Thigh || p.part == hc::Part::Shin || p.part == hc::Part::Foot;
-            if (!leg) {
+            // With the surface fitted, the round guesses it replaces stand down (they held the nape's hair inside the spine's).
+            bool const replaced = !parts.spheres.empty() &&
+                (p.part == hc::Part::Spine || p.part == hc::Part::Neck || p.part == hc::Part::Collar);
+            if (!leg && !replaced) {
                 parts.body.push_back(p);
             }
             if (p.part == hc::Part::Hand || p.part == hc::Part::Forearm || p.part == hc::Part::UpperArm) {
@@ -935,6 +973,7 @@ void Tick(double /*deltaSeconds*/) {
         if (person.body != nullptr) {
             if (Parts const* parts = PartsOf(person.body)) {
                 t.bodyParts = parts->body;
+                t.spheres = parts->spheres;
             }
         }
         request.targets.push_back(std::move(t));

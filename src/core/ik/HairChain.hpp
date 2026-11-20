@@ -69,6 +69,9 @@ struct Input {
     // The person's own body (world space, metres): the hair is kept out of it, but never further than its animated point
     // sits (hair at rest lies on the scalp, inside the skull's capsule; that rest stays reachable).
     std::span<hand_contact::Capsule const> body;
+    // The body's surface fitted from its mesh (ik::body_spheres, spheres as capsules with both ends at the centre): as `body`,
+    // the hair kept out but never further than its animated point sits from each sphere, on that point's side.
+    std::span<hand_contact::Capsule const> surface;
     // Anything else (the player's hands and arms): the hair is kept out by the whole radius.
     std::span<hand_contact::Capsule const> colliders;
     double dt = 0.0;    // seconds since the last Step of this chain (0: paused, nothing moves)

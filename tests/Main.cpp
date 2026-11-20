@@ -12230,6 +12230,7 @@ int RunGoalStepTests();
 int RunHandContactTests();
 // tests/HairChainTests.cpp: hair on simulated bone chains (core/ik/HairChain, docs/trilogy-hair-plan.md).
 int RunClipTests();
+int RunBodySpheresTests();
 int RunHairChainTests();
 int RunJiggleTests();
 // tests/GameMenuBackOutTests.cpp: backing out of ME3's screens one B each (vr::game_menu::StepBackOut, lane OMX).
@@ -12475,6 +12476,7 @@ int main() {
     gFailures += RunGoalStepTests();
     gFailures += RunHandContactTests();
     gFailures += RunClipTests();
+    gFailures += RunBodySpheresTests();
     gFailures += RunHairChainTests();
     gFailures += RunJiggleTests();
     gFailures += RunGameMenuBackOutTests();

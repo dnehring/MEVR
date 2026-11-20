@@ -41,6 +41,9 @@
       "mesh": "HMF_ARM_MIRa_MDL",
       "name": "HMF_ARM_MIRa_MEVR",
       "bonesOf": ["hair"],
+      // No body spheres for the hair (tools/rig/README.md "Body spheres"): her suit's high collar trapped the nape's hair on
+      // them in the bench (2026-11-19: the walk's hair never settled, 8.7 mm deeper than its pose against 7.1 without).
+      "colliders": false,
       "bones": [
         { "name": "BreastLeft", "parent": "Chest2", "at": [5.5, -6.5, 133.0], "yaw": 0 },
         { "name": "BreastRight", "parent": "Chest2", "at": [5.5, 6.5, 133.0], "yaw": 0 },

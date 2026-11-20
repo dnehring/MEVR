@@ -60,6 +60,9 @@ internal sealed class StepPlan
     public HairPlan Hair { get; set; }
     public List<string> BonesOf { get; set; } = new();
     public string Materials { get; set; } = "import";  // "copy": the materials and what they need into the package
+    // A body's surface for the hair (Colliders): false keeps the game's capsules alone for this body (a suit's high collar,
+    // whose inside trapped the nape's hair in the bench, 2026-11-19).
+    public bool Colliders { get; set; } = true;
 }
 
 internal static class Rigging
@@ -131,6 +134,11 @@ internal static class Rigging
             Skeleton.UpdateLodBones(mesh, added, report);
             Skeleton.Check(mesh, report);
             export.WriteBinary(mesh);
+            if (step.Hair == null && step.Colliders)
+            {
+                // A body: its surface for the hair simulation (Colliders, the game's core/ik/BodySpheres).
+                Colliders.Write(Colliders.FileFor(outPath, step.Name), step.Name, Colliders.Fit(mesh, report));
+            }
             Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{step.Name}: {mesh.RefSkeleton.Length} bones ({added.Count} added)");
             report.Print();
             if (step.Id != null)

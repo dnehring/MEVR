@@ -4,7 +4,11 @@
 //
 //   mevr-hair-bench --clip <name.mevrclip.json> --skeleton <mesh.tsv> [--fps 72] [--seconds 8] [--hold 2]
 //                   [--stiffness 0.06,0.15] [--damping 0.1,0.2] [--inertia 1,0.6] [--bend 50] [--gravity 0]
-//                   [--rates 30,72,120] [--csv out.csv]
+//                   [--rates 30,72,120] [--csv out.csv] [--spheres <mesh.json> [--surface 0|1]]
+//                   --spheres: the body's surface the rig tool fitted (tools/rig "Body spheres"): how much deeper into it
+//                   the simulation moves the hair than its own animated pose sits (sink, per step the worst point; mean,
+//                   peak, the share of steps past 5 mm: what clips through the skin), and with --surface 1 (the default)
+//                   the hair collides with it as the game does
 //   mevr-hair-bench --jiggle 1 --clip ... --skeleton ... [--intensity 0.5,1] [--rates 30,60,120] [--trace out.csv]
 //                   soft-tissue jiggle (core/ik/Jiggle) on stand-in bones instead: per bone the offset's range per axis,
 //                   the peak, the settle after the clip stops, clamp hits, the RMS difference between frame rates
@@ -16,6 +20,7 @@
 // first rate's, as offsets from the animation). Skeleton TSVs are the player's game data: they stay local.
 
 #include "core/Json.hpp"
+#include "core/ik/BodySpheres.hpp"
 #include "core/ik/Clip.hpp"
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
@@ -76,7 +81,12 @@ std::vector<double> List(std::string const& text) {
     return v;
 }
 
+// The body's surface (--spheres), bound to the skeleton's rest; collided with only while gSurface.
+std::vector<ik::body_spheres::Sphere> gSpheres;
+bool gSurface = true;
+
 struct Run {
+    double sinkMeanMm = 0, sinkPeakMm = 0, sinkSteps5mm = 0;  // --spheres: the deepest hair point inside the surface per step
     double meanSwingCm = 0, peakSwingCm = 0, settleS = -1, worstStretchMm = 0, jitterMm = 0;
     long long pushes = 0;
     std::vector<std::vector<ik::Vec3>> tips;  // per step, per chain: the tip's offset from the animation
@@ -87,7 +97,9 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
     std::vector<hair::Chain> chains = hair::Discover(sk.names, sk.parents);
     std::vector<hc::BonePart> parts;
     for (hc::BonePart const& p : hc::PartsFor(sk.names, sk.parents)) {
-        if (p.part != hc::Part::Thigh && p.part != hc::Part::Shin && p.part != hc::Part::Foot) {
+        // As game/Hair: with the fitted surface, the spine, neck and collar capsules it replaces stand down.
+        bool const replaced = !gSpheres.empty() && (p.part == hc::Part::Spine || p.part == hc::Part::Neck || p.part == hc::Part::Collar);
+        if (p.part != hc::Part::Thigh && p.part != hc::Part::Shin && p.part != hc::Part::Foot && !replaced) {
             parts.push_back(p);
         }
     }
@@ -142,10 +154,14 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
                 body.push_back(*c);
             }
         }
+        std::vector<hc::Capsule> surface;
+        ik::body_spheres::Place(gSpheres, metres, 0.01, surface);
         hair::Input in;
         in.animated = metres;
         in.body = body;
+        if (gSurface) in.surface = surface;
         in.dt = k == 0 ? 0.0 : dt;
+        double sink = 0;
         std::vector<ik::Vec3> tips;
         double worstOff = 0;
         for (std::size_t c = 0; c < chains.size(); ++c) {
@@ -172,12 +188,29 @@ Run Simulate(Skeleton const& sk, ik::clip::Clip const& clip, hair::Settings cons
             }
             prevPrevTip[c] = prevTip[c];
             prevTip[c] = tip;
+            for (std::size_t i = 1; i < chains[c].pos.size(); ++i) {
+                ik::Vec3 const p = hair::Shown(chains[c], i);
+                ik::Vec3 const rest = chains[c].target[i];
+                for (hc::Capsule const& sphere : surface) {
+                    // Deeper than its animated place sits from this sphere (only where that place is near it).
+                    double const restClear = ik::Length(rest - sphere.a) - sphere.radius;
+                    if (restClear > 0.03) continue;
+                    sink = std::max(sink, restClear - (ik::Length(p - sphere.a) - sphere.radius));
+                }
+            }
+        }
+        if (!surface.empty()) {
+            run.sinkMeanMm += sink * 1000;
+            run.sinkPeakMm = std::max(run.sinkPeakMm, sink * 1000);
+            run.sinkSteps5mm += sink > 0.005 ? 1 : 0;
         }
         run.tips.push_back(std::move(tips));
         if (t > seconds && worstOff >= 0.01) {
             lastMovingT = t;
         }
     }
+    run.sinkMeanMm /= (steps + 1);
+    run.sinkSteps5mm /= (steps + 1);
     run.meanSwingCm = swingCount ? swingSum / swingCount * 100 : 0;
     run.jitterMm = jitterCount ? jitterSum / jitterCount : 0;
     run.settleS = lastMovingT > 0 ? lastMovingT - seconds : 0.0;
@@ -373,6 +406,25 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "no skeleton in %s\n", a["--skeleton"].c_str());
         return 1;
     }
+    if (a.count("--spheres")) {
+        std::ifstream sf(a["--spheres"], std::ios::binary);
+        std::string const text((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>());
+        std::string error;
+        auto const fitted = ik::body_spheres::Parse(text, &error);
+        if (!fitted) {
+            std::fprintf(stderr, "%s: %s\n", a["--spheres"].c_str(), error.c_str());
+            return 1;
+        }
+        std::vector<ik::Transform> bind(sk.rest.size());
+        for (std::size_t i = 0; i < bind.size(); ++i) {
+            int const parent = sk.parents[i];
+            bind[i] = parent >= 0 ? ik::Compose(sk.rest[i], bind[static_cast<std::size_t>(parent)]) : sk.rest[i];
+        }
+        int missing = 0;
+        gSpheres = ik::body_spheres::Bind(*fitted, sk.names, bind, &missing);
+        gSurface = !a.count("--surface") || a["--surface"] != "0";
+        std::printf("%zu body spheres (%d on bones the skeleton lacks)\n", gSpheres.size(), missing);
+    }
     std::ifstream in(a["--clip"], std::ios::binary);
     std::string const text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     std::string error;
@@ -434,6 +486,10 @@ int main(int argc, char** argv) {
                 }
                 std::printf("%9.3f %8.3f %8.2f | %10.2f %10.2f %8.2f %10.2f %9.3f %8lld %10.2f\n", stiffness, damping, inertia,
                             r.meanSwingCm, r.peakSwingCm, r.settleS, r.worstStretchMm, r.jitterMm, r.pushes, drift);
+                if (!gSpheres.empty()) {
+                    std::printf("%29s sink deeper than the pose into the body (%s): mean %.1f mm, peak %.1f mm, %.0f%% of steps past 5 mm\n", "",
+                                gSurface ? "collided" : "measured only", r.sinkMeanMm, r.sinkPeakMm, r.sinkSteps5mm * 100);
+                }
                 if (csv) {
                     csv << stiffness << ',' << damping << ',' << inertia << ',' << s.maxBendDeg << ',' << s.gravity << ','
                         << r.meanSwingCm << ',' << r.peakSwingCm << ',' << r.settleS << ',' << r.worstStretchMm << ',' << r.jitterMm

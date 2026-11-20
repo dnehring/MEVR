@@ -2,6 +2,9 @@
 // ME3's slice of ME1's first-person conversations (game/SequelConversationWorld.hpp).
 #include "game/SequelConversationWorld.hpp"
 
+// ME3 only (Mod.cpp and ConsoleRequest.cpp call it under MEVR_GAME_LE3; ME1 has its own, game/ConversationWorld).
+#if defined(MEVR_GAME_LE3)
+
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/vr/Controllers.hpp"
@@ -546,3 +549,5 @@ std::string Console(std::string_view args) {
 }
 
 } // namespace mevr::game::sequel_conversation_world
+
+#endif  // MEVR_GAME_LE3

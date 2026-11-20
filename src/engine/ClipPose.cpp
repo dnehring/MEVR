@@ -4,6 +4,7 @@
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
 #include "core/ik/Rigid.hpp"
+#include "core/ik/TwoHand.hpp"
 #include "engine/Skeleton.hpp"
 
 #include <Windows.h>
@@ -11,6 +12,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -25,6 +28,13 @@ std::shared_ptr<ik::clip::Clip const> gClip;
 double gRate = 1.0;
 double gSeconds = 0.0;
 double gTimeScale = 1.0;
+// The blend into a new clip (Play): from the clip before on the same body (gFromClip, its time and each new bone's index in it),
+// else from the game's own animation; weight by smoothstep over kBlendS.
+constexpr double kBlendS = 0.4;
+std::shared_ptr<ik::clip::Clip const> gFromClip;
+double gFromSeconds = 0.0;
+std::vector<int> gFromIndex;
+double gBlendLeft = 0.0;
 LARGE_INTEGER gLastCall{};
 std::atomic<bool> gBroken{false};
 Stats gStats;
@@ -104,6 +114,22 @@ Binding const* Bind(ue3::Object* body) {
 } // namespace
 
 void Play(ue3::Object* body, std::shared_ptr<ik::clip::Clip const> clip, double rate) {
+    // A new clip blends in over kBlendS from what the body showed: the clip playing before on the same body, else the game's
+    // own animation. A clip that started at once snapped the whole pose in one frame, and the hair simulation took the head's
+    // jump as a kick (the owner, 2026-11-19: the hair "re-triggers" when the animation restarts).
+    if (body != nullptr && body == gBody && gClip != nullptr && clip != nullptr) {
+        gFromClip = gClip;
+        gFromSeconds = gSeconds;
+        gFromIndex.assign(clip->bones.size(), -1);
+        for (std::size_t k = 0; k < clip->bones.size(); ++k) {
+            auto const found = std::find(gFromClip->bones.begin(), gFromClip->bones.end(), clip->bones[k]);
+            if (found != gFromClip->bones.end()) gFromIndex[k] = static_cast<int>(found - gFromClip->bones.begin());
+        }
+    } else {
+        gFromClip.reset();
+        gFromIndex.clear();
+    }
+    gBlendLeft = kBlendS;
     gBody = body;
     gClip = std::move(clip);
     gRate = rate;
@@ -130,6 +156,8 @@ void Stop() {
     gWanted.store(nullptr);
     gBody = nullptr;
     gClip.reset();
+    gFromClip.reset();
+    gBlendLeft = 0.0;
     gBindings.clear();
 }
 
@@ -152,8 +180,16 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         dt = static_cast<double>(now.QuadPart - gLastCall.QuadPart) / static_cast<double>(freq.QuadPart);
     }
     gLastCall = now;
-    gSeconds += std::clamp(dt, 0.0, 0.1) * gRate * gTimeScale;
+    double const advance = std::clamp(dt, 0.0, 0.1) * gRate * gTimeScale;
+    gSeconds += advance;
     gStats.seconds = gSeconds;
+    // The blend's weight: smoothstep over kBlendS of the clip's own time (slowed with it).
+    double weight = 1.0;
+    if (gBlendLeft > 0.0) {
+        gBlendLeft = std::max(0.0, gBlendLeft - std::clamp(dt, 0.0, 0.1) * gTimeScale);
+        double const x = 1.0 - gBlendLeft / kBlendS;
+        weight = x * x * (3.0 - 2.0 * x);
+    }
 
     Binding const* const binding = Bind(component);
     if (binding == nullptr || binding->root < 0) {
@@ -183,9 +219,28 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         local[static_cast<std::size_t>(i)] = p >= 0 ? ik::Relative(world[static_cast<std::size_t>(i)], world[static_cast<std::size_t>(p)])
                                                     : world[static_cast<std::size_t>(i)];
     }
-    ik::clip::Sample const sample = ik::clip::At(*gClip, gSeconds);
+    ik::clip::Sample sample = ik::clip::At(*gClip, gSeconds);
+    std::optional<ik::clip::Sample> from;
+    if (weight < 1.0 && gFromClip != nullptr) {
+        gFromSeconds += advance;
+        from = ik::clip::At(*gFromClip, gFromSeconds);
+    }
     for (std::size_t k = 0; k < binding->mapped.size(); ++k) {
-        local[static_cast<std::size_t>(binding->mapped[k])].rotation = sample.locals[k];
+        ik::Quat& bone = local[static_cast<std::size_t>(binding->mapped[k])].rotation;
+        if (weight < 1.0) {
+            // From the clip before (the same bone by name), else the game's own pose of it.
+            int const f = from && k < gFromIndex.size() ? gFromIndex[k] : -1;
+            ik::Quat const base = f >= 0 ? from->locals[static_cast<std::size_t>(f)] : bone;
+            bone = ik::Slerp(base, sample.locals[k], weight);
+        } else {
+            bone = sample.locals[k];
+        }
+    }
+    if (weight < 1.0) {
+        // The root's sway and height likewise: from the clip before, else none of the clip's (the game's place and height).
+        std::size_t const r = static_cast<std::size_t>(binding->root);
+        ik::Vec3 const base = from ? from->root : ik::Vec3{0.0, 0.0, world[r].translation.z};
+        sample.root = base + (sample.root - base) * weight;
     }
     // The root: the game's place plus the clip's sway, at the clip's height (the bob), in component space.
     {

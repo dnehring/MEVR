@@ -260,3 +260,31 @@ parameters there: the look needs the wrapper's own parent, research/trilogy-hair
   wrapper to its base and takes every material's parameters in the chain. At Freedom's Progress at night, backlit, four
   exponent pairs (50/250, 90/200, 150/300, 300/200) changed her hair by about 3 of 255 on average (noise): her hair is a
   silhouette there. ME2's look stays the game's until a lit scene or the headset can judge it.
+
+## The hair through the body (2026-11-19, the owner's headset verdict)
+
+The owner, after the first-person show in Miranda's apartment: the jiggle is "pretty reasonable", max a little better; "the core
+problem is actually the hair, because the hair is clipping through the body, so it doesn't lay flat against the anatomy", and
+it "re-triggers" when the animation restarts.
+
+**The re-trigger.** Three causes, all fixed (tools/motion/README.md "Playing a clip in the game"): a loop's last frame was
+never its first (the wrap jumped), a new clip snapped in at once, and the clip's `turn` was applied at once (a 180 is a turn
+past the simulation's 60-degree reset). The loop is closed, clips blend in over 0.4 s and turns are eased.
+
+**The clipping, measured.** The body's surface fitted from her meshes (tools/rig/README.md "Body spheres"; `mevr-rig
+colliders`), then `mevr-hair-bench --spheres` over the walk, the jump and the CMU dance. The capsules the hair collided with
+were guesses that didn't fit her: her neck is 5 cm from its bones and the 13 cm spine capsule reached up past it (the nape's hair
+sat inside it, so it was never pushed), the tops of her shoulders 9-13 cm from their bones against 7 cm collars (strands passed
+through). How much deeper than its own pose the simulation took the hair, mean / peak / steps past 5 mm:
+
+| Underwear body (NKDc) | capsules only | with the fitted spheres |
+| --- | --- | --- |
+| walk | 5.1 / 43.6 mm / 40% | 1.7 / 11.1 mm / 4% (jitter 0.69 mm, settled 0.22 s; before 0.78, 0.26) |
+| jump | 6.0 / 34.4 mm / 39% | 2.3 / 17.9 mm / 11% |
+| dance | 2.9 / 33.4 mm / 19% | 1.3 / 17.7 mm / 9% |
+
+Tried and dropped on the way: laying the animated targets on the surface (the bones run 3-5 cm deep at rest by design: pushed
+out, the strands swung 15-30 cm and never settled), pushing out by the full radius (the same fight), mirroring pushes by the skin's
+normal (no better). Her suit (MIRa) keeps the capsules: its high collar's inside held the nape's hair against the spheres (the
+walk 8.7 mm deeper against 7.1 without, never settled); a suit with a collar needs its own rule. [verify] in the headset: the
+underwear body walking, jumping and dancing side-on and from behind.

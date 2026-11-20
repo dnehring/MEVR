@@ -61,6 +61,30 @@ height and side (the apex's height and its distance from the middle); for glutes
 tissue's middle (half way from the body's core to the apex), the region's centre a little outward, its radii the mound's
 half extents. Miranda's numbers and how they were read are in the plan's comments.
 
+## Body spheres (the hair's collision with the body)
+
+Every body the `rig` verb builds (a step without hair, unless its plan says `"colliders": false`) also gets its surface for the
+hair simulation: `<out folder>\colliders\<mesh>.json` (`mevr-body-spheres`, version 1), next to the package. `Colliders.cs`
+fits it from the mesh itself: for each LOD 0 vertex whose heaviest bone is the neck, Chest1/Chest2, a collar, a shoulder (and its
+twists) or a breast, a sphere tangent to the skin there (its normal from the triangles, turned away from the bone's axis), its
+radius 0.85 of the vertex's distance from that axis (2.5-7 cm), shrunk until no vertex of the body is inside it; spheres on an
+inner surface (a high collar's inside, its normal toward the neck) left out; then the largest kept, a candidate only further
+than 0.6 of the smaller radius from those. Each records its bone, centre and radius in the bind pose (game units) and the skin's
+normal. `mevr-rig colliders <package> <mesh> [--out file]` fits one already built.
+
+The game (`game/Hair` `SpheresFor`, `core/ik/BodySpheres`) reads `%LOCALAPPDATA%\MEVR\rig\<GAME>\colliders\<mesh>.json` for
+a body it simulates hair on, binds the spheres to that skeleton and places them on its bones every pose; the hair chain
+(`ik::hair::Input::surface`) keeps its points out of them by the capsules' rule: out on the rest point's side, never further than
+the point's own animated place sits from each sphere. With spheres, the body's spine, neck and collar capsules stand down (the
+skull and upper arms stay). Why that rule: the rigged hair's bones run inside its volume, 3-5 cm under Miranda's skin at rest,
+and the authored mesh doesn't clip there; what clips is a strand the simulation moves deeper than its pose (research/trilogy-
+hair.md "The hair through the body").
+
+Measured with `mevr-hair-bench --spheres <mesh.json> [--surface 0|1]` (2026-11-19, Miranda's underwear body): how much deeper
+than its pose the hair sinks, mean / peak / steps past 5 mm, the walk 5.1 / 43.6 mm / 40% without them, 1.7 / 11.1 / 4% with,
+as calm (jitter 0.7 mm, settled 0.22 s). Her suit (`HMF_ARM_MIRa_MDL`) has `"colliders": false`: its high collar's inside held
+the nape's hair (the walk's hair never settled, worse than without).
+
 ## What the tool edits (LE's skeletal meshes)
 
 - Per LOD one or more chunks; a chunk's vertices are a range of the GPU skin buffer, rigid (one bone, stored at weight 255)

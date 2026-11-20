@@ -3,6 +3,7 @@
 
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/BodySpheres.hpp"
 #include "core/ik/Rigid.hpp"
 #include "engine/Skeleton.hpp"
 
@@ -389,6 +390,14 @@ void AfterPose(ue3::Object* component, float deltaTime) {
 
     std::vector<hc::Capsule> body;
     AddCapsules(target.body, target.bodyParts, unitsPerMeter, body);
+    // The body's surface fitted from its mesh (the rig tool's spheres): on the body's bones as posed now.
+    std::vector<hc::Capsule> surface;
+    if (!target.spheres.empty() && target.body != nullptr) {
+        WorldPose bodyPose;
+        if (ReadWorld(target.body, unitsPerMeter, bodyPose)) {
+            ik::body_spheres::Place(target.spheres, bodyPose.bones, 1.0 / unitsPerMeter, surface);
+        }
+    }
     std::vector<hc::Capsule> others;
     if (playerPushes && player != target.body) {
         AddCapsules(player, playerParts, unitsPerMeter, others);
@@ -420,6 +429,7 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         hair::Input in;
         in.animated = pose.bones;
         in.body = body;
+        in.surface = surface;
         in.colliders = others;
         in.dt = stepSeconds;
         hair::StepStats const st = hair::Step(chain, settings, in);

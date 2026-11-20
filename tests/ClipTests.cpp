@@ -63,11 +63,13 @@ void TestLoadAndSample() {
     CHECK(c->frames == 10 && c->loopStart == 2 && c->loopEnd == 8);
     CHECK(std::abs(c->LoopSeconds() - 0.3) < 1e-9);
     CHECK(std::abs(c->TravelPerLoop() - std::hypot(60.0, 2.0 * std::sin(8.0) - 2.0 * std::sin(2.0))) < 1e-6);
-    // Half way between frames 3 and 4 (1.5 frames into the loop): the pelvis at 35 degrees.
+    // Half way between frames 3 and 4 (1.5 frames into the loop, a quarter of it): the frames' 35 degrees, closed by a quarter
+    // of the loop's mismatch (its last frame at 80 degrees, its first at 20: -60), so 20; the height 103.5 likewise by a quarter
+    // of 102 - 108.
     clip::Sample const s = clip::At(*c, 1.5 / 20.0);
-    CHECK(std::abs(YawDeg(s.locals[0]) - 35.0) < 1e-6);
+    CHECK(std::abs(YawDeg(s.locals[0]) - 20.0) < 1e-6);
     CHECK(std::abs(YawDeg(s.locals[1])) < 1e-9);
-    CHECK(std::abs(s.root.z - 103.5) < 1e-6);
+    CHECK(std::abs(s.root.z - 102.0) < 1e-6);
     // The travel is gone: x stays near 0 through the loop (the line is exactly the frames' straight travel here).
     for (int i = 0; i <= 12; ++i) {
         clip::Sample const t = clip::At(*c, i * 0.025);
@@ -75,8 +77,13 @@ void TestLoadAndSample() {
     }
     // Looping: one loop later the same pose.
     clip::Sample const again = clip::At(*c, 1.5 / 20.0 + c->LoopSeconds());
-    CHECK(std::abs(YawDeg(again.locals[0]) - 35.0) < 1e-6);
-    CHECK(std::abs(again.root.z - 103.5) < 1e-6);
+    CHECK(std::abs(YawDeg(again.locals[0]) - 20.0) < 1e-6);
+    CHECK(std::abs(again.root.z - 102.0) < 1e-6);
+    // The loop closed: just before the wrap the pose is the loop's first (no jump for the hair to feel).
+    clip::Sample const end = clip::At(*c, c->LoopSeconds() - 1e-7);
+    clip::Sample const begin = clip::At(*c, 0.0);
+    CHECK(std::abs(YawDeg(end.locals[0]) - YawDeg(begin.locals[0])) < 1e-3);
+    CHECK(std::abs(end.root.z - begin.root.z) < 1e-3 && std::abs(end.root.y - begin.root.y) < 1e-3);
     // The start of the loop: frame 2's sway relative to its own place on the line (0), its height.
     clip::Sample const start = clip::At(*c, 0.0);
     CHECK(std::abs(start.root.y) < 1e-9 && std::abs(start.root.z - 102.0) < 1e-9);
