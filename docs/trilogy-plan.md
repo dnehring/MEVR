@@ -1045,11 +1045,17 @@ These unblock the most: almost every other entry gets smaller once they land.
   ME2: Samara "not drawn" was below ME2's 16:9 picture (kneeling, 29 degrees under a level gaze; the records' in-sight cone now
   follows each sequel's eye image, and the person-not-drawn canary is caught), Tali's reintroduction clean in first person, the
   view goes on from the held facing at a conversation's end (lane EXIT3's finding; not rechecked on ME3).
-- **Left:** the circle and the squad's formation (`game/AiWalk`; ME3's hub people are stunt actors with no AI controller), the
-  subtitle and wheel placement, the script's GUI black screen, the floor marker's "waits" source (and ME1's black-move source),
-  ME3's video calls and off-screen speakers (Khalisah's at the embassies) in the presence rules, the seats and walk-along seen in
-  the game, ME3's walking conversation, Joker seated and a level cutscene, the face axis on ME2's and ME3's skeletons. Each item
-  on ME2 and ME3 alike.
+- **Done since (lane FPC5, 2026-11-20, section 10 there):** ME1's conversational circle and the squad's formation on both sequels
+  (`game/SequelCircle.inc` on the core's rules, walked with `game/AiWalk`; ME2 walks to an exact goal actor, `StartToGoal`; ME3's
+  hub stunt actors never walk), the subtitle under the speaker and the wheel in front (`game/SequelConversationUi.inc`, the host's
+  `plugin/ConversationUi`, ME1's bands), the floor marker's waits source on all three games (`cw::WaitingTrigger`,
+  `game/SceneWaits`) and ME1's black-move source in a curated walk, ME1's end facing (`cw::FacingOnFoot`, an ME1 bug);
+  `tools/scene_audit.py`'s owner-walked and its broken run. Seen on ME2 (Tali's reintroduction, Samara's starter): the squad at
+  its places 0.30 m off, the circle formed, the wheel and the subtitle in snapshots, both broken runs caught.
+- **Left:** a scene with a speaker beyond 3.5 m (a circle walk-up seen in the game), the circle and the UI placement seen on ME3, the
+  script's GUI black screen, a scene that waits for the player (no fixture yet), ME3's video calls and off-screen speakers in the
+  presence rules (lane FPC-ME3), the seats and walk-along seen in the game, ME3's walking conversation, Joker seated and a level
+  cutscene, the face axis on ME2's and ME3's skeletons. Each item on ME2 and ME3 alike.
 - **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
   with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
   option off (snapshots and stances under `%LOCALAPPDATA%\MEVR\sessions`); then the owner's headset pass.
