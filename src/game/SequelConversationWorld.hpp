@@ -37,9 +37,12 @@
 //   - Moments (ME1's worldMoments = view): a level cutscene whose move track walks Shepard is held in first person from the
 //     player's place (his pawn hidden while apart, the body the player's), joined at its end under a dip; the floor marker
 //     (cw::StepMarker) where his walk ends (research/le2-conversations-in-world.md section 6).
+//   - The eyes (ME1's opening and StepEyeHeight): a Stay or WalkIn keeps the player's eyes and facing on foot; at his mark the eyes
+//     are where first person has them from his head bone (learned on foot, cw::NoteEyeFromHead); their height is the player's
+//     over his floor (cw::EyeHeightStep).
 // Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's
 // walk, the subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), walk-along, the game's
-// black moving the player, rides, seats, the eyes at the player's height. Game thread.
+// black moving the player, rides, seats. Game thread.
 namespace mevr::game::sequel_conversation_world {
 
 // The camera-update handler; after ue3::runtime::Up.

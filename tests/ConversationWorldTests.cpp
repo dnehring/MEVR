@@ -1135,9 +1135,47 @@ void TestFloorMarker() {
     CHECK(std::string(cw::Name(cw::MarkerNeed::WalkEnd)).find("walk") != std::string::npos);
 }
 
+// The eyes in a held scene (research/69 item 44, research/le2-conversations-in-world.md section 7): the drawn centre brought to
+// the floor plus the player's eye at 1 m/s under the opening, 0.3 m/s after, not within 1 cm, not without a standing eye; the eye
+// from the head bone learned on foot only at the recenter point and inside the sanity box.
+void TestEyes() {
+    cw::EyeHeightFacts f;
+    f.floorZ = 1000.0;
+    f.eyeM = 1.80;
+    f.drawnZ = 1190.0;  // 1.90 m over the floor: 10 cm high
+    f.unitsPerMeter = 100.0;
+    f.dtS = 0.05;
+    f.opening = true;
+    CHECK(std::abs(cw::EyeHeightStep(f) - -5.0) < 1e-9);  // 1 m/s: 5 units in 0.05 s, down
+    f.opening = false;
+    CHECK(std::abs(cw::EyeHeightStep(f) - -1.5) < 1e-9);  // 0.3 m/s after the opening
+    f.drawnZ = 1180.5;
+    CHECK(cw::EyeHeightStep(f) == 0.0);  // within 1 cm
+    f.drawnZ = 1150.0;  // 30 cm low (the eyes inside the shoulders): up
+    CHECK(cw::EyeHeightStep(f) > 0.0);
+    f.dtS = 5.0;  // a long tick is clamped to 0.1 s
+    CHECK(std::abs(cw::EyeHeightStep(f) - 3.0) < 1e-9);
+    f.eyeM = 0.0;  // the fake headset's floor: no standing eye, nothing
+    CHECK(cw::EyeHeightStep(f) == 0.0);
+    f.eyeM = 3.5;
+    CHECK(cw::EyeHeightStep(f) == 0.0);
+
+    cw::EyeFromHead e;
+    CHECK(!e.learned && cw::EyeFromHeadOr(e, {8.9, 1.7, 29.3}).z == 29.3);  // ME1's constant as the fallback
+    CHECK(!cw::NoteEyeFromHead(e, {24.0, -1.0, 13.0}, 30.0));                 // leaning: the body follower is in it
+    CHECK(!cw::NoteEyeFromHead(e, {200.0, 0.0, 13.0}, 0.0));                 // a camera far from his head (a cutscene's)
+    CHECK(!cw::NoteEyeFromHead(e, {24.0, 0.0, -80.0}, 0.0));
+    CHECK(cw::NoteEyeFromHead(e, {24.0, -1.0, 13.0}, 2.0));                  // the first sample taken whole
+    CHECK(e.learned && e.samples == 1 && e.eye.x == 24.0 && e.eye.z == 13.0);
+    CHECK(cw::NoteEyeFromHead(e, {34.0, -1.0, 23.0}, 0.0));                  // later ones smoothed
+    CHECK(std::abs(e.eye.x - 24.5) < 1e-9 && std::abs(e.eye.z - 13.5) < 1e-9);
+    CHECK(cw::EyeFromHeadOr(e, {8.9, 1.7, 29.3}).x == e.eye.x);
+}
+
 int RunConversationWorldTests() {
     gFailures = 0;
     TestFloorMarker();
+    TestEyes();
     TestParseMode();
     TestSetPieces();
     TestFlowEntries();
