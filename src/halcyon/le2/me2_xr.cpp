@@ -1931,7 +1931,7 @@ void RunFrame() noexcept
         // me2_xr.cpp): a conversation the mod shows in the world is no cinematic: the world in stereo as on foot, the view held at
         // the player's place (MevrSeams::WorldViewHoldBegin in calcview_hook.cpp), the director's camera serving the game only, its
         // UI on our HUD panel. As the galaxy map's held cinematic: no flat panel, no 3D screen, no VR cine.
-        const bool mevrConvoWorld = (gm == 5 || gm == 6) && ::MevrSeams::ConversationInWorld();
+        const bool mevrConvoWorld = (gm == 5 && ::MevrSeams::ConversationWorldOrComing(gm)) || (gm == 6 && ::MevrSeams::ConversationInWorld());
         const bool mevrWorldHeld = mevrGalaxyHeld || mevrConvoWorld;
         // [MEVR] research/56 "The sequels" (T18): ME1's front end (MevrSeams::FrontEndHold above). The title and its menus (the
         // GUI mode over a live 3D scene) go on ME1's 3D cinema screen, rendered in stereo with head look parked; the boot

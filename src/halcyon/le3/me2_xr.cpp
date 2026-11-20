@@ -1671,7 +1671,7 @@ void RunFrame() noexcept
         // [MEVR] ME1's first-person conversations (research/69, T49's ME3 slice, the owner 2026-11-19): a conversation the mod
         // shows in the world is no cinematic: the world in stereo as on foot, the view held at the player's place
         // (MevrSeams::WorldViewHoldBegin), the director's camera serving the game only; its UI on our HUD panel.
-        if (::MevrSeams::ConversationInWorld()) cine = false;
+        if (::MevrSeams::ConversationWorldOrComing(gm)) cine = false;   // [MEVR] or one beginning this instant (armed on foot)
 #endif
         s_fovCine = cine;
 

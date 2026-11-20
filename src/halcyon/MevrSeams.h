@@ -419,6 +419,13 @@ int WorldViewHeld(int mode) noexcept;
 // held at the player's place by WorldViewHoldBegin, Shepard's head hidden (WorldViewHeld 1). ME3's me2_xr.cpp cinematic
 // decision. LE1's is MevrBridge::ConversationInWorld.
 bool ConversationInWorld() noexcept;
+// Any thread: ... or one beginning this instant in the game's conversation mode `gameMode` (the renderer reads the mode a tick
+// before the mod's state can say so; the mod arms it on foot: vr::conversation_world::Armed, LE1's ConversationWorldOrComing),
+// so the opening is never a frame of the 3D screen. Only for the conversation mode: a cutscene's first frames stay its own.
+bool ConversationWorldOrComing(int gameMode) noexcept;
+// Any thread: a conversation shown in the world ended this instant (LE1's ConversationHandover, research/69 item 38): a GUI
+// screen the game opens now keeps the world's presentation for its first frames instead of the flat panel.
+bool ConversationHandover() noexcept;
 // Present thread, each frame the renderer decides its first-person hides in gameplay (ME3's engine_probe.cpp): true while
 // Shepard's body and head are hidden from the eyes for one of the game's own actions, whatever the first-person state says:
 // a roll (the owner, 2026-11-18, "Yes for now"; vr::HidesBodyForAction: SFXCameraMode_Roll, or a blend into or out of it).

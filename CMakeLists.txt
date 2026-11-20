@@ -657,6 +657,8 @@ set(MEVR_MOD_SOURCES
     src/game/WorldUi.hpp
     src/game/ConversationWorld.cpp
     src/game/ConversationWorld.hpp
+    src/game/AiWalk.cpp
+    src/game/AiWalk.hpp
     src/game/SequelConversationWorld.cpp
     src/game/SequelConversationWorld.hpp
     src/game/ConversationFlow.cpp

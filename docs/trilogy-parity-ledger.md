@@ -644,9 +644,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 72, out 4, ungated 28, unreferenced 5, unbuilt 4 | 22 of 52 | 89 |
-| LE2 | halcyon-le2 | 71 | 61 | 54 | run 59, ready 8, out 15, ungated 25, unreferenced 2, unbuilt 4 | 47 of 52 | 4 |
-| LE3 | halcyon-le3 | 73 | 62 | 56 | run 58, ready 8, out 14, ungated 27, unreferenced 3, unbuilt 3 | 48 of 52 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 73, out 4, ungated 28, unreferenced 5, unbuilt 4 | 22 of 54 | 89 |
+| LE2 | halcyon-le2 | 71 | 61 | 54 | run 60, ready 8, out 15, ungated 25, unreferenced 2, unbuilt 4 | 48 of 54 | 4 |
+| LE3 | halcyon-le3 | 73 | 62 | 56 | run 59, ready 8, out 14, ungated 27, unreferenced 3, unbuilt 3 | 49 of 54 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -880,6 +880,7 @@ Helpers applied, in order:
 | `engine/Skeleton` | run | run | run |
 | `engine/VoicePlace` | run | ready | ready |
 | `engine/XrToUnreal` | ungated | ungated | ungated |
+| `game/AiWalk` | run | run | run |
 | `game/AnimDriver` | run | run | run |
 | `game/ArmIk` | run | run | run |
 | `game/AuthoredMoment` | run | ready | ready |
@@ -984,7 +985,9 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `CineScreenLayers` | - | yes | yes |
 | `CineScreenWanted` | yes | yes | yes |
 | `ConstantFpEye` | - | yes | yes |
+| `ConversationHandover` | - | - | - |
 | `ConversationInWorld` | - | yes | yes |
+| `ConversationWorldOrComing` | - | yes | yes |
 | `CopyIntoImage` | - | yes | yes |
 | `EyeImageSize` | - | yes | yes |
 | `FloorViewTranslation` | yes | yes | yes |

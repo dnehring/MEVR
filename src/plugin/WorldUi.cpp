@@ -548,6 +548,20 @@ bool ConversationInWorld() noexcept {
     return mevr::host::world_ui::ConversationShown();
 }
 
+#if !defined(MEVR_WITH_HALCYON)  // the sequels' renderers (LE1's own: MevrBridge::ConversationWorldOrComing, plugin/ConversationWorld)
+bool ConversationWorldOrComing(int gameMode) noexcept {
+    if (mevr::host::world_ui::ConversationShown()) {
+        return true;
+    }
+    constexpr std::uint64_t kComingMs = 150;  // LE1's plugin/ConversationWorld kComingMs
+    return mevr::engine::adapter::IsConversationMode(gameMode) && mevr::vr::conversation_world::Armed(kComingMs);
+}
+
+bool ConversationHandover() noexcept {
+    return mevr::vr::conversation_world::HandingOver(150);
+}
+#endif
+
 bool GalaxyOwnsPresentation(int mode) noexcept {
     return mevr::host::galaxy_hologram::Holds(mode);
 }
