@@ -1495,6 +1495,14 @@ struct Moment {
     std::optional<ue3::Vector> walkEnd;   // on the floor (world)
     cw::MarkerState marker;
     unsigned markers = 0;
+    // ME1's black move in a moment (game/ConversationWorld's jump under UnderGameBlack, worldBlackMoves): Shepard's pawn jumping
+    // past 30 units in a tick under the game's fade to black takes the view with him, whatever the distance.
+    std::optional<ue3::Vector> lastAt;
+    unsigned blackFollowed = 0;
+    // ME1's StepSeat in a moment (the owner, 2026-11-16: every sit-down in first person, the view sitting with Shepard's head):
+    // while the view is with him (his pawn shown, within 0.4 m), a sit takes the view down with his head and up again.
+    cw::SeatState seat;
+    std::uint64_t seatMs = 0;
 };
 Moment gM;
 
@@ -1974,9 +1982,9 @@ void EndMoment(conversation_world::Link const& link, char const* why, bool publi
         bool const cut = apart > cw::OpeningLimits{}.stayUnits;
         if (cut) ++gCutSerial;  // the next scene's state (the conversation that follows) dips from black
         log::Info("conversation world: moment {}: {} after {:.1f} s: the view joins Shepard {:.2f} m away{} (walked {:.2f} m, at most "
-                  "{:.2f} m apart, turned {:.0f} deg; {} floor marker{})", gM.serial, why, static_cast<double>(now - gM.startMs) / 1000.0,
-            apart / 100.0, cut ? " under a dip" : "", gM.walkedUnits / 100.0, gM.apartMaxUnits / 100.0, gM.turnedDeg, gM.markers,
-            gM.markers == 1 ? "" : "s");
+                  "{:.2f} m apart, turned {:.0f} deg; {} floor marker{}; went with him under the game's black {} times)", gM.serial, why,
+            static_cast<double>(now - gM.startMs) / 1000.0, apart / 100.0, cut ? " under a dip" : "", gM.walkedUnits / 100.0,
+            gM.apartMaxUnits / 100.0, gM.turnedDeg, gM.markers, gM.markers == 1 ? "" : "s", gM.blackFollowed);
         // Where the player now stands, for what follows (a conversation's opening judges from there; ME1: the moment leaves its
         // place as the place on foot).
         gFoot = {true, *at, now};
@@ -2081,6 +2089,39 @@ bool TickMoment(conversation_world::Link const& link, ue3::Object* controller, s
     }
     gRideMomentDelta = {};
     if (!gM.provisional && at) {
+        // ME1's black move in a moment: a jump of Shepard's pawn (past 30 units in a tick, ME1's kJumpUnits) while the game's fade
+        // is black or was within 1.5 s (the camera's, gBlackMs) takes the view with him whatever the distance, at the same place
+        // relative to him, turned to his facing there, under a dip (worldBlackMoves; ME1's curated walks have no sequel entries).
+        // Without the black a jump is the script's move: the view stays the player's and joins him at rest (worldMoments = view).
+        if (gM.lastAt && std::hypot(at->x - gM.lastAt->x, at->y - gM.lastAt->y) + std::abs(at->z - gM.lastAt->z) > 30.0) {
+            bool const black = gSettings.blackMoves && gBlackMs != 0 && now - gBlackMs < 1500;
+            double const jump = Distance(*at, *gM.lastAt);
+            // ME2's ANIMCUTSCENEs park his pawn at the world's origin for the cutscene (section 6.2): never a place to go.
+            bool const parked = std::abs(at->x) + std::abs(at->y) + std::abs(at->z) < 1.0f;
+            if (black && !parked) {
+                ue3::Vector const offset{gM.feet.x - gM.lastAt->x, gM.feet.y - gM.lastAt->y, 0.0f};
+                double turn = 0.0;
+                if (auto const rot = player::Rotation(pawn)) {
+                    turn = (rot->yaw - gM.facing.yaw) * (2.0 * 3.14159265358979323846 / 65536.0);
+                    gM.facing.yaw = rot->yaw;
+                }
+                double const c = std::cos(turn), s = std::sin(turn);
+                ue3::Vector const ex = gM.eyeOffset;
+                gM.eyeOffset.x = static_cast<float>(ex.x * c - ex.y * s);
+                gM.eyeOffset.y = static_cast<float>(ex.x * s + ex.y * c);
+                gM.feet = {static_cast<float>(at->x + offset.x * c - offset.y * s), static_cast<float>(at->y + offset.x * s + offset.y * c),
+                    at->z};
+                ++gCutSerial;
+                ++gM.blackFollowed;
+                log::Info("conversation world: moment {}: under the game's fade to black the script moved Shepard {:.2f} m: the view goes "
+                          "with him (worldBlackMoves; ME1's moment rule), facing his way, under a dip", gM.serial, jump / 100.0);
+            } else {
+                log::Info("conversation world: moment {}: the script moved Shepard {:.2f} m in a tick{}: the view stays the player's and "
+                          "joins him at rest", gM.serial, jump / 100.0,
+                    parked ? " (parked at the world's origin for the cutscene)" : ", not under the game's black");
+            }
+        }
+        gM.lastAt = *at;
         vr::controllers::State const pads = vr::controllers::Latest();
         vr::host_view::State const view = vr::host_view::Latest();
         if (pads.active && view.valid && dt > 0.0) {
@@ -2113,6 +2154,27 @@ bool TickMoment(conversation_world::Link const& link, ue3::Object* controller, s
         }
         // The view at the floor he walks on once it is under the player (a stair in the walk): his height, near him.
         if (apart < 120.0) gM.feet.z = at->z;
+        // The view sits with him while it is with him (core cw::StepSeat, ME1's numbers); apart, the seat is the script's alone.
+        double const seatDt = gM.seatMs != 0 ? std::clamp(static_cast<double>(now - gM.seatMs) / 1000.0, 0.0, 0.1) : 0.0;
+        gM.seatMs = now;
+        if (apart < 40.0 || gM.seat.on || gM.seat.following) {
+            if (std::optional<ik::Vec3> const head = ShepardSceneHead(pawn)) {
+                double const h = head->z - at->z;
+                cw::SeatStep const step = cw::StepSeat(gM.seat, cw::Vec3{head->x, head->y, head->z}, h,
+                    gPawnCrouched.ReadBool(pawn).value_or(false), seatDt);
+                if (step.sat) {
+                    log::Info("conversation world: moment {}: Shepard sits down (his head {:.2f} m above his place): the view goes with his "
+                              "head", gM.serial, h / 100.0);
+                }
+                if (step.stood) {
+                    log::Info("conversation world: moment {}: Shepard gets up: the view comes up with him, {:.2f} m followed", gM.serial,
+                        gM.seat.followedUnits / 100.0);
+                }
+                gM.eyeOffset.x += static_cast<float>(step.move.x);
+                gM.eyeOffset.y += static_cast<float>(step.move.y);
+                gM.eyeOffset.z += static_cast<float>(step.move.z);
+            }
+        }
     }
     gM.held = {gM.feet.x + gM.eyeOffset.x, gM.feet.y + gM.eyeOffset.y, gM.feet.z + gM.eyeOffset.z};
     gMomentHeld = true;
