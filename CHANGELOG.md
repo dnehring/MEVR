@@ -15,6 +15,9 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **A floor marker where a scripted walk ends (first-person conversations, experimental).** When a scene walks Shepard
+  somewhere while you stay where you stood (the walk with Anderson to the council), a small pale ring on the floor shows where
+  his walk ends, and fades once you stand in it. Nothing pauses or walks you there.
 - **People leave a first-person conversation instead of vanishing (Mass Effect 1, experimental).** In the first-person
   conversation mode, when the game takes someone away at a scene's end while you can see them (Udina after the council
   hearing's aftermath), they now walk away with the game's own walk first and are gone once out of your sight; with nowhere

@@ -891,8 +891,8 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
       black as it ends and the conversation begins with Tali in front of you. Say whether being left where you stood while the
       scene walks on feels right, and whether the dip is welcome.
 - [ ] The same conversation: are the bottom corners of the view filled by Shepard's own shoulders (a snapshot showed them)?
-- [ ] A floor marker (a thin pale ring on the floor) where a scripted walk you follow ends: small and quiet enough? (ME1's
-      source, the walk with Anderson to the council, waits on main for ME1's regression set: FPC2's commit 1553434b.)
+- [ ] A floor marker (a thin pale ring on the floor) where a scripted walk you follow ends: small and quiet enough? On ME1's
+      walk with Anderson to the council it shows where his walk ends and fades once you stand in it.
 - [ ] ME3: a conversation the presence table sends to the 3D screen (the docking officer at the Citadel's arrival) does go there.
 
 ### One settings file for the three games (lane SET, 2026-11-18; research/25 section 20)
