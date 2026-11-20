@@ -9,7 +9,7 @@ game's own animation (the face, the conversation) is not slowed.
 
   tools/footage.ps1 -Frames 60 -Out miranda-walk.gif -Crop 0.35,0.15,0.30,0.70
   -Crop: left, top, width, height as fractions of the eye image (default the middle third)
-  -Eye left|right, -Dilation 0.1, -Interval 0.333, -Scale 0.5 (the GIF's size against the crop)
+  -Eye left|right (or -Layer quad0: the 3D cinema screen's picture, sharper in a conversation), -Dilation 0.1, -Interval 0.333, -Scale 0.5 (the GIF's size against the crop)
 
 Needs a development build (the request files) and a Python with Pillow ($env:MEVR_MOTION_PYTHON, else
 I:\miniconda3\envs\py310\python.exe). The GIF and its frames go to %LOCALAPPDATA%\MEVR\footage\<stamp>.
@@ -20,6 +20,7 @@ param(
     [double]$Dilation = 0.1,
     [string]$Crop = '0.333,0.1,0.333,0.8',
     [ValidateSet('left', 'right')][string]$Eye = 'left',
+    [string]$Layer = '',  # another snapshot layer instead of the eye: quad0 is the 3D cinema screen's own picture
     [double]$Scale = 0.5,
     [string]$Out = '',
     [string]$SlowCommand = 'mevr anim slowmo {0}'
@@ -39,7 +40,8 @@ try {
 } finally {
     & (Join-Path $tools 'console.ps1') ($SlowCommand -f 1) | Out-Null
 }
-$shots = @(Get-ChildItem $snapshots -Filter "*-$Eye.png" | Where-Object { $_.LastWriteTime -ge $started -and $_.Name -match ("^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d-\d{3}-" + $Eye + "\.png$") } | Sort-Object Name)
+$which = if ($Layer) { $Layer } else { $Eye }
+$shots = @(Get-ChildItem $snapshots -Filter "*-$which.png" | Where-Object { $_.LastWriteTime -ge $started -and $_.Name -match ("^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d-\d{3}-" + $which + "\.png$") } | Sort-Object Name)
 if ($shots.Count -lt 2) { throw "only $($shots.Count) snapshots arrived (is the game running a VR session with a development build?)" }
 $list = Join-Path $folder 'frames.txt'
 $shots.FullName | Set-Content -Encoding utf8 $list

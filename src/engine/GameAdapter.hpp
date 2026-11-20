@@ -496,16 +496,26 @@ inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
 #endif
 }
 
-// Hairstyles with a rigged stand-in the hair stage puts on instead (game/Hair, docs/trilogy-hair-plan.md section 4.5; the
-// owner, 2026-11-19: ME3's older Miranda hair is acceptable). Object paths without the class, compared case-insensitively.
+// Meshes with a rigged stand-in the hair stage puts on instead (game/Hair, docs/trilogy-hair-plan.md section 4.5; the owner,
+// 2026-11-19: ME3's older Miranda hair is acceptable). Object paths without the class, compared case-insensitively. Entries
+// for one mesh are tried in order: the first that loads is worn (tools/rig's package before the game's own fallback). A
+// package of ours imports the original's materials, which are loaded while the original is worn; `needs` is loaded first
+// when they come from another mesh's package (tools/rig/README.md "The package").
 struct HairStandIn {
-    char const* used;    // the shipped hair mesh (no hair bones)
-    char const* rigged;  // a mesh of the same hairstyle with hair bones
+    char const* used;            // the mesh the game puts on
+    char const* rigged;          // a mesh of the same look with the bones we drive (hair chains, soft tissue)
+    char const* needs = nullptr; // loaded before `rigged` (its materials' package)
 };
 #if defined(MEVR_GAME_LE3)
-// research/trilogy-hair.md: the shipped mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair bones.
+// research/trilogy-hair.md: the shipped hair mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair
+// bones; tools/rig/plans/le3-miranda-*.jsonc add hair chains and soft-tissue bones (MEVR_Miranda.pcc, built on the player's
+// machine from their own game files).
 inline constexpr HairStandIn kHairStandIns[] = {
+    {"BIOG_HMF_ARM_MIR_R.MIRa.HMF_ARM_MIRa_MDL", "MEVR_Miranda.HMF_ARM_MIRa_MEVR"},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR",
+     "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR"},
 };
 #else
 inline constexpr HairStandIn kHairStandIns[] = {{nullptr, nullptr}};

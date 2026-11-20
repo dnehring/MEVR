@@ -48,6 +48,8 @@ ue3::FieldRef gHiddenGame{"Engine.PrimitiveComponent", "HiddenGame", ue3::kEvery
 ue3::ClassRef gSkeletalMeshClass{"Engine.SkeletalMesh", ue3::kEveryGame};
 ue3::FunctionRef gSetSkeletalMesh{"Engine.SkeletalMeshComponent.SetSkeletalMesh", ue3::kEveryGame};
 ue3::FunctionRef gDynamicLoadObject{"Core.Object.DynamicLoadObject", ue3::kEveryGame};
+ue3::FunctionRef gSetParentAnim{"Engine.SkeletalMeshComponent.SetParentAnimComponent", ue3::kEveryGame};
+ue3::FieldRef gHeadMesh{"SFXGame.BioPawn", "HeadMesh", ue3::kEveryGame};
 
 constexpr char kBlock[] =
     "\n"
@@ -70,7 +72,12 @@ constexpr char kBlock[] =
     "radiusM = 0.012\n"
     "wind = 0\n"
     "hands = 1\n"
-    "standIns = 1\n";
+    "standIns = 1\n"
+    "; Soft tissue (research/trilogy-jiggle.md): bodies rigged by tools/rig (ME3's Miranda) have breast and glute bones that\n"
+    "; lag, bounce and settle with the body's motion. jiggle = 0 holds them to the animation; jiggleIntensity 0..1 scales how\n"
+    "; far they move (never how fast they settle).\n"
+    "jiggle = 1\n"
+    "jiggleIntensity = 0.5\n";
 
 struct Settings {
     bool on = true;
@@ -80,8 +87,11 @@ struct Settings {
     double wind = 0.0;
     bool hands = true;
     bool standIns = true;
+    bool jiggle = true;
+    double jiggleIntensity = 0.5;
 };
 Settings gSettings;
+std::optional<double> gJiggleOverride;  // `mevr hair jiggle <0..1|off>`
 std::optional<bool> gOverride;          // `mevr hair on|off`
 std::optional<bool> gStandInOverride;   // `mevr hair standins on|off`
 std::uint64_t gSettingsAtMs = 0;
@@ -117,11 +127,18 @@ void RefreshSettings() {
     if (auto v = num("wind")) s.wind = std::clamp(*v, -20.0, 20.0);
     if (auto v = num("hands")) s.hands = *v != 0.0;
     if (auto v = num("standIns")) s.standIns = *v != 0.0;
+    if (auto v = num("jiggle")) s.jiggle = *v != 0.0;
+    if (auto v = num("jiggleIntensity")) s.jiggleIntensity = std::clamp(*v, 0.0, 1.0);
     s.sim.windMS = {s.wind, 0.0, 0.0};
     if (gOverride) s.on = *gOverride;
     if (gStandInOverride) s.standIns = *gStandInOverride;
+    if (gJiggleOverride) {
+        s.jiggle = *gJiggleOverride > 0.0;
+        s.jiggleIntensity = (std::max)(*gJiggleOverride, 0.0);
+    }
     static bool logged = false;
     bool const changed = s.on != gSettings.on || s.standIns != gSettings.standIns || s.hands != gSettings.hands ||
+                         s.jiggle != gSettings.jiggle || s.jiggleIntensity != gSettings.jiggleIntensity ||
                          s.sim.stiffness != gSettings.sim.stiffness || s.sim.damping != gSettings.sim.damping ||
                          s.sim.inertia != gSettings.sim.inertia || s.sim.maxBendDeg != gSettings.sim.maxBendDeg ||
                          s.rangeM != gSettings.rangeM || s.maxPeople != gSettings.maxPeople || s.wind != gSettings.wind;
@@ -268,14 +285,15 @@ bool SetMesh(ue3::Object* component, ue3::Object* mesh) {
     return ue3::runtime::Call(component, gSetSkeletalMesh.Get(), p);
 }
 
-// The stand-in for this component's mesh, if the table has one and it's wanted.
-void ApplyStandIn(ue3::Object* component, ue3::Object* asset) {
-    if (!gSettings.standIns || asset == nullptr) {
-        return;
+// The stand-in for this component's mesh, if the table has one and it's wanted: the first entry for it that loads. True
+// when a mesh was put on this call.
+bool ApplyStandIn(ue3::Object* component, ue3::Object* asset) {
+    if (!gSettings.standIns || asset == nullptr || component == nullptr) {
+        return false;
     }
     for (Swapped const& s : gSwapped) {
         if (s.component == component && s.standIn == asset) {
-            return;  // already ours
+            return false;  // already ours
         }
     }
     std::string const path = PathOf(asset);
@@ -283,20 +301,51 @@ void ApplyStandIn(ue3::Object* component, ue3::Object* asset) {
         if (entry.used == nullptr || Lower(entry.used) != path) {
             continue;
         }
+        if (entry.needs != nullptr && StandInFor(Lower(entry.needs)) == nullptr) {
+            continue;  // its materials' package isn't there
+        }
         ue3::Object* const standIn = StandInFor(Lower(entry.rigged));
         if (standIn == nullptr) {
-            return;
+            continue;  // the next entry for this mesh, if any
         }
         if (SetMesh(component, standIn)) {
-            gSwapped.push_back({component, asset, standIn});
-            log::Info("hair: {:#x} wears {} instead of {} (rigged: its hair can move)", reinterpret_cast<std::uintptr_t>(component),
+            // A stand-in replaced by a later one keeps the first original, so putting back restores the game's.
+            ue3::Object* original = asset;
+            for (auto it = gSwapped.begin(); it != gSwapped.end(); ++it) {
+                if (it->component == component) {
+                    original = it->original;
+                    gSwapped.erase(it);
+                    break;
+                }
+            }
+            gSwapped.push_back({component, original, standIn});
+            log::Info("hair: {:#x} wears {} instead of {} (rigged: its hair or body can move)", reinterpret_cast<std::uintptr_t>(component),
                 entry.rigged, entry.used);
-        } else {
-            log::Warn("hair: SetSkeletalMesh refused {} on {:#x}", entry.rigged, reinterpret_cast<std::uintptr_t>(component));
+            return true;
         }
+        log::Warn("hair: SetSkeletalMesh refused {} on {:#x}", entry.rigged, reinterpret_cast<std::uintptr_t>(component));
+        return false;
+    }
+    return false;
+}
+
+// After a body's mesh changes, the components that follow it (head, hair) map their bones to it again.
+void Reattach(ue3::Object* body, std::initializer_list<ue3::Object*> followers) {
+    if (body == nullptr || gSetParentAnim.Get() == nullptr) {
         return;
     }
+    for (ue3::Object* f : followers) {
+        if (f == nullptr || !ue3::runtime::IsAlive(f)) {
+            continue;
+        }
+        ue3::Params p(ue3::runtime::Get(), gSetParentAnim.Get());
+        if (p.Valid() && p.Set("NewParentAnimComp", body)) {
+            ue3::runtime::Call(f, gSetParentAnim.Get(), p);
+        }
+    }
 }
+
+void ReattachEveryone();
 
 void PutBackStandIns(char const* why) {
     int put = 0;
@@ -305,6 +354,7 @@ void PutBackStandIns(char const* why) {
             put += SetMesh(s.component, s.original) ? 1 : 0;
         }
     }
+    ReattachEveryone();  // a body put back: its followers map to it again
     if (!gSwapped.empty()) {
         log::Info("hair: {} of {} rigged stand-in(s) put back ({})", put, gSwapped.size(), why);
     }
@@ -318,9 +368,16 @@ struct Person {
     ue3::Object* hair = nullptr;
     ue3::Object* body = nullptr;
     double distanceM = 0.0;
+    ue3::Object* head = nullptr;
 };
 std::vector<Person> gPeople;
 std::string gStatus = "not run yet";
+
+void ReattachEveryone() {
+    for (Person const& p : gPeople) {
+        Reattach(p.body, {p.head, p.hair});
+    }
+}
 int gPublished = 0;
 
 double Distance(ue3::Vector a, ue3::Vector b) {
@@ -332,6 +389,7 @@ double Distance(ue3::Vector a, ue3::Vector b) {
 ue3::ClassRef gStuntClass{"SFXGame.SFXStuntActor", ue3::kEveryGame};
 ue3::FieldRef gStuntBody{"SFXGame.SFXStuntActor", "BodyMesh", ue3::kEveryGame};
 ue3::FieldRef gStuntHair{"SFXGame.SFXStuntActor", "HairMesh", ue3::kEveryGame};
+ue3::FieldRef gStuntHead{"SFXGame.SFXStuntActor", "HeadMesh", ue3::kEveryGame};
 std::vector<ue3::Object*> gStunts;
 std::uint64_t gStuntScanAt = 0;
 ue3::Object const* gStuntWorld = nullptr;
@@ -381,7 +439,8 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
         }
         double const d = Distance(*there, at);
         if (d <= range) {
-            found.push_back({p, hair, player::Mesh(p), d / engine::kUnitsPerMeter});
+            ue3::Object* const head = gHeadMesh.Read<ue3::Object*>(p).value_or(nullptr);
+            found.push_back({p, hair, player::Mesh(p), d / engine::kUnitsPerMeter, head != nullptr && ue3::runtime::IsAlive(head) ? head : nullptr});
         }
     }
     for (ue3::Object* const s : StuntActors(world)) {
@@ -399,7 +458,9 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
         double const d = Distance(*there, at);
         if (d <= range) {
             ue3::Object* const body = gStuntBody.Read<ue3::Object*>(s).value_or(nullptr);
-            found.push_back({s, hair, body != nullptr && ue3::runtime::IsAlive(body) ? body : nullptr, d / engine::kUnitsPerMeter});
+            ue3::Object* const head = gStuntHead.Read<ue3::Object*>(s).value_or(nullptr);
+            found.push_back({s, hair, body != nullptr && ue3::runtime::IsAlive(body) ? body : nullptr, d / engine::kUnitsPerMeter,
+                             head != nullptr && ue3::runtime::IsAlive(head) ? head : nullptr});
         }
     }
     std::sort(found.begin(), found.end(), [](Person const& a, Person const& b) { return a.distanceM < b.distanceM; });
@@ -803,6 +864,8 @@ void Tick(double /*deltaSeconds*/) {
     request.settings = gSettings.sim;
     request.unitsPerMeter = engine::kUnitsPerMeter;
     request.playerPushes = gSettings.hands;
+    request.jiggle = gSettings.jiggle;
+    request.jiggleIntensity = gSettings.jiggleIntensity;
     if (gSettings.hands) {
         if (ue3::Object* const mesh = player::Mesh(playerPawn); mesh != nullptr) {
             if (Parts const* parts = PartsOf(mesh)) {
@@ -812,8 +875,15 @@ void Tick(double /*deltaSeconds*/) {
         }
     }
     for (Person const& person : people) {
+        // The body first (a rigged body carries the hair chains and soft-tissue bones the hair and jiggle stages drive), its
+        // followers re-attached to it, then the hair.
+        if (ApplyStandIn(person.body, player::SkeletalMesh(person.body))) {
+            Reattach(person.body, {person.head, person.hair});
+        }
         ue3::Object* const asset = player::SkeletalMesh(person.hair);
-        ApplyStandIn(person.hair, asset);
+        if (ApplyStandIn(person.hair, asset)) {
+            Reattach(person.body, {person.hair});
+        }
         hp::Target t;
         // A hair that follows a body is drawn with the body's matrix for every bone the body has (UE3's follower rule; ME3's
         // UpdateSkelPose composes nothing for a component with a ParentAnimComponent, 0x796EB0): so when the body carries the
@@ -852,6 +922,20 @@ std::string Command(std::string const& args) {
         gSettingsAtMs = 0;
         RefreshSettings();
         return std::format("hair movement as [Hair] says: {}", gSettings.on ? "on" : "off");
+    }
+    if (verb == "jiggle") {
+        std::string v;
+        words >> v;
+        if (v == "auto") {
+            gJiggleOverride.reset();
+        } else if (v == "off") {
+            gJiggleOverride = 0.0;
+        } else {
+            gJiggleOverride = std::clamp(ini::Number(v).value_or(0.5), 0.0, 1.0);
+        }
+        gSettingsAtMs = 0;
+        return gJiggleOverride ? std::format("soft tissue {} (until auto)", *gJiggleOverride > 0 ? std::format("at intensity {:.2f}", *gJiggleOverride) : std::string("off"))
+                               : "soft tissue as the settings say";
     }
     if (verb == "standins") {
         std::string v;
@@ -985,6 +1069,10 @@ std::string Command(std::string const& args) {
                     }
                     out += std::format("\n      chain {}: tip {:.1f} cm off the animation, {} reset(s)", bones, c.tipOffsetM * 100.0, c.resets);
                 }
+                for (hp::SoftInfo const& s : t.soft) {
+                    out += std::format("\n      soft tissue {}: {:.2f} cm off the animation (peak {:.2f}), {} reset(s), {} limit hit(s)", s.bone,
+                        s.offsetM * 100.0, s.peakM * 100.0, s.resets, s.clampHits);
+                }
             }
         }
         if (stats.broken) {
@@ -1012,10 +1100,14 @@ void LogStats() {
     hp::Stats const stats = hp::GetStats();
     std::string detail;
     for (hp::TargetInfo const& t : stats.targets) {
-        if (!t.chains.empty()) {
-            detail += std::format("; {:#x}: {} chains, {} written of {} calls, tips up to {:.1f} cm, {} collisions{}",
-                reinterpret_cast<std::uintptr_t>(t.hair), t.chains.size(), t.written, t.calls, t.peakTipM * 100.0, t.collisions,
-                t.lastReject != nullptr ? std::format(" (last refusal: {})", t.lastReject) : std::string());
+        if (!t.chains.empty() || !t.soft.empty()) {
+            double softPeak = 0.0;
+            for (hp::SoftInfo const& s : t.soft) {
+                softPeak = (std::max)(softPeak, s.peakM);
+            }
+            detail += std::format("; {:#x}: {} chains, {} soft-tissue bones, {} written of {} calls, tips up to {:.1f} cm, soft tissue up to {:.2f} cm, {} collisions{}",
+                reinterpret_cast<std::uintptr_t>(t.hair), t.chains.size(), t.soft.size(), t.written, t.calls, t.peakTipM * 100.0, softPeak * 100.0,
+                t.collisions, t.lastReject != nullptr ? std::format(" (last refusal: {})", t.lastReject) : std::string());
         }
     }
     log::Info("    hair: {}; {} stand-in(s){}{}", gStatus, gSwapped.size(), detail, stats.broken ? "; the stage STOPPED" : "");

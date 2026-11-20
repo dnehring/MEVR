@@ -44,6 +44,14 @@ struct Sim {
     std::vector<std::vector<std::uint64_t>> keys;  // per chain: its bones' RefSkeleton names
     std::vector<std::vector<std::string>> names;
     std::vector<std::string> anchorNames;
+    struct Soft {
+        int bone = -1;
+        std::uint64_t key = 0;
+        std::string name;
+        bool glute = false;
+        ik::jiggle::State state;
+    };
+    std::vector<Soft> soft;
     TargetInfo info;
     bool logged = false;
     LARGE_INTEGER lastCall{};  // the clock at the last call (the step's time when the engine passes none)
@@ -200,6 +208,20 @@ void Discover(ue3::Object* hairMesh, ue3::Object const* asset, int boneCount, Si
         sim.names.push_back(std::move(names));
         sim.anchorNames.push_back(c.anchor >= 0 ? skel->names[static_cast<std::size_t>(c.anchor)] : std::string("?"));
     }
+    // Soft-tissue bones (tools/rig's breast and glute bones), by name.
+    for (std::size_t i = 0; i < skel->names.size(); ++i) {
+        std::string const& n = skel->names[i];
+        bool const breast = n.rfind("Breast", 0) == 0;
+        bool const glute = n.rfind("Glute", 0) == 0;
+        if (breast || glute) {
+            Sim::Soft s;
+            s.bone = static_cast<int>(i);
+            s.key = skeleton::RefBoneKey(hairMesh, s.bone);
+            s.name = n;
+            s.glute = glute;
+            sim.soft.push_back(std::move(s));
+        }
+    }
 }
 
 } // namespace
@@ -264,6 +286,8 @@ void AfterPose(ue3::Object* component, float deltaTime) {
     ue3::Object* player = nullptr;
     std::vector<hc::BonePart> playerParts;
     bool playerPushes = false;
+    bool jiggle = false;
+    double jiggleIntensity = 0.0;
     DWORD thread = 0;
     ULONGLONG published = 0;
     bool found = false;
@@ -281,6 +305,8 @@ void AfterPose(ue3::Object* component, float deltaTime) {
         player = gRequest.player;
         playerParts = gRequest.playerParts;
         playerPushes = gRequest.playerPushes;
+        jiggle = gRequest.jiggle;
+        jiggleIntensity = gRequest.jiggleIntensity;
         thread = gThread;
         published = gTimeMs;
     }
@@ -317,11 +343,15 @@ void AfterPose(ue3::Object* component, float deltaTime) {
                     return s;
                 }());
             }
-            log::Info("hair stage: {:#x}: {} bones, {} chain(s){}{}", reinterpret_cast<std::uintptr_t>(component), boneCount,
-                sim.chains.size(), sim.chains.empty() ? "" : ": ", list);
+            std::string soft;
+            for (Sim::Soft const& s : sim.soft) {
+                soft += (soft.empty() ? "" : ", ") + s.name;
+            }
+            log::Info("hair stage: {:#x}: {} bones, {} chain(s){}{}; {} soft-tissue bone(s){}{}", reinterpret_cast<std::uintptr_t>(component),
+                boneCount, sim.chains.size(), sim.chains.empty() ? "" : ": ", list, sim.soft.size(), soft.empty() ? "" : ": ", soft);
         }
     }
-    if (sim.chains.empty()) {
+    if (sim.chains.empty() && (sim.soft.empty() || !jiggle)) {
         return;
     }
     // The step's time: the engine's for this pose; a follower posed with its parent may be passed none, then the clock's.
@@ -408,6 +438,53 @@ void AfterPose(ue3::Object* component, float deltaTime) {
                 gTrace << std::format("{:.4f},{:#x},{},{},{:.5f},{:.5f},{:.5f},{:.5f},{:.5f},{:.5f},{},{}\n", t,
                     reinterpret_cast<std::uintptr_t>(component), c, p, s.x, s.y, s.z, a.x, a.y, a.z, stepSeconds, st.collisions);
             }
+        }
+    }
+    // Soft tissue: each bone a spring in its own animated frame (its rest axes are the body's), its offset and turn written
+    // over the animation's pose of it.
+    sim.info.soft.resize(jiggle ? sim.soft.size() : 0);
+    for (std::size_t s = 0; jiggle && s < sim.soft.size(); ++s) {
+        Sim::Soft& soft = sim.soft[s];
+        if (soft.bone < 0 || soft.bone >= boneCount ||
+            !KeysMatchGuarded(component, &soft.bone, &soft.key, 1)) {
+            Reject(&sim.info, "the body's skeleton changed (soft-tissue bone names)");
+            sim.asset = nullptr;
+            return;
+        }
+        ik::jiggle::Settings tissue = soft.glute ? ik::jiggle::Glute() : ik::jiggle::Breast();
+        tissue.intensity = jiggleIntensity;
+        ik::Transform const& animated = pose.bones[static_cast<std::size_t>(soft.bone)];
+        ik::jiggle::Input in;
+        in.frame.rotation = animated.rotation;
+        in.frame.translation = animated.translation;
+        in.dt = stepSeconds;
+        ik::jiggle::Output const out = ik::jiggle::Step(soft.state, tissue, in);
+        ik::Quat const worldRotation = ik::Normalize(animated.rotation * out.rotation);
+        ik::Vec3 const worldPlace = animated.translation + ik::Rotate(animated.rotation, out.translation);
+        ik::Quat const q = ik::Normalize(toLocalRotation * worldRotation);
+        ik::Vec3 const t = ik::TransformPoint(*toLocal, worldPlace * unitsPerMeter);
+        skeleton::BoneAtom atom{};
+        atom.qx = static_cast<float>(q.x);
+        atom.qy = static_cast<float>(q.y);
+        atom.qz = static_cast<float>(q.z);
+        atom.qw = static_cast<float>(q.w);
+        atom.tx = static_cast<float>(t.x);
+        atom.ty = static_cast<float>(t.y);
+        atom.tz = static_cast<float>(t.z);
+        atom.scale = static_cast<float>(animated.scale);
+        bones.push_back(soft.bone);
+        atoms.push_back(atom);
+        SoftInfo& si = sim.info.soft[s];
+        si.bone = soft.name;
+        si.offsetM = ik::Length(out.shown);
+        si.peakM = (std::max)(si.peakM, si.offsetM);
+        si.resets = soft.state.resets;
+        si.clampHits = soft.state.clampHits;
+        if (tracing) {
+            double const tt = (GetTickCount64() - gTraceStartMs) / 1000.0;
+            gTrace << std::format("{:.4f},{:#x},soft,{},{:.5f},{:.5f},{:.5f},{:.5f},{:.5f},{:.5f},{},0\n", tt,
+                reinterpret_cast<std::uintptr_t>(component), soft.name, out.shown.x, out.shown.y, out.shown.z, animated.translation.x,
+                animated.translation.y, animated.translation.z, stepSeconds);
         }
     }
     if (!bones.empty()) {

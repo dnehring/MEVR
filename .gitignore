@@ -109,3 +109,5 @@ external/llama-cpp/
 external/openal-soft/
 models/
 .venv-voice/
+tools/rig/bin/
+tools/rig/obj/

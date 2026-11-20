@@ -2273,6 +2273,8 @@ void CheckFields() {
     CheckField("Engine.SkeletalMeshComponent", "SpaceBases", SDK_FIELD(USkeletalMeshComponent, SpaceBases), true);
     CheckField("Engine.SkeletalMeshComponent", "ParentAnimComponent", SDK_FIELD(USkeletalMeshComponent, ParentAnimComponent));
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
+    CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));  // game/Hair: rigged bodies' followers
+    PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnRotation);  // game/Hair spawn
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ActorTemplate);
     CheckFunction("Engine.SequenceOp.ForceActivateInput");  // game/Hair fire
@@ -3771,6 +3773,9 @@ void CheckFields() {
     CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // game/Hair: ME3 conversation characters
     CheckField("SFXGame.SFXStuntActor", "BodyMesh", SDK_FIELD(ASFXStuntActor, BodyMesh));
     CheckField("SFXGame.SFXStuntActor", "HairMesh", SDK_FIELD(ASFXStuntActor, HairMesh));
+    CheckField("SFXGame.SFXStuntActor", "HeadMesh", SDK_FIELD(ASFXStuntActor, HeadMesh));  // game/Hair: rigged bodies' followers
+    CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));
+    PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
     // game/AnimDriver: a cutscene's way of animating a stunt actor (its body's MatineeAnim node), for the hair and jiggle bench.
     CheckClass<USFXModule_Gestures>("SFXGame.SFXModule_Gestures");
     CheckField("SFXGame.SFXModule_Gestures", "m_bInMatinee", SDK_BOOL(USFXModule_Gestures, m_bInMatinee));

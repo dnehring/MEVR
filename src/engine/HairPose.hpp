@@ -3,6 +3,7 @@
 
 #include "core/ik/HairChain.hpp"
 #include "core/ik/HandContact.hpp"
+#include "core/ik/Jiggle.hpp"
 
 #include <cstdint>
 #include <span>
@@ -20,6 +21,10 @@ struct Object;
 // that body mesh's bones, read in the same call) keeps the hair off the person, and the player's drawn arms and hands (our
 // VRIK body, the same way) push it. Checked on every call: the component by address, its mesh asset and bone count, the
 // chain bones by name, the game thread, the request's age; inside SEH; journalled ("HairPose.chains"). Every game. Mod side.
+//
+// The same call drives the body's soft-tissue bones (research/trilogy-jiggle.md; tools/rig adds them): every bone named
+// Breast* or Glute* is a core/ik/Jiggle spring in its own animated frame (tools/rig gives it the body's axes at rest: X out
+// of the body, Y right, Z up), its offset and turn written over the animation's pose of it.
 namespace mevr::engine::hair_pose {
 
 inline constexpr int kMaxTargets = 8;
@@ -38,6 +43,8 @@ struct Request {
     ue3::Object* player = nullptr;                          // the player's body mesh (its drawn arms and hands push hair)
     std::vector<ik::hand_contact::BonePart> playerParts;    // its hand, forearm and upper-arm parts
     bool playerPushes = true;
+    bool jiggle = true;               // the soft-tissue bones move
+    double jiggleIntensity = 0.5;     // 0..1 (ik::jiggle::Settings::intensity)
 };
 // Game thread: from the next call on; Clear stops the stage (the hair is the animation's alone again).
 void Publish(Request request);
@@ -53,9 +60,17 @@ struct ChainInfo {
     double tipOffsetM = 0.0;
     int resets = 0;
 };
+struct SoftInfo {
+    std::string bone;
+    double offsetM = 0.0;    // the shown offset now
+    double peakM = 0.0;      // since the last LogStats
+    int resets = 0;
+    int clampHits = 0;
+};
 struct TargetInfo {
     ue3::Object* hair = nullptr;
     std::vector<ChainInfo> chains;
+    std::vector<SoftInfo> soft;
     std::uint64_t calls = 0;       // AfterPose calls for it
     std::uint64_t written = 0;
     std::uint64_t collisions = 0;
