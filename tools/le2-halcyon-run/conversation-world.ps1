@@ -6,7 +6,8 @@
 #
 #   tools\le2-halcyon-run\conversation-world.ps1 -Holder <you> [-Game LE2|LE3] [-World on|off] [-Start a|fire:<Class>:<text>]
 #       [-FaceYaw <deg>] [-Seconds 40] [-Every 6] [-Walk 0] [-Tag what] [-Stances] [-Hide body|person] [-Hands view|chest]
-#       [-StartInput 0] [-Before 'console line', ...] [-Replies] [-Skip] [-Pitch <deg>] [-Yaw <deg>]
+#       [-StartInput 0] [-Before 'console line', ...] [-Finally 'console line', ...] [-Pick <position>] [-Replies] [-Skip]
+#       [-Pitch <deg>] [-Yaw <deg>]
 #
 # -Start a                 the tracked hands stand still and A is pressed (the game's use of what the head looks at: the
 #                          mod's interact line names it first); -FaceYaw turns the view there before (Steer-Face).
@@ -21,12 +22,16 @@
 # -Hands view|chest        where the replayed hands are held (view: up in front of the eyes, the drawn-body checks; chest: out of
 #                          the eye snapshots, research/le2-conversations-in-world.md 7.1).
 # -StartInput <n>          the start action's input fired (ME3's start: 1 preloads, then starts; 0 elsewhere).
-# -Before                  console lines run before the start (`mevr setloc ...`, `god`); `sleep:<s>` waits that long.
 # -Replies                 while the conversation plays, the wheel's first card picked as the stick and A pick it (`mevr convo
 #                          pick <position>`, the wheel's own SelectConversationEntry), a second at a time; the lines themselves
 #                          play as authored (a line's matinee, Shepard's walk in it).
 # -Skip                    with -Replies, a line without a wheel is skipped too (`mevr convo exit skip`; ME3's SkipNode).
 # -Pitch, -Yaw             the replayed head pitched (negative: down) or turned right that far for the whole run.
+# -Before 'line', ...      console lines run before the start (`god`, `mevr setloc ...`, a broken run's switch such as `mevr convo
+#                          circle ownerwalks on`); `sleep:<s>` waits that long. -Finally lines run at the end (the switch off).
+# -Pick <position>         each snapshot's wait, the wheel's reply at that position when a wheel is up (`mevr convo pick`), so
+#                          the conversation goes on by itself (0: never).
+# -Pitch <deg>             the replayed head pitched that far (negative: down; the wheel in front sits 26 degrees down).
 # Results: the stretch's session folder, convo-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the mod's
 # `conversation world:` lines and the renderer's [VRSTATE] lines since the start).
 param(
@@ -44,6 +49,8 @@ param(
     [ValidateSet('view', 'chest')][string]$Hands = 'view',
     [int]$StartInput = 0,
     [string[]]$Before = @(),
+    [string[]]$Finally = @(),
+    [int]$Pick = 0,
     [switch]$Replies,
     [switch]$Skip,
     [double]$Pitch = 0.0,
@@ -119,6 +126,7 @@ try {
         ++$n
         Steer-Note ('state: ' + (Steer-Ask 'mevr state').Trim() + ' | ' + (Steer-Ask 'mevr convo world').Trim())
         Steer-Snapshot ("$Tag-$n")
+        if ($Pick -gt 0) { Start-Sleep -Seconds 2; Steer-Note ('pick: ' + (Steer-Ask "mevr convo pick $Pick").Trim()) }
         if (-not $walked) {
             $walked = $true
             $null = Steer-Push -Angle 0 -Seconds $Walk
@@ -126,6 +134,7 @@ try {
     }
 } finally {
     Steer-Stop
+    foreach ($line in $Finally) { Steer-Note ("finally: {0}: {1}" -f $line, (Steer-Ask $line).Trim()) }
     if ($Hide) { Steer-Note ('broken run off: ' + (Steer-Ask "mevr convo hide $Hide off").Trim()) }
     if ($Stances) { Steer-Note ('stances back: ' + (Steer-Ask 'mevr convo stances auto').Trim()) }
     Steer-Note ('world back: ' + (Steer-Ask 'mevr convo world auto').Trim())

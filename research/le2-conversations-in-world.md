@@ -654,11 +654,165 @@ Stretch `20261120-045217-563-LE2-fpc4-le2` (fake headset, `prep.ps1`, restored w
    23.5 forward, -6.0 right, 11.0 up (arm IK's 24, 13).
 5. **Moments this stretch:** 2 held (Tali's reintroduction, twice across a reload), 0 to the 3D screen. ME3: 0 (none reached).
 
-## 10. Lane FPC-ME3 (2026-11-20): the presence rules at the opening, the cab-ride hang, ME3's checks
+## 10. Lane FPC5 (2026-11-20): the circle and the squad, the subtitle and the wheel, the marker's waits, ME1's end facing
+
+The brief's items 1 to 5 on both sequels and ME1's part. Numbers only from the code and the logs.
+
+### 10.1 The conversational circle and the squad's formation (item 1)
+
+ME1's rules (research/69 item 28 and its second design) on the sequels, in `game/SequelCircle.inc` (included by
+`game/SequelConversationWorld.cpp`), every rule from the core:
+
+1. **When the circle forms:** after the opening, once the player speaks or is spoken to now or within `worldCircleLookahead` (4)
+   lines on any branch (`cw::PlayerSoon` over the dialogue's graph; people talking among themselves move nobody). It forms round
+   the player's drawn eyes toward the conversation's owner (`cw::MakeCircle`), as many places as the conversation's shown people
+   plus the player.
+2. **The graph:** `SFXGame.BioConversation`'s `m_EntryList` (`nSpeakerIndex`, `nListenerIndex`, `ReplyListNew[].nIndex`) and
+   `m_ReplyList[].EntryList`, ME1's names on both sequels (ME2's conversation object is its data; ME3's data is the controller's
+   `m_pConvData`). A speaker index is -2 the player, -1 the owner, else ME2's `m_SpeakerList[i].aSpeaker`, ME3's tag
+   `m_aSpeakerList[i]` matched against the controller's `m_aSpeakerData` then `m_aAllFoundActors` (`nmSpeakerTag`).
+3. **Who walks:** whoever speaks or is spoken to now, or takes part within the lines read ahead, joins (`cw::JoinCircle`): the
+   owner stays where it stands (`worldCircleOwnerStays`), anyone within `worldCircleInRangeM` (3.5 m) of the player joins where it
+   stands, farther than `worldCircleMaxWalkM` (12 m) it stays out, else it walks to the nearest free place with `game/AiWalk`
+   (ME2: `SFXAI_Core.MoveToGoal` to the navigation point nearest the place, `PrecisionMoveTo` without one; ME3:
+   `BioAiController.MoveToSlot`), the walkers `worldCircleStaggerS` (0.6 s) apart, facing the circle's middle on arrival
+   (`BioPawn.BioSetDesiredRotation`, the game's own turn). Non-walkers never walk (`CanCircleWalk`): no pawn (ME3's hub
+   `SFXStuntActor`s: the authored composition stays), not `PHYS_Walking`, seated (the head under 0.62 m above the place), or a
+   matinee's track moves it. A place without floor under it (a trace down past the feet) is not walked to.
+4. **The squad** (`worldSquadGather`, 1.7 m out and 0.5 m back): once, after the opening, a squadmate the conversation's start
+   moved more than a metre off where it stood with the player (on foot within 5 s before, within 10 m of Shepard, 2 m of his
+   height, on a floor) is put back (ME1's `PutBackSquad`; not after a Cut, the player is at the mark then); then each walks to its
+   own side of the formation (`cw::SquadFormation`, `cw::AssignSpots`), facing the owner, put there at once under a Cut's dip.
+   **No HOLD write on the sequels:** ME1 keeps its walkers there with the squad's own HOLD formation written into
+   `BioBaseSquad.Members` (`vHoldPosition`, `eFormation`); ME2's member data (`FMemberData`) has `vHoldPosition` but no formation
+   field, and its hold is an AI order the henchman answers aloud (`HenchmanOrderHoldPosition`, research/54 "ME2 placement");
+   after the walk the AI's enable counters are back as the conversation had them, so the squadmate stands where it arrived
+   ([verify] per scene: a squadmate whose follow logic runs in a conversation would drift back).
+5. **The keep-in-place** (`OnUpdateCamera`) leaves our walkers' steps alone (`CircleWalking`), and a place we set by
+   `SetLocation` (the put back, a Cut's placement) is the kept place (`NoteMovedByUs`).
+6. **Switches:** `[Cinematics] worldCircle`, `worldCircleGapM`, `worldCircleNearM`, `worldCircleMaxWalkM`, `worldCircleStaggerS`,
+   `worldCircleInRangeM`, `worldCircleOwnerStays`, `worldCircleLookahead`, `worldSquadGather`, `worldSquadGatherSideM`,
+   `worldSquadGatherBackM` (ME1's keys and defaults); `mevr convo circle on|off|auto`, `mevr convo squad on|off|auto`.
+7. **Records and rules:** the stance records carry each person's `walk` (`phase`, `to`, `kind`: circle or squad), `walks` (whether
+   the AI could walk it) and the `circle` (centre, radius, places, members), so `tools/conversation-stance.py` draws them.
+   `tools/scene_audit.py`'s new rule **`owner-walked`** (severity 2): the conversation's owner 1.5 m or more from its first place
+   by a walk of ours (a walk's `kind`; ME1's records carry no kind, so ME1's set is never judged by it). **Broken runs:** `mevr
+   convo circle ownerwalks on` (the owner walks 2 m to its side) must end with `owner-walked`; `mevr convo squad behind on` (the
+   formation's places straight behind the player) with the existing `squad-behind`. Logs `conversation world: circle:` and
+   `conversation world: squad:` (each join, walk, arrival, stall, refusal), the end line `conversation world: circle: conversation
+   N (...): N joined, N walked ...`.
+
+### 10.2 The subtitle under the speaker and the wheel in front (item 2)
+
+ME1's placement (research/59): the mod publishes ME1's state fields in a held conversation (`game/SequelConversationUi.inc`,
+`FillConversationUi`): `wheel` (the wheel's handler's `m_bDisplayingWheel`), `wheelHand` (`[Cinematics] wheelHand`, front by
+default), `wheelWidthM` 0.40, `wheelDistanceM` 0.12, `subtitleHeightDeg` 4, and `subtitle` with `subtitleAt` (the speaker's head
+bone, Shepard's own lines under the one he talks to, `subtitleBelowM` 0.22 under it and `subtitleTowardM` 0.15 toward the eyes:
+`cw::SubtitlePoint`), the crops from `subtitleCrop`/`wheelCrop`. The host's new **`plugin/ConversationUi`** (game-independent;
+the sequels' overlays call it before the HUD panel is drawn) blits each band of this frame's UI onto its own quad and cuts it out
+of the panel: the subtitle at `subtitleAt`, facing the eyes, the same angular height at any distance (`vr::interact::Place`, the
+interaction label's way), on a swapchain of its own (`convosub` in snapshots); the wheel placed where it opens
+(`wheel_panel::Place`: in front of the head, 0.45 m out and 0.35 m down, or above a hand), on `plugin/WheelPanel`'s swapchain
+(LE1's sharing: no wheel of the game's is up in a conversation), at most 2048 px wide. The rest of the conversation movie stays on
+the panel fixed in the room (the owner's ME3 request of 2026-11-19). Not while Thespian mode hides the game's wheel.
+
+**The bands are ME1's.** The conversation movie draws its 1280x720 stage across the frame's width, centred top to bottom, on
+both sequels as on ME1, so `cw::DefaultSubtitleCrop` (stage y 480..586) and `DefaultWheelCrop` (586..712) fit (measured on the
+HUD snapshots of lane FPC4: ME2's 16:9 frame, Samara's line at rows 0.771-0.798 and the wheel at 0.822-0.938, inside the bands
+0.667-0.814 and 0.814-0.989; ME3's 3072x2216 frame, the docking officer's line at 0.705-0.733 and a six-reply wheel at
+0.755-0.881, inside 0.630-0.745 and 0.745-0.881: its bottom row ends at the band's edge). LE1's `HalcyonOverlays` has its own copy
+of these steps; moving it onto `plugin/ConversationUi` is an ME1 host change for a batch with ME1's regression set.
+
+### 10.3 The floor marker's Waits source (item 3)
+
+The core's **`cw::WaitTrigger` / `cw::Armed` / `cw::WaitingTrigger`** (unit-tested, `TestWaitingTrigger`): a trigger is armed when
+its touch event is enabled and one-shot with a touch left (`MaxTriggerCount` > 0 and `TriggerCount` under it; an unlimited one is a
+door's or an ambient line's, never a scene's wait); the scene waits there when it is armed, contains where the scene wants
+Shepard, and neither his pawn nor the player's feet stand in it. **`game/SceneWaits`** (every game, `ue3` handles): the level's
+`Engine.SeqEvent_Touch` events (its games' subclasses too) whose `Originator` stands within 30 m of the wanted place, gathered at
+most every 3 s (a walk over the object table), judged at most every 0.25 s with `Actor.PointCheckComponent` (ME1's trigger stop's
+own check) and the pawn's cylinder as the box; log `scene waits: the script waits on <trigger> ...`.
+- **The sequels:** in a held conversation, from where the scene wants Shepard: the stage's placements and track moves withheld
+  (`gC.sceneWants`), else the opening's mark when the player's place is elsewhere (a Stay or WalkIn: `gC.mark`). The pin moves with
+  the stick, so a player who walks into the trigger fires its touch with Shepard's pawn.
+- **ME1** (its own commit): in a moment, from where the script wants Shepard (`gMoment.wanted`); his pawn stands there (the
+  script's Shepard), so only a trigger nobody touches is found. ME1's conversations never wait by construction (a mark inside a
+  trigger is a walk-in by the view, his pawn on the mark touches it) and get no Waits source.
+- **ME1's black-move source** (its own commit): in a moment, under the game's fade to black in a curated walk (the walk with
+  Anderson to the Council), where the player walks on to him: his place, until the player stands in it or the view joins him.
+
+### 10.4 ME1's end facing (item 4)
+
+ME1's `End` recorded the held facing for the next scene (`gFoot.rotation`) but never turned the controller or the pawn, so the
+first frame on foot took the controller's yaw: after a Cut opening facing the owner (`FinishOpening`) or the right stick's turns
+the view turned at once by their difference. The rule is now the core's **`cw::FacingOnFoot`** (unit-tested,
+`TestFacingOnFoot`), used by ME1's `End` (commit of its own) and the sequels' `FaceOnFoot`; log `convo: conversation N ends: the
+held facing X deg, the controller's Y, the pawn's Z` (ME1), `mevr convo endfacing off` the broken run.
+
+### 10.5 ME2 in the game (fake headset, 2026-11-20 11:47-12:13)
+
+Stretch `20261120-114652-676-LE2-fpc5` (`prep.ps1 -Holder FPC5`; restored with 0 differences). Tali's reintroduction as in section
+6.2 (`load.ps1 -Save VR_31_Soldier_141126_336072f\Save_0004.pcsav`, `conversation-world.ps1 -Before 'god','mevr instances
+SFXGame.SFXPawn_PlayerSoldier','mevr setloc 0 -9600 16600 -12060','sleep:12','mevr setloc 0 -9600 15250 -12060','sleep:3' -Start
+'fire:Engine.SequenceAction:Tali_Conversation.BioSeqAct_CancelHint_0' -Stances -Hands chest -Pick 1`), Samara's starter (`load.ps1
+-Save John_12_Soldier_190924_4ee650d\Save_0036.pcsav`, `-Start fire:SFXGame.SFXSeqAct_StartConversation:Dialog_Samara.
+SFXSeqAct_StartConversation_0 -Pitch -25`):
+
+1. **The circle** formed round the player toward Tali at 0.4 s (`5 places, 1.8 m across`); Prazza (2.9 m), Miranda (1.1 m) and Jacob
+   (1.3 m) were all within the 3.5 m talking range and joined where they stood: nobody needed a walk in this scene (no ME2
+   conversation with a speaker beyond 3.5 m was reached). The broken run's owner walk went through `game/AiWalk` and arrived 0.30 m
+   from its place: the AI walk works in the conversation mode.
+2. **The squad**, three faults found and fixed in order (commits ecf9f97c, debc8dc2): ME2's roster is empty in the conversation mode
+   (`squad: ready (game mode 5); 0 squadmate(s)`: it reads the squad from the player's pawn on foot only), so the squad as it stood
+   on foot stands in; the cutscene's tracks had moved both squadmates within the last second, so the track check is now 0.3 s and the
+   formation starts a second after the opening; ME2's `MoveToGoal` went to the navigation point nearest each place, 1.4-1.8 m off it
+   (Jacob ended 2.9 m away behind the player), so each walker now walks to a goal actor of ours at its place
+   (`ai_walk::StartToGoal`). Then: `Miranda walks 1.6 m ... after 0.9 s`, `Jacob walks 1.2 m ... after 1.5 s`, both `arrived 0.30
+   m from its place` 1.7-2.0 s later (session folder `convo-clean-120823`, its sheet and `findings.txt`).
+3. **The audit:** the clean run has no owner-walked, squad-behind or speaker-behind (before the formation: Miranda speaker-behind 146
+   degrees, Jacob squad-behind 161); its two remaining findings are face-off-you for the squadmates (44 degrees: their bodies face the
+   owner, ME1's formation facing, and the game's look at the player turns their heads only so far). **The broken run** (`mevr convo
+   circle ownerwalks on`, `mevr convo squad behind on`, `convo-canary2-120949`): owner-walked (Tali 1.7 m) and squad-behind (Jacob
+   161, Miranda 175), both caught.
+4. **The subtitle and the wheel:** `[MEVR-CONVO] the dialogue wheel 0.12 m from in front of the head, at (0.00, -0.25, -0.51) m, 0.70 m
+   wide; the UI's part (340, 1992) 3672x429 of 4352x2448 (the default band)`, `[MEVR-CONVO] the subtitle at the speaker: ... (4.0 deg
+   tall); the UI's part (272, 1632) 3808x361`; snapshot `2026-11-20_12-01-20-014-left.png` (Tali's wheel in front, its three replies
+   whole) and `2026-11-20_12-12-12-282-left.png` (Samara's line under her head, the wheel in front). The first run showed the wheel
+   on its quad **and** on the panel: a screen's UI was drawn unmasked (`hud_panel::Frame::screenMasks` since). The VR_31 career has
+   the game's subtitles off (no line in any band); John_12 has them on. The wheel in front sits 26 degrees under a level gaze: out of
+   the fake headset's 16:9 eye (18 degrees down), in a real headset's view.
+5. **The marker's Waits source** ran in every held conversation: no trigger found in Tali's or Samara's (nothing waits there; no
+   marker in an ordinary conversation). No fixture whose scene waits for the player was reached on any game.
+6. **The end facing** (FPC4's rule, now through `cw::FacingOnFoot`): `conversation 5 ends: the held facing -14.0 deg, the
+   controller's 68.7, the pawn's -1.4: both turned`.
+7. **Moments this stretch:** ME2 6 held (Tali's reintroduction, once per load), 0 to the 3D screen.
+
+### 10.6 ME1's regression set with the end facing and the marker's sources (item 5)
+
+`tools/conversation-audit.ps1` (session `2026-11-20_12-14-06-audit`, the players' build at debc8dc2 with main 715dbd81 merged):
+16 scenes, every body measured where a wrist was in view.
+- **The end facing:** ME1 showed the jump in 5 of 13 conversations (`convo: conversation N ends: the held facing ..., the
+  controller's ...`: Opold -146.0 against 56.2, Avina -21.1 against 180.0, the Spectre induction -141.2 against 0.0, the hearing
+  -155.0 against 180.0, Wrex at Fist's -177.9 against 171.7); both are turned to the held facing now.
+- **The black-move marker:** in the walk with Anderson to the Council `moment: the script moved Shepard under the game's fade to
+  black in a curated walk ...`, `convo: marker: moment: under the game's fade to black the script put Shepard 3.00 m from the
+  player in a curated walk: a marker there`; the walk's end marker as before (8.40 m, 24.04 m in the Spectre walk).
+- **Against the baseline:** lav70's faces median 13 -> 23 degrees (the baseline's, as lanes EXIT and FPC3 found); Girard "looks at
+  his body 0 -> 1" (the `begin` record at 0.0 s, Shepard's body 0.53 m from the eyes before the opening took its place: no look
+  after it); a vanished-in-view at the hearing (`sta90_council_saren_dlg`, and `sta90_captain_dlg`) that was the records naming
+  BioPawn_7 "Ambassador Udina" between two records (`tools/scene_audit.py` keys people by their `id` since: both clean when the
+  run is judged again). Opold's 0.03 s of the flat panel at 12:17:33.146 came 7 ms before the mod's `End` (12:17:33.153): the game's
+  shop screen a frame before the handover word, not the changed code.
+- **The canaries** (`conversation-audit.ps1 -Canaries`, sessions `2026-11-20_12-29-33-canary-*` to `12-52-01-canary-popped-out`):
+  every broken run caught, exit 0 (body left at the mark, the empty chamber by `expect`, the right stick ignored, the floating view
+  by eye-height and opening-off-mark, the dark walk by dark-view and eye-flat, the popped-out person by vanished-in-view, and the
+  rest of the set's).
+
+## 11. Lane FPC-ME3 (2026-11-20): the presence rules at the opening, the cab-ride hang, ME3's checks
 
 ME3's checks of lanes FPC to FPC4's work, and the owner's new presence rule. Numbers only from the code and the logs.
 
-### 10.1 Everyone but Shepard hidden: the 3D screen (item 0, the owner's rule (a), 2026-11-20)
+### 11.1 Everyone but Shepard hidden: the 3D screen (item 0, the owner's rule (a), 2026-11-20)
 
 **The owner's decision** ("Yes, by rule (a)"): a conversation where every speaker except Shepard is hidden at the opening (ME3's
 Khalisah interview `citprs_khalisah2_d_dlg`, the video calls) goes to the 3D screen at its start; a run-time rule in the spirit
@@ -693,7 +847,7 @@ a point of interest (no person), its listener the officer, a stunt actor shown a
 ago, 3.7 m away in its void): **the rule does not catch it** (a place for the player). It stays on the 3D screen only because the
 game opens it around a load (the load rule). A comm call staged as a person in a void is not "everyone hidden".
 
-### 10.2 The cab ride's hang: no scale set while the world isn't drawn
+### 11.2 The cab ride's hang: no scale set while the world isn't drawn
 
 **What happened** (fake headset, 2026-11-20 11:15-11:28, stretch `<session>-LE3-fpcme3`): Save_0090 loads into the docking
 officer's wheel (the rapid transit: Presidium Commons, Refugee Camp, Embassies, Purgatory, Hospital). Held in the world by hand
@@ -745,7 +899,7 @@ docking officer's wheel on the 3D screen, mode 7) vanished while `load.ps1` poll
 nothing in Windows' Application log, SteamVR's `vrserver.txt` only "exited after 58.87 seconds"; nothing of the coordinator's
 stopped it. Not seen again yet.
 
-### 10.3 Moments: the game's black takes the view with him; the seat in a moment
+### 11.3 Moments: the game's black takes the view with him; the seat in a moment
 
 ME1's moment rules the sequels lacked (section 7.6 item 3): in a moment, a jump of Shepard's pawn past 30 units in a tick (ME1's
 `kJumpUnits`) while the camera's fade is black or was within 1.5 s (`gBlackMs`, read in each camera update) takes the view with him
@@ -758,7 +912,7 @@ Purgatory's bar (`BioD_CitHub_WardsFlux`, `Main_Sequence.Drinking`: used at `SFX
 `SeqAct_Interp_2` walks him 1.5 m under a fade and a black-screen track, `SeqAct_Teleport_1` to a booth, `SeqAct_Interp_3` seats
 him there, `SeqAct_Teleport_2` back).
 
-### 10.4 The face axis
+### 11.4 The face axis
 
 The records give each head bone axis's angle to where the game's look-at chain aims (`axesToAimDeg`; `python -I
 scratch/.../faceaxis.py`: the median per axis over every record with an aim). **ME2: +X** (lane FPC4's Tali records: Tali +X 23,

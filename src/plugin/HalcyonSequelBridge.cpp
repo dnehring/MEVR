@@ -34,6 +34,7 @@
 #include "plugin/CrashBreadcrumbs.hpp"
 #include "plugin/EyeCopy.hpp"
 #include "plugin/FloorLock.hpp"
+#include "plugin/ConversationUi.hpp"
 #include "plugin/HudPieceLayers.hpp"
 #include "plugin/MenusLe2.hpp"
 #include "plugin/PadMerge.hpp"
@@ -325,6 +326,7 @@ void OnSessionCreated(void* instance, void* session) noexcept {
     mevr::host::thespian::ForgetSession();
 #endif
     mevr::host::hud_piece_layers::ForgetSession();
+    mevr::host::conversation_ui::ForgetSession();
     mevr::vr::interact::Reset();
     mevr::host::world_panels::Recenter();
     mevr::host::testloop::OnSessionCreated(xrSession);
@@ -361,6 +363,7 @@ void OnSessionStopped() noexcept {
     mevr::host::thespian::ForgetSession();
 #endif
     mevr::host::hud_piece_layers::ForgetSession();
+    mevr::host::conversation_ui::ForgetSession();
     mevr::vr::interact::Reset();
     sb::gScreen = {};
     mevr::host::hud_panel::SetArmed(false);  // no OverlayLayers runs now to disarm it: the UI back to the frame

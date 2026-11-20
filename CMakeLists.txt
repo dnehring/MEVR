@@ -665,6 +665,8 @@ set(MEVR_MOD_SOURCES
     src/game/ConversationWorld.hpp
     src/game/AiWalk.cpp
     src/game/AiWalk.hpp
+    src/game/SceneWaits.cpp
+    src/game/SceneWaits.hpp
     src/game/ConversationExit.cpp
     src/game/ConversationExit.hpp
     src/game/SequelConversationWorld.cpp
@@ -1114,6 +1116,7 @@ function(mevr_add_plugin game)
             src/plugin/KeptLocks.cpp src/plugin/KeptLocks.hpp   # the quit-time lock guard, as LE1's (research/36)
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp   # ME1's and ME3's (research/le2-motion-blur-guard.md)
             src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
+            src/plugin/ConversationUi.cpp src/plugin/ConversationUi.hpp   # a conversation's subtitle and wheel on their quads
             src/plugin/Seams.cpp src/halcyon/MevrSeams.h src/plugin/RecenterTilt.cpp src/plugin/RecenterTilt.hpp
             src/core/vr/Recenter.cpp src/core/vr/Recenter.hpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
@@ -1207,6 +1210,7 @@ function(mevr_add_plugin game)
             src/plugin/MotionBlurGuard.cpp src/plugin/MotionBlurGuard.hpp
             src/plugin/HalcyonLe3Bridge.cpp src/plugin/RendererLe3.cpp src/halcyon/le3/mevr_bridge.h
             src/plugin/HalcyonSequelBridge.cpp src/plugin/HalcyonSequelBridge.hpp src/plugin/SequelOverlays.cpp
+            src/plugin/ConversationUi.cpp src/plugin/ConversationUi.hpp
             src/plugin/HdrDisplayPolicy.cpp src/plugin/HdrDisplayPolicy.hpp
             src/plugin/GameThreadCalls.cpp src/plugin/XrHost.cpp src/plugin/FloorLock.cpp src/plugin/PadMerge.cpp
             src/plugin/TestLoop.cpp src/plugin/Swapchains.cpp src/plugin/EyeCopy.cpp src/plugin/Colour.cpp

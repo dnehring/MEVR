@@ -810,6 +810,28 @@ struct Marker {
 Marker StepMarker(MarkerState& state, MarkerFacts const& facts, double dtS, MarkerLimits const& limits = {});
 inline void Calm(Insistence& state) { state.count = 0; }
 
+// The marker's Waits need (lane FPC5): a level trigger the script waits on for the player, found from where the scene wants
+// Shepard. A trigger is armed when its touch event is enabled and one-shot with a touch left (an unlimited one is a door's or an
+// ambient line's, never a scene's wait); the scene waits there when it is armed, contains where the scene wants Shepard (the stage's
+// mark or a track's place, withheld), and neither his pawn (the script's Shepard went in himself) nor the player's feet stand in it.
+struct WaitTrigger {
+    bool enabled = false;        // the touch event's bEnabled
+    int triggerCount = 0;        // ... how often it fired
+    int maxTriggerCount = 0;     // ... at most (0: without end)
+    bool wantedInside = false;
+    bool shepardInside = false;
+    bool playerInside = false;
+};
+bool Armed(WaitTrigger const& trigger);
+// The first trigger the scene waits on (its index), or -1.
+int WaitingTrigger(std::span<WaitTrigger const> triggers);
+
+// The view goes on from the held facing (lane FPC4's finding on the sequels, ME1's conversation end since lane FPC5): as a held view
+// lets go, the game's camera on foot takes the controller's yaw (and the pawn's), which a Cut opening facing the owner or the right
+// stick's turns left behind; turned to the held yaw, the first frame on foot looks where the last held one did. The yaw (degrees,
+// -180..180) to turn to when `nowYawDeg` differs from `heldYawDeg` by more than `toleranceDeg`, else nullopt.
+std::optional<double> FacingOnFoot(double heldYawDeg, double nowYawDeg, double toleranceDeg = 0.5);
+
 // ---- The eyes in a held scene (research/69 item 44; research/le2-conversations-in-world.md section 7) ------------------------
 // The eyes at the player's own height over the floor under Shepard (the owner, 2026-11-17, at the council hearing's podium: "I'm
 // still floating above where I should be"): the drawn eye centre (the host's view.centreZ: the held place, the framing and the

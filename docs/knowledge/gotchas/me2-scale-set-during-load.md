@@ -77,5 +77,5 @@ cinematics.
 - [research/le2-renderer-integration.md](../../../research/le2-renderer-integration.md), "Defaults from ME1": the A/B,
   one variable a run.
 - `src/game/SystemSettings.cpp` (`Poll`), `src/halcyon/le2/d3d_capture.cpp` (`ArmResolutionSpoof`, `[DOFOFF]`).
-- [research/le2-conversations-in-world.md](../../../research/le2-conversations-in-world.md) section 10 (ME3's cab-ride hang,
+- [research/le2-conversations-in-world.md](../../../research/le2-conversations-in-world.md) section 11.2 (ME3's cab-ride hang,
   2026-11-20); `src/game/WorldDrawn.cpp`, `src/game/DepthOfFieldHold.cpp`.

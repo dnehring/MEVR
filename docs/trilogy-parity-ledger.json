@@ -167,6 +167,7 @@
     "game/Reflections",
     "game/Reload",
     "game/SceneCaptureRig",
+    "game/SceneWaits",
     "game/ScopeCapture",
     "game/ScopeParts",
     "game/ScreenReticle",
@@ -437,6 +438,7 @@
     "game/Reflections",
     "game/Reload",
     "game/SceneCaptureRig",
+    "game/SceneWaits",
     "game/ScopeCapture",
     "game/ScopeParts",
     "game/ScreenReticle",
@@ -481,6 +483,7 @@
     "CinemaBackdrop",
     "CinemaBackdropDraw",
     "Colour",
+    "ConversationUi",
     "CrashBreadcrumbs",
     "DrawReplay",
     "Entry",
@@ -709,6 +712,7 @@
     "game/Reflections",
     "game/Reload",
     "game/SceneCaptureRig",
+    "game/SceneWaits",
     "game/ScopeCapture",
     "game/ScopeParts",
     "game/ScreenReticle",
@@ -753,6 +757,7 @@
     "CinemaBackdrop",
     "CinemaBackdropDraw",
     "Colour",
+    "ConversationUi",
     "CrashBreadcrumbs",
     "DrawReplay",
     "Entry",
@@ -2847,6 +2852,29 @@
     }
    },
    "namespace": "game::capture_rig"
+  },
+  "game/SceneWaits": {
+   "games": {
+    "LE1": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE2": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    },
+    "LE3": {
+     "legacy": false,
+     "me1OnlyHandles": false,
+     "part": false,
+     "status": "run"
+    }
+   },
+   "namespace": "game::scene_waits"
   },
   "game/ScopeCapture": {
    "games": {

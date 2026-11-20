@@ -914,6 +914,15 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
       when you catch up (section 9.4; not seen in the game yet).
 - [ ] ME2 and ME3: at a first-person conversation's end you keep looking where you looked (no turn of the view to Shepard's
       own facing; ME3's Prothean moment at the embassies is where it was seen, section 9.6).
+- [ ] ME2 and ME3 (lane FPC5, section 10.1): someone who speaks to you from farther than 3.5 m walks up into a loose circle
+      around you before their line, at a walking pace, and turns to the circle's middle; the one you came to talk to stays put;
+      someone seated or a hub character of ME3 stays where they are. Say whether the walk-up feels organic.
+- [ ] ME2 (section 10.1): your squad gathers beside you, a little behind, at a conversation's start, and stays there through it
+      (no drift back toward where Shepard's body stood).
+- [ ] ME2 and ME3 (section 10.2): the speaker's line under their face (legible, not inside their body) and the dialogue wheel in
+      front of you where it opens (reachable by eye without turning; the replies' whole text on it).
+- [ ] ME1 (section 10.4): after a conversation that faced you to the person you came to talk to (or that you turned in with the
+      right stick), the view on foot keeps that facing (no turn at the conversation's end).
 
 ### One settings file for the three games (lane SET, 2026-11-18; research/25 section 20)
 
