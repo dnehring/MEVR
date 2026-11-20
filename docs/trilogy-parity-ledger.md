@@ -264,7 +264,7 @@ The [technique groups](#renderer-techniques-by-group) summary follows the table.
 | G33 | Voice orders, the model tier, the Voice page (`game/Voice`, `plugin/Voice`, `plugin/VoiceModel`) | **shared** U: the protected voice run timed out | **shared** U: the model tier compiles into LE3 wherever its host compiles `plugin/VoiceModel.cpp` (until 2026-11-16 only when LE2 was built too) | A microphone run, or `voice.request wav`, per game. |
 | G34 | Squad acknowledgement (`game/SquadAck`) | **adapted** V (lane AU4, 2026-11-18): the AI's own answer heard (`TriggerVocalizationEvent`, its parameters or the calling frame's Locals; ReceivedOrder 2..10), no line of ours played, a 3 s window; Save 4: moves answered with 7 after 1.0-1.5 s, follows with 8, 4 of 4 (research/54 "The squad's answer on the sequels") | **adapted** U: the same listener, ME3's functions found and hooked; no squad in its fixtures | ME3: a squad order on a save with a squad. ME1's chatter functions are in neither sequel. |
 | G35 | Thespian mode (`game/Thespian`, `plugin/Thespian`, `core/voice/ScriptMatch`) | **adapted** U: replies by native slot; no mute or `SkipNode` on ME2 (research/70 "ME2 cinema adapter") | **adapted** V: reader on three native wheels, run `20261115-203330-839`. Spoken selection unverified | M6 E; L3-4. |
-| G36 | Conversations in the world: flow, moments, keep-in-place (`game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`, `plugin/ConversationWorld`) | **missing**: deferred by the owner 2026-11-15; `ready` | **missing**: deferred; `convo_fp` hard-off | M6 F (deferred); LE3 plan "remain deferred". |
+| G36 | Conversations in the world: flow, moments, keep-in-place (`game/ConversationWorld`, `ConversationFlow`, `AuthoredMoment`, `engine/ConversationHooks`, `plugin/ConversationWorld`) | **missing**: deferred by the owner 2026-11-15; `ready` | **forked** U: ME1's core slice on ME3 (`game/SequelConversationWorld`, the owner 2026-11-19, for the hair headset run): the held host view, letterbox cleared, ME1's opening rule (`cw::DecideOpening`), Shepard pinned, the left stick walks (`cw::StepPlayer`/`KeepClear`), the right stick to the wheel, the UI fixed in the room, DOF off; `mevr convo world`; upstream's ConvoFirstPerson pinned off; seen in the headset at Miranda's apartment; no flow, moments, people kept in place or circle | M6 F (deferred); LE3: the slice to move onto ME1's shared module (`game/ConversationWorld`) with an adapter. |
 | G37 | Two-ear audio: OpenAL Soft with HRTF (`plugin/OpenAlSoft`) | **n/a**: ME2 plays through Wwise, not ISACT/OpenAL (research/69's audio note; [verify] the exe's imports) | **n/a**: same | Check `MassEffect2.exe`/`MassEffect3.exe` imports for OpenAL32 before closing the row. |
 | G38 | Sound placement: voices, people near, the gun (`game/SoundPlace`, `engine/VoicePlace` on ISACT `0x7BA90`) | **missing**: `ready`; `kSoundSourceUpdate = 0` | **missing** | Wwise needs a placement hook of its own. |
 | G39 | No cover snapping, VR cover (`engine/CoverAcquire`, `game/VrCover`, `core/vr/VrCover`) | **adapted** V: `FindPlayerCover` post-handler; VrCover on `SFXGame.ModifyDamage`; research/23 §7.4, 2026-11-14 (61705db8). The shields' faster recharge behind cover (ME2's own rule, the owner's yes 2026-11-16): `SFXShield_Base.Tick`'s two questions answered while the head is hidden from every awake hostile (`vr::cover::Shelter`), V on the fake headset: the 5.00 s wait 3.51 s behind cover, 5.02 s with the rule off or in the open; research/23 §7.5. U since 2026-11-18 (lane CV2, research/23 §7.6-7.7): the owner's run had no cover entry of the game's (the "magnetic" pull is not ME2's cover; a cover watch logs what moves Shepard near cover) and 0 of 164 hits covered (the eye line open over barriers to hovering drones): the level look (`[Cover] judge = either`), each hit's detail logged. Since 2026-11-19 (lane CCV, the owner's yes, research/23 §7.8; every game, ME1 too): crouched by the game (L3, the physical crouch, a seated player's L3), every look traces from Shepard's crouched head over his floor (`vr::cover::JudgingEyes`: his animated head bone, 0.88 m; ME2's low cover tops 0.94-0.98 m), never above the real eyes; each hit's line names the eyes. V on the fake headset at the owner's calibration (`tools/le2-halcyon-run/crouched-cover.ps1`): behind CoverLink_28's crate and the courtyard barrier, standing open (shields 257.5 -> 209.0), crouched by L3 or by the physical crouch covered (unchanged), `mevr cover crouch off` open | **adapted** U: no snapping by default since 2026-11-17 (lane FP3; ME1's and ME2's `[Hands] noCover = 1`, the owner's rule 7): `SFXGameModeDefault.FindCover` answered false inside the mode's `TryAcquireCover`; cover already taken is left to the game. VR cover's real-slot damage rule (`game/Le3Cover.inc`, ModifyDamage on SFXPawn_PlayerParty) follows the refusal, so it is on by default too, each answer logged (`vr cover: LE3 answered IsInCover TRUE ...`). Save 31 has no cover (0 CoverLinks; `TryAcquireCover` returns before `FindCover` on the Normandy's non-combat pawn): neither was seen in a fight. Since lane FX3 (2026-11-17) the refusal is the one rule of the three games (`ik::posture::RefuseCoverSnap`: VR on foot with noCover, kept from tick to tick; it had also asked for the host's controls and native movement and failed open during wheels, wrist screens, a roll's end or a late tick), and the take-cover prompt is hidden as ME2's (`SFXGUIInteraction.ShowCoverWidget` post-handler, `HideCoverWidget(oPlayerController)`); U: Save 31 has no cover. ME3 (and ME1) have no faster recharge in cover: n/a. Since 2026-11-18 the level look and each hit's detail apply here too (the shared `JudgeHit`, lane CV2, research/23 §7.7), U; since 2026-11-19 the crouched head too (lane CCV, §7.8), U | M6 table, cover/crouch/sprint row; L3-8. LE3: research/le3-combat-fixtures.md's first check (refusal, A, covered and exposed hits) and FX3's (no snap with a wheel open or at a roll's end, the prompt, first person in cover). |
@@ -643,9 +643,9 @@ defined in the tool's header:
 <!-- parity:summary -->
 | game | renderer | host plugin files | host core files | services served | src/game + src/engine modules by status | common seams called | own seams |
 |---|---|---|---|---|---|---|---|
-| LE1 | halcyon-le1 | 72 | 71 | 57 | run 69, out 4, ungated 26, unreferenced 4, unbuilt 4 | 22 of 51 | 89 |
-| LE2 | halcyon-le2 | 71 | 61 | 53 | run 55, ready 8, out 15, ungated 23, unreferenced 2, unbuilt 4 | 46 of 51 | 4 |
-| LE3 | halcyon-le3 | 73 | 62 | 55 | run 54, ready 8, out 14, ungated 25, unreferenced 3, unbuilt 3 | 47 of 51 | 2 |
+| LE1 | halcyon-le1 | 72 | 71 | 57 | run 72, out 4, ungated 28, unreferenced 5, unbuilt 4 | 22 of 52 | 89 |
+| LE2 | halcyon-le2 | 71 | 61 | 53 | run 58, ready 8, out 15, ungated 25, unreferenced 3, unbuilt 4 | 46 of 52 | 4 |
+| LE3 | halcyon-le3 | 73 | 62 | 56 | run 58, ready 8, out 14, ungated 27, unreferenced 3, unbuilt 3 | 48 of 52 | 2 |
 <!-- /parity:summary -->
 
 ### Host plugin files per game
@@ -747,6 +747,7 @@ defined in the tool's header:
 - LE1: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
 - LE2: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
 - LE3: also `engine/CodeDump`, `game/GamepadMapping`, `ue3/Pattern`, `ue3/SafeNames`
+- LE1 mod extras: `core/Json`
 - LE2 mod extras: `core/Json`, `core/vr/GalaxyRay`
 - LE3 mod extras: `core/Json`, `core/vr/GalaxyRay`, `game/Le3Gui`
 <!-- /parity:hosts -->
@@ -810,7 +811,7 @@ Helpers applied, in order:
 | `rightGripFree` | WithPadMerge | WithPadMerge | WithPadMerge |
 | `secondEyeIsReplay` | WithRenderer | WithRenderer | WithRenderer |
 | `setAimRay` | WithRenderer | WithRenderer | WithRenderer |
-| `setConversationWorld` | WithLe1ExtraUi | - | - |
+| `setConversationWorld` | WithLe1ExtraUi | - | BuildServices |
 | `setFloorLockSample` | WithFloorLock | WithFloorLock | WithFloorLock |
 | `setGalaxyHologram` | WithGalaxyHologram | WithGalaxyHologram | WithGalaxyHologram |
 | `setGalaxyMap` | WithGalaxyMap | - | - |
@@ -859,10 +860,12 @@ Helpers applied, in order:
 | `engine/BodyBounds` | run | run | run |
 | `engine/BonePose` | run | run | run |
 | `engine/CallFunction` | ungated | ungated | ungated |
+| `engine/ClipPose` | ungated | ungated | ungated |
 | `engine/CodeDump` | ungated | ungated | ungated |
 | `engine/ConversationHooks` | ungated | ungated | ungated |
 | `engine/CoverAcquire` | run | ready | ready |
 | `engine/Engine` | run | run | run |
+| `engine/HairPose` | ungated | ungated | ungated |
 | `engine/Le2ControlHost` | unbuilt | unbuilt | unbuilt |
 | `engine/Le2DiagnosticHost` | unbuilt | unbuilt | unbuilt |
 | `engine/Le2DiagnosticObservation` | unbuilt | unbuilt | unbuilt |
@@ -876,6 +879,7 @@ Helpers applied, in order:
 | `engine/Skeleton` | run | run | run |
 | `engine/VoicePlace` | run | ready | ready |
 | `engine/XrToUnreal` | ungated | ungated | ungated |
+| `game/AnimDriver` | run | run | run |
 | `game/ArmIk` | run | run | run |
 | `game/AuthoredMoment` | run | ready | ready |
 | `game/BodyCalibration` | ungated | ungated | ungated |
@@ -907,6 +911,8 @@ Helpers applied, in order:
 | `game/GamepadMapping` | ungated | ungated | ungated |
 | `game/GuiCursor` | run | run | run |
 | `game/GunKick` | run | run | run |
+| `game/Hair` | run | run | run |
+| `game/HairLook` | run | run | run |
 | `game/HandAim` | run | run | run |
 | `game/HandCalibration` | ungated | ungated | ungated |
 | `game/HandContact` | run | run | run |
@@ -939,6 +945,7 @@ Helpers applied, in order:
 | `game/ScopeCapture` | run | run | run |
 | `game/ScopeParts` | run | run | run |
 | `game/ScreenReticle` | run | run | run |
+| `game/SequelConversationWorld` | unreferenced | unreferenced | run |
 | `game/Sights` | run | run | run |
 | `game/SkeletonProbe` | run | run (ME1-only handles) | run (ME1-only handles) |
 | `game/SoundPlace` | run | ready | ready |
@@ -976,6 +983,7 @@ The common vocabulary (`namespace MevrSeams`, `src/halcyon/MevrSeams.h`): `yes` 
 | `CineScreenLayers` | - | yes | yes |
 | `CineScreenWanted` | yes | yes | yes |
 | `ConstantFpEye` | - | yes | yes |
+| `ConversationInWorld` | - | - | yes |
 | `CopyIntoImage` | - | yes | yes |
 | `EyeImageSize` | - | yes | yes |
 | `FloorViewTranslation` | yes | yes | yes |
@@ -1140,8 +1148,10 @@ The rest moves with every ME1 edit, so it is not committed. `python tools/parity
 <!-- parity:names -->
 Handles a sequel build declares `ue3::kEveryGame` whose name that game's SDK list lacks (the lookup is tried there: a failure, or a gap in the generated SDK list; ReflectCheck decides):
 
+- LE2 `game/AnimDriver`: `SFXGame.SFXModule_Gestures`, `SFXGame.SFXStuntActor`, `SFXGame.SFXStuntActor:BodyMesh`, `SFXGame.SFXStuntActor:HairMesh`
 - LE3 `game/GameMenuRequest`: `Engine.BioSFHandler.HandleInputEvent`, `Engine.BioSFManager:m_FocusPanel`, `Engine.BioSFPanel:m_DefaultHandler`, `Engine.BioSFPanel:nmTag`, `Engine.PlayerController:m_oCachedScaleFormManager`, `SFXGame.MassEffectGuiManager.GetBrowserHandler`, `SFXGame.MassEffectGuiManager:m_oBWHandler`
 - LE3 `game/GuiCursor`: `Engine.BioSFManager:m_FocusPanel`, `Engine.PlayerController:m_oCachedScaleFormManager`
+- LE2 `game/Hair`: `SFXGame.SFXStuntActor`, `SFXGame.SFXStuntActor:BodyMesh`, `SFXGame.SFXStuntActor:HairMesh`, `SFXGame.SFXStuntActor:HeadMesh`
 - LE2 `game/OmniTool`: `Engine.StaticMesh:LODInfo`
 - LE3 `game/PowerWheel`: `SFXGame.BioPawn:m_oBehavior`
 - LE2 `game/SquadContext`: `SFXGame.BioPawn.IsInCombatActionState`
