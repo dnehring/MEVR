@@ -483,7 +483,8 @@ What's left, in order:
    head's field (`m_oHeadMesh`) and a reflect row were what a body swap lacked.
 Not Shepard (the owner, 2026-11-19): the player's pawn is never simulated (a first-person VR experience; third person isn't
 the priority), so the sequels' modular armour pieces (breasts on the torso piece, glutes on the legs) need no work.
-Left: the armour lists per sequel (`armourBodies`/`fullBodies`: the name rule is right only on ME1), the package's load
+Per character (the owner, 2026-11-19): EDI none (her robot body: no rigged body, no swap), Samara half, Kasumi a quarter
+(`[Hair] bodyJiggle = _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25`, before the armour rules). Left: the armour lists per sequel (`armourBodies`/`fullBodies`: the name rule is right only on ME1), the package's load
 cost at the first lookup per level [verify], and step 5.
 
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body

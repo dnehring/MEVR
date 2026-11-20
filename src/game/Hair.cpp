@@ -95,6 +95,10 @@ constexpr char kBlock[] =
     "jiggleArmour = 0.25\n"
     "armourBodies =\n"
     "fullBodies = hmf_mir_\n"
+    "; A character's own share, before the rules above (the owner, 2026-11-19): name part:share, comma-separated. 0 leaves the\n"
+    "; body as the game made it (no rigged body, no jiggle: EDI's robot body); Samara's armour keeps half, Kasumi's suit a\n"
+    "; quarter.\n"
+    "bodyJiggle = _edi:0, asa_spr_:0.5, asa_arm_sam:0.5, _ksm:0.25\n"
     "; followBody (0..1): how far a long hair chain's lower joints rest with the shoulders rather than the head (hair lying\n"
     "; on the shoulders stays there when the head turns); single-bone strands are never affected.\n"
     "followBody = 0.7\n";
@@ -113,6 +117,8 @@ struct Settings {
     double jiggleArmour = 0.25;
     std::vector<std::string> armourBodies;
     std::vector<std::string> fullBodies{"hmf_mir_"};
+    // A character's own share (name part, share), before the armour rules: EDI none, Samara half, Kasumi a quarter.
+    std::vector<std::pair<std::string, double>> bodyJiggle{{"_edi", 0.0}, {"asa_spr_", 0.5}, {"asa_arm_sam", 0.5}, {"_ksm", 0.25}};
     std::optional<std::string> look;  // [Hair] look: material parameters for simulated hair (empty: the game's)
 };
 
@@ -177,6 +183,16 @@ void RefreshSettings() {
     if (auto v = num("jiggleArmour")) s.jiggleArmour = std::clamp(*v, 0.0, 1.0);
     if (auto v = ini::Get(loaded.file, "Hair", "armourBodies")) s.armourBodies = NameParts(*v);
     if (auto v = ini::Get(loaded.file, "Hair", "fullBodies")) s.fullBodies = NameParts(*v);
+    if (auto v = ini::Get(loaded.file, "Hair", "bodyJiggle")) {
+        s.bodyJiggle.clear();
+        for (std::string const& item : NameParts(*v)) {
+            std::size_t const colon = item.rfind(':');
+            if (colon == std::string::npos || colon == 0) continue;
+            std::string part = item.substr(0, colon);
+            while (!part.empty() && part.back() == ' ') part.pop_back();
+            if (auto share = ini::Number(item.substr(colon + 1))) s.bodyJiggle.emplace_back(part, std::clamp(*share, 0.0, 1.0));
+        }
+    }
     s.look = ini::Get(loaded.file, "Hair", "look");
     s.sim.windMS = {s.wind, 0.0, 0.0};
     if (gOverride) s.on = *gOverride;
@@ -422,6 +438,23 @@ bsi::Engine BodyEngine() {
 }
 
 // The rigged stand-in for a body mesh by its path, or nullptr; each mesh asked once a level, the outcome logged then.
+// The soft tissue's share for a body mesh's lowered object path (OutfitJiggle's rules; a character's bodyJiggle entry first).
+double ShareForPath(std::string const& name) {
+    for (auto const& [part, share] : gSettings.bodyJiggle) {
+        if (!part.empty() && name.find(part) != std::string::npos) return share;
+    }
+    for (std::string const& part : gSettings.fullBodies) {
+        if (!part.empty() && name.find(part) != std::string::npos) return 1.0;
+    }
+    for (std::string const& part : gSettings.armourBodies) {
+        if (!part.empty() && name.find(part) != std::string::npos) return gSettings.jiggleArmour;
+    }
+    for (char const* type : {"_hvy", "_med", "_lgt"}) {
+        if (name.find(type) != std::string::npos) return gSettings.jiggleArmour;
+    }
+    return 1.0;
+}
+
 ue3::Object* BodyStandInFor(ue3::Object const* asset) {
     if (asset == nullptr || !gSettings.standIns) {
         return nullptr;
@@ -505,6 +538,9 @@ bool ApplyStandIn(ue3::Object* component, ue3::Object* asset, bool body) {
     }
     if (!body) {
         return false;
+    }
+    if (ShareForPath(Lower(PathOf(asset))) <= 0.0) {
+        return false;  // a body that keeps no jiggle (EDI's robot body) stays the game's
     }
     ue3::Object* const standIn = BodyStandInFor(asset);
     return standIn != nullptr && Wear(component, asset, standIn, true);
@@ -629,25 +665,19 @@ bool HasSoftTissueBones(ue3::Object* mesh);
 
 // A body we can make jiggle: rigged already, or with a rigged body named after its mesh (asked once a level).
 bool SoftTissueOrRigged(ue3::Object* body) {
-    return HasSoftTissueBones(body) || (body != nullptr && ue3::runtime::IsAlive(body) && BodyStandInFor(player::SkeletalMesh(body)) != nullptr);
+    if (body == nullptr || !ue3::runtime::IsAlive(body) || ShareForPath(Lower(PathOf(player::SkeletalMesh(body)))) <= 0.0) {
+        return false;
+    }
+    return HasSoftTissueBones(body) || BodyStandInFor(player::SkeletalMesh(body)) != nullptr;
 }
 
-// The soft tissue's share for a body's outfit (the owner, 2026-11-19): armour keeps jiggleArmour (a heavy, medium or light
-// armour type in the mesh's name, or an armourBodies part), everything else (a bodysuit, casual clothes, underwear) all of it;
-// a fullBodies part (a character outfit named like armour but a bodysuit) wins.
+// The soft tissue's share for a body's outfit (the owner, 2026-11-19): a character's bodyJiggle entry first (EDI none, Samara
+// half, Kasumi a quarter); then armour keeps jiggleArmour (a heavy, medium or light armour type in the mesh's name, or an
+// armourBodies part), everything else (a bodysuit, casual clothes, underwear) all of it; a fullBodies part (a character outfit
+// named like armour but a bodysuit) wins over the armour rules. The rigged body keeps its source mesh's name.
 double OutfitJiggle(ue3::Object* body) {
     if (body == nullptr) return 1.0;
-    std::string const name = Lower(PathOf(player::SkeletalMesh(body)));
-    for (std::string const& part : gSettings.fullBodies) {
-        if (!part.empty() && name.find(part) != std::string::npos) return 1.0;
-    }
-    for (std::string const& part : gSettings.armourBodies) {
-        if (!part.empty() && name.find(part) != std::string::npos) return gSettings.jiggleArmour;
-    }
-    for (char const* type : {"_hvy", "_med", "_lgt"}) {
-        if (name.find(type) != std::string::npos) return gSettings.jiggleArmour;
-    }
-    return 1.0;
+    return ShareForPath(Lower(PathOf(player::SkeletalMesh(body))));
 }
 
 std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Object* world) {
