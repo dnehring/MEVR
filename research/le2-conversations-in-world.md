@@ -392,6 +392,20 @@ Shepard back where the player stands each camera update, and on a lift that was 
 tick): the player rides with it`; the end line `the player rode X m with what Shepard stood on`. LE3 ReflectCheck row
 `Engine.Actor.Base` added (ME2 and ME1 had one). Not seen in a ride yet.
 
+### 7.3 The game's fade to black moves the player (item 4, part)
+
+ME1's `worldBlackMoves` (research/69 items 40 and 41) in a held conversation on both sequels (`StepBlackMove`): the source hook
+records every placement and track move of Shepard it withholds (`gC.sceneWants`, `sceneAsks`); a new one more than 1.5 m
+(`cw::OpeningLimits{}.stayUnits`) from the pin, while the camera's fade is half black or more (`Engine.Camera.bEnableFading` and
+`FadeAmount`, read after each camera update) or was within 1.5 s, moves the pin there (the camera update's pin then puts his pawn
+there) under the host's dip (`++gCutSerial`). Curated walks keep the old rule (`cw::IsCuratedWalk` with `[Cinematics]
+worldCuratedWalks`; none built in for the sequels). `[Cinematics] worldBlackMoves = 0` turns it off (ME1's key and default 1). A
+step within 1.5 m stays where the player is (ME1 walks it by the simulated stick; the sequels have no steer). Log `conversation
+world: conversation N: under the game's fade to black the scene wants Shepard X m away: the player goes with him under a dip`;
+the end line counts the moves. **Not read yet:** the script's GUI black screen (ME2's `BioSeqAct_BlackScreen`, ME3's
+`BioSFHandler_BlackScreen`, research/le3-conversations-in-world.md 5.4): a black that is only GUI moves nobody. Not seen in the
+game (no fixture yet: a conversation whose stage moves Shepard under a fade).
+
 ### 7.4 The handover into a GUI screen (item 3, part)
 
 ME1's research/69 item 38 rule on the sequels: `MevrSeams::WorldUiOwnsGui(mode)` (plugin/MenusLe2; ME2's `d3d_capture.cpp` and
@@ -419,12 +433,10 @@ conversation shown in the world ends). Host only; not seen in the game (a conver
    the gesture pose names per group; ME3 37 conversations seat Shepard); then `StepSeat` (the view follows his head down and up,
    no walking) on his skeleton's thresholds, which must be measured on ME2 and ME3 first (ME1's: standing head 0.70-0.82 m over his
    pawn's place, seated under 0.62).
-3. **The game's black moving the player** (ME1's `worldBlackMoves`): in a held conversation the source hook already records where
-   the stage wanted Shepard (`gC.sceneWants`); the rule would teleport the pin there under a dip (`++gCutSerial`) when that is more
-   than 1.5 m away and the game's black is up. What is missing is "the game's black" on the sequels: ME2's `BioSeqAct_BlackScreen`
-   (ME1's route, game/AuthoredMoment) and the camera fade (`Engine.Camera.FadeAmount`), ME3's three routes ending in
-   `BioSFHandler_BlackScreen` (research/le3-conversations-in-world.md 5.4). Then the floor marker's "black move" source is where
-   the black would take the player in a curated walk (the only place the player isn't moved).
+3. **The game's black moving the player**: built for the camera's fade (7.3). Missing: the script's GUI black screen on the
+   sequels (ME2's `BioSeqAct_BlackScreen`, ME1's route in game/AuthoredMoment; ME3's three routes ending in
+   `BioSFHandler_BlackScreen`, research/le3-conversations-in-world.md 5.4), and in moments. Then the floor marker's "black move"
+   source is where the black would take the player in a curated walk (the only place the player isn't moved).
 4. **Walk-along** (ME1's `StepWalkAlong`): applies when the player follows the script's Shepard with companions; under the owner's
    current answer (a) for ME2's stand-in cutscenes the view stays where the player stood, so there is nothing to walk along with on
    ME2; ME3's moments that walk Shepard's real pawn are where it applies (research/le3-conversations-in-world.md 5.5's open
