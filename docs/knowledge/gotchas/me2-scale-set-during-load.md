@@ -53,6 +53,15 @@ sequels' conversations in the world and ME2's galaxy projector flow). A conversa
 never saw it. Tests: `mevr-le2-system-settings`, `mevr-le3-system-settings` (a return to gameplay and a new level wait while the
 world isn't drawn and go once it is).
 
+**The scale set was not the whole cause on ME3** (2026-11-20 13:06 and 13:15, the gate working: `system settings: a scale set
+waits`, nothing sent during the load): the cab ride still hung while the docking officer's conversation, which the game opens around
+Save_0090's load, was held in the world by hand (`mevr convo world on`), with or without the end's turn of the pawn (`mevr convo
+endfacing off`), with no source-hook call; with the world mode off the same ride loaded in about 15 s. **Holding a conversation the
+game opened around a load stops the load that follows** (the ME3 slice at the Citadel's arrival, 2026-11-19; the cab ride twice,
+2026-11-20); the mechanism is [verify] (the held main view during the hub's own streaming after the save's load is the suspect).
+Players never reach it (such a conversation stays on the 3D screen by the load rule); `mevr convo world on` now refuses to hold one
+unless `mevr convo world on force`.
+
 **ME2 before it:**
 
 `Poll` in `src/game/SystemSettings.cpp`, `#if defined(MEVR_GAME_LE2)`: a new level's settings wait until it has been in

@@ -1151,6 +1151,8 @@ void PublishOff(conversation_world::Link const& link) {
 // `mevr convo endfacing on|off` (tests).
 ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation", ue3::kEveryGame};
 bool gEndFacing = true;
+// `mevr convo source on|off` (a test switch, the cab-ride hang's bisection, 2026-11-20): the source hooks' providers withhold nothing.
+bool gSourceOn = true;
 void FaceOnFoot(ue3::Rotator const& facing, std::uint32_t serial) {
     ue3::Object* const controller = player::Controller();
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
@@ -1210,6 +1212,12 @@ void End(conversation_world::Link const& link, char const* why) {
     gRide.units = 0.0;
     gRide.logged = false;
     log::Info("conversation world: {}", gLast);
+    {
+        engine::conversation_hooks::Stats const hooks = engine::conversation_hooks::Totals();
+        log::Info("conversation world: conversation {} ends ({}): source hooks so far placement {} calls {} withheld, move track {} calls {} "
+                  "withheld; end facing {}, source {}", gC.serial, why, hooks.placements, hooks.kept, hooks.trackMoves, hooks.trackKept,
+            gEndFacing ? "on" : "off", gSourceOn ? "on" : "off");
+    }
     if (gC.placed) view_anchor::Hold(std::nullopt);
     if (gC.placed || gC.early) gEndedShownMs = GetTickCount64();
     if (gC.placed && !gC.skipped) FaceOnFoot(gC.facing, gC.serial);
@@ -2253,8 +2261,8 @@ void Tick(conversation_world::Link const& link) {
     ue3::Object* const controller = player::Controller();
     gShepardPawn = controller != nullptr ? player::Pawn(controller) : nullptr;
     // The source hooks' questions are ours while the world mode is wanted (Mod.cpp installs the hooks then).
-    engine::conversation_hooks::SetKeepProvider(WorldWanted() ? &KeepAtSource : nullptr);
-    engine::conversation_hooks::SetMoveTrackProvider(WorldWanted() ? &OnMoveTrack : nullptr);
+    engine::conversation_hooks::SetKeepProvider(WorldWanted() && gSourceOn ? &KeepAtSource : nullptr);
+    engine::conversation_hooks::SetMoveTrackProvider(WorldWanted() && gSourceOn ? &OnMoveTrack : nullptr);
     auto const mode = controller != nullptr ? player::GameMode(controller) : std::nullopt;
     bool const conversationMode = mode && engine::adapter::IsConversationMode(*mode);
     if (mode && *mode == 0) {
@@ -2664,6 +2672,13 @@ std::string Console(std::string_view args) {
         bool const moment = !gC.on && gM.on && !gM.provisional;
         return WriteStance(tag.empty() ? "asked" : tag, moment);
     }
+    if (a.rfind("source", 0) == 0) {
+        std::string v = a.substr(6);
+        v.erase(0, v.find_first_not_of(' '));
+        if (v == "on" || v == "off") gSourceOn = v == "on";
+        return std::format("conversation world: the source hooks {} (placements and track moves {})", gSourceOn ? "answer" : "stand down",
+            gSourceOn ? "withheld as the rules say" : "never withheld: a test");
+    }
     if (a.rfind("endfacing", 0) == 0) {
         std::string v = a.substr(9);
         v.erase(0, v.find_first_not_of(' '));
@@ -2760,10 +2775,18 @@ std::string Console(std::string_view args) {
         return std::format("conversation world: {} {} hidden in a scene held in the world (a broken run: the audit's "
                            "body-not-drawn / person-not-drawn must catch it)", what == "body" ? "the player's body" : "the owner", *flag ? "is" : "is no longer");
     }
-    if (a == "on" || a == "off") {
-        gOverride = a == "on" ? 1 : 0;
-        // Asked for by hand: the conversation now (one a hot reload found mid-way, or the game opened around a load) is held too.
-        if (a == "on" && gC.on && gC.skipped) {
+    std::string refused;
+    if (a == "on" || a == "off" || a == "on force") {
+        gOverride = a == "off" ? 0 : 1;
+        // Asked for by hand: the conversation now (one a hot reload found mid-way) is held too. Never one the game opened around a
+        // load unless forced: holding it stopped the load that followed (the ME3 slice at the Citadel's arrival, 2026-11-19; the
+        // docking officer's cab ride twice on 2026-11-20; research/le2-conversations-in-world.md 10.2; the mechanism [verify]).
+        if (a != "off" && gC.on && gC.skipped && !gFootSettledAtStart && a != "on force") {
+            refused = std::format("conversation {} is not held: the game opened it around a load, and holding such a conversation stopped "
+                                  "the load after it (`mevr convo world on force` holds it anyway)\n", gC.serial);
+            log::Info("conversation world: conversation {} not held by hand: the game opened it around a load (holding it stopped the "
+                      "load after it); `mevr convo world on force` to hold it anyway", gC.serial);
+        } else if (a != "off" && gC.on && gC.skipped) {
             gC.skipped = false;
             gC.byHand = true;
             log::Info("conversation world: conversation {} held in the world on request (mevr convo world on)", gC.serial);
@@ -2773,7 +2796,7 @@ std::string Console(std::string_view args) {
     }
     RefreshSettings();
     engine::conversation_hooks::Stats const hooks = engine::conversation_hooks::Totals();
-    return std::format("conversations in the world (the sequels' module, " MEVR_GAME_NAME_A "): {} ({}); people kept {}; near plane kept {} "
+    return refused + std::format("conversations in the world (the sequels' module, " MEVR_GAME_NAME_A "): {} ({}); people kept {}; near plane kept {} "
                        "({} writes); source hooks: placement {} ({} calls, {} withheld), move track {} ({} calls, {} withheld); this "
                        "session: {} conversations with no place for the player on the 3D screen ({} by the presence rules at the "
                        "opening), moments {} held, {} without a "

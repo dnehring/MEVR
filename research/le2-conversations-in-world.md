@@ -722,6 +722,24 @@ conversation (no depth of field switch) and it finished.
 **Check:** hold the docking officer's conversation by hand, pick a ride: the ride's load finishes (`mevr state` at the
 destination, `tools/game-watch.ps1 -UntilWorld` exit 0), the log has the waits and the switch back after the load.
 
+**The scale set was not the whole cause** (the stretches `...-LE3-fpcme3c` and `-fpcme3d`, 2026-11-20 13:05-13:18, the gate
+built): with the docking officer's conversation held by hand the cab ride hung again although nothing was sent during the load
+(`system settings: a scale set waits: the world isn't drawn just now` at the conversation's end); the same with the end's turn off
+(`mevr convo endfacing off`), and the source hooks had no call at all (`placement 0 calls`). With the world mode off (`mevr convo
+world off`) the same pick loaded in about 15 s (`-fpcme3d` 13:14, `-fpcme3e` 13:22; `tools/game-watch.ps1`/the lane's watch: drawn
+on foot at the embassies). So **holding a conversation the game opened around a load stops the load that follows**: the ME3 slice
+at the Citadel's arrival (2026-11-19), the cab ride twice (2026-11-20). The mechanism is [verify] (Save_0090 loads into this
+conversation while the hub may still stream; the held main view is the suspect, as at the arrival). Players never hold such a
+conversation (the load rule leaves it on the 3D screen); `mevr convo world on` now refuses it with a line (`conversation N not held
+by hand: the game opened it around a load ...`) unless `mevr convo world on force`. Not reached: a conversation begun on foot that
+ends into a cab ride (the docking start isn't loaded at the embassies), the player's own path; the rapid transit after arrival is
+a GUI screen, not a conversation [verify].
+
+**Khalisah's interview** (`-fpcme3e`, 13:22, fired from foot 9 s after the ride): `conversation 1: no place for the player in this
+scene (everyone of the scene but Shepard is hidden: the presence rules at the opening; its people: SFXStuntActor_4 hidden; the owner
+1.8 m away, in sight): on the 3D screen (worldAutoScreen = on)`; snapshot `2026-11-20_13-22-41-001-left.png` shows the 3D screen
+(the director's shot of Shepard against a door). Before it, 0.35 s of the view on foot while the opening settled.
+
 **Unexplained (2026-11-20 11:44:11):** the next stretch's game (`20261120-114240-*-LE3-fpcme3b`, Save_0090 loaded into the
 docking officer's wheel on the 3D screen, mode 7) vanished while `load.ps1` polled it: both logs stop mid-stream, no crash report,
 nothing in Windows' Application log, SteamVR's `vrserver.txt` only "exited after 58.87 seconds"; nothing of the coordinator's
