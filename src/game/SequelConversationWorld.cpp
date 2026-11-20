@@ -1558,11 +1558,16 @@ std::string ShortName(ue3::Object const* o) {
     return o != nullptr ? ue3::runtime::Get().NameText(o) : std::string("none");
 }
 
+// The squad as it stood with the player on foot (game/SequelCircle.inc): ME2's roster is read from the player's pawn on foot only
+// and is empty in a conversation, so a squadmate's name and part come from it there.
+std::string const* FootSquadName(ue3::Object const* actor);
+
 std::string DisplayName(ue3::Object* actor, ue3::Object* pawn) {
     if (actor != nullptr && actor == pawn) return "Shepard";
     for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
         if (m.pawn == actor && !m.name.empty()) return m.name;
     }
+    if (std::string const* name = FootSquadName(actor); name != nullptr && !name->empty()) return *name;
     return ShortName(actor);
 }
 
@@ -1570,7 +1575,7 @@ bool IsSquad(ue3::Object* actor) {
     for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
         if (m.pawn == actor) return true;
     }
-    return false;
+    return actor != nullptr && FootSquadName(actor) != nullptr;
 }
 
 // The conversational circle and the squad's formation (ME1's worldCircle and worldSquadGather).

@@ -229,6 +229,7 @@ unsigned OverlayLayers(const OverlayFrame& frame, const void** layersOut, unsign
                 panel.screenPart[0] = panel.screenPart[1] = 0.0f;
                 panel.screenPart[2] = panel.screenPart[3] = 1.0f;
                 panel.screenForwardM = 0.0f;
+                panel.screenMasks = true;  // the subtitle's and the wheel's bands below
                 mevr::host::conversation_ui::Frame ui;
                 ui.session = session;
                 ui.appSpace = appSpace;

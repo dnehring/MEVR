@@ -168,6 +168,7 @@ struct CircleScene {
     std::vector<int> out;           // ids that stay out (too far, can't walk)
     std::vector<CircleWalker> walkers;
     bool squadDone = false;
+    bool putBackDone = false;
     unsigned joined = 0, walked = 0, early = 0, still = 0, tooFar = 0, arrived = 0, stalled = 0, refused = 0;
     unsigned squadWalked = 0, squadPlaced = 0, squadPutBack = 0, squadStayed = 0;
 };
@@ -178,9 +179,17 @@ struct FootSquadmate {
     ue3::Object* pawn = nullptr;
     ue3::Vector at{};
     ue3::Rotator rotation{};
+    std::string name;
 };
 std::vector<FootSquadmate> gFootSquad;
 std::uint64_t gFootSquadMs = 0;
+
+std::string const* FootSquadName(ue3::Object const* actor) {
+    for (FootSquadmate const& m : gFootSquad) {
+        if (m.pawn == actor && ue3::runtime::IsAlive(m.pawn)) return &m.name;
+    }
+    return nullptr;
+}
 
 int CircleId(ue3::Object* actor) {
     auto const it = std::find(gCircle.ids.begin(), gCircle.ids.end(), actor);
@@ -241,7 +250,7 @@ bool CanCircleWalk(ue3::Object* actor, std::string& why) {
         why = std::format("seated (its head {:.2f} m above its place)", (head->at.z - at->z) / 100.0);
         return false;
     }
-    if (TrackMovedLately(actor, 1000)) {
+    if (TrackMovedLately(actor, 300)) {  // (a cutscene just before the conversation moved everyone a moment ago: not now)
         why = "a matinee's track moves it (an authored walk)";
         return false;
     }
@@ -347,12 +356,14 @@ void StepWalkers(std::uint64_t now) {
 // ---- The squad --------------------------------------------------------------------------------------------------------------------
 // On foot (mode 0): where each squadmate stands.
 void CircleNoteFoot() {
+    std::vector<squad_weapons::MemberView> const members = squad_weapons::Members();
+    if (members.empty()) return;  // (the roster not read yet this level: the last one stands)
     gFootSquad.clear();
-    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+    for (squad_weapons::MemberView const& m : members) {
         if (m.pawn == nullptr || !ue3::runtime::IsAlive(m.pawn)) continue;
         auto const at = player::Location(m.pawn);
         auto const rot = player::Rotation(m.pawn);
-        if (at && rot) gFootSquad.push_back({m.pawn, *at, *rot});
+        if (at && rot) gFootSquad.push_back({m.pawn, *at, *rot, m.name});
     }
     gFootSquadMs = GetTickCount64();
 }
@@ -363,7 +374,7 @@ void PutBackSquad(ue3::Object* pawn, ue3::Object* owner) {
     if (gC.opening == cw::Opening::Cut || gFootSquadMs == 0 || gC.startMs < gFootSquadMs || gC.startMs - gFootSquadMs > 5000) return;
     for (FootSquadmate const& m : gFootSquad) {
         if (m.pawn == pawn || m.pawn == owner || !ue3::runtime::IsAlive(m.pawn) || gActorHiddenRead.ReadBool(m.pawn).value_or(false) ||
-            TrackMovedLately(m.pawn, 1000)) {
+            TrackMovedLately(m.pawn, 300)) {
             continue;
         }
         auto const now = player::Location(m.pawn);
@@ -386,18 +397,24 @@ void PutBackSquad(ue3::Object* pawn, ue3::Object* owner) {
 // ME1's GatherSquad: once a conversation, after its opening, each squadmate walks to its own side of a relaxed formation beside the
 // player, facing the owner; under a Cut's dip it is put there at once.
 void GatherSquad(ue3::Object* pawn, ue3::Object* conversation, cw::Vec3 const& player, std::uint64_t now) {
-    if (gCircle.squadDone || !SquadWanted()) return;
+    // A second after the opening (ME1's: once the opening is done): a cutscene's tracks just before have let go of the squad.
+    if (gCircle.squadDone || !SquadWanted() || now < gC.placedMs + 1000) return;
     gCircle.squadDone = true;
     ue3::Object* const owner = gOwner.Read<ue3::Object*>(conversation).value_or(nullptr);
-    PutBackSquad(pawn, owner);
+    // The squad as the roster has it, else as it stood with the player on foot (ME2's roster is empty in a conversation).
+    std::vector<ue3::Object*> squad;
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) squad.push_back(m.pawn);
+    if (squad.empty()) {
+        for (FootSquadmate const& m : gFootSquad) squad.push_back(m.pawn);
+    }
     std::vector<ue3::Object*> members;
-    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
-        if (m.pawn == nullptr || m.pawn == pawn || m.pawn == owner || !ue3::runtime::IsAlive(m.pawn) ||
-            gActorHiddenRead.ReadBool(m.pawn).value_or(false)) {
+    for (ue3::Object* const m : squad) {
+        if (m == nullptr || m == pawn || m == owner || !ue3::runtime::IsAlive(m) || gActorHiddenRead.ReadBool(m).value_or(false)) {
             continue;
         }
-        members.push_back(m.pawn);
+        members.push_back(m);
     }
+    if (members.empty()) log::Info("conversation world: squad: no squadmate with the player: no formation");
     if (members.empty()) return;
     auto const ownerAt = owner != nullptr && owner != pawn && ue3::runtime::IsAlive(owner) ? player::Location(owner) : std::nullopt;
     engine::Basis const ahead = engine::ToBasis(engine::UnrealRotation{0, gC.facing.yaw, 0});
@@ -480,6 +497,10 @@ void StepCircle(ue3::Object* controller, ue3::Object* pawn, std::uint64_t now) {
     ue3::Vector const eyes = gDrawnEyes ? ue3::Vector{static_cast<float>(gDrawnEyes->x), static_cast<float>(gDrawnEyes->y), gC.pin.z}
                                         : ue3::Vector{gC.held.x, gC.held.y, gC.pin.z};
     cw::Vec3 const player{eyes.x, eyes.y, eyes.z};  // the player: the drawn eyes (ME1's PlayerEyes), at the feet's height
+    if (!gCircle.putBackDone && SquadWanted()) {
+        gCircle.putBackDone = true;  // at the opening, before the formation: nothing of the start's places stays drawn
+        PutBackSquad(pawn, gOwner.Read<ue3::Object*>(conversation).value_or(nullptr));
+    }
     GatherSquad(pawn, conversation, player, now);
     StepWalkers(now);
     if (!CircleWanted()) return;

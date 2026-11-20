@@ -173,6 +173,9 @@ struct Frame {
     XrExtent2Df screenSize{0.0f, 0.0f};
     float screenPart[4] = {0.0f, 0.0f, 1.0f, 1.0f};
     float screenForwardM = 0.0f;  // for the log: how far in front of the screen
+    // A screen's UI that is masked all the same: a conversation held in the world, whose subtitle and wheel are cut out onto
+    // quads of their own (plugin/ConversationUi) while the rest of the movie stays on the panel fixed in the room.
+    bool screenMasks = false;
 };
 // Shows the panel for this frame (its quad, or nullptr), clears it and arms the next frame's UI redirect: exactly
 // LE1's HalcyonOverlays for a frame with no wheel, label, world screen or cinema screen (its HUD pieces' masks given).

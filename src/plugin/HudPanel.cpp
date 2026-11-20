@@ -1072,7 +1072,7 @@ XrCompositionLayerQuad const* Layer(Frame const& frame) noexcept {
         BlitOptions options;
         options.colourSeed = 2;  // the HUD panel's dither pattern, as LE1's
         options.backdrop = frame.backdrop;  // a game screen standing in the world (LE1's BlitOptionsFor)
-        if (Render(frame.context, frame.device, frame.session, frame.whiteScale, frame.screenUi ? Masks{} : frame.masks, options)) {
+        if (Render(frame.context, frame.device, frame.session, frame.whiteScale, frame.screenUi && !frame.screenMasks ? Masks{} : frame.masks, options)) {
             float const width = std::clamp(frame.widthM, 0.3f, 4.0f);
             gQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
             gQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;  // premultiplied
