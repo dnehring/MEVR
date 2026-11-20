@@ -127,6 +127,27 @@ John_12_Soldier_190924_4ee650d\Save_0036.pcsav`: the older career on the Normand
 6. Not seen: the body (the eyes faced a wall), the wheel's picture, Tali's meeting (the VR career's autosave is after it; Save
    4 at the spaceport is before it, a mission's walk and fight away), the Miranda scene.
 
+### 3.2 Tali's reintroduction (fake headset, 2026-11-20 00:02-00:09)
+
+The owner's walking-scene check ("I meant tali on freedoms progress"). Stretch `20261120-000003-113-LE2-fpc-tali`, how it was
+reached (script only, no save written): `load.ps1 -Save VR_31_Soldier_141126_336072f\Save_0004.pcsav` (the spaceport, same
+mission), `god`, `mevr instances SFXGame.SFXPawn_PlayerSoldier` and `mevr setloc 0 -9600 16600 -12060` (8.5 m north of
+`SFXDoor_5`: the level streamed `BioD_ProFre_201Tali` in and Shepard landed on its floor), then
+`conversation-world.ps1 -Start fire:SFXGame.BioSeqAct_CancelHint:Tali_Conversation` (the first action after the door's
+"Opened" event: the level's own chain runs from there, the cutscene, the plot transitions, the three teleports, the start).
+
+1. First run (`convo-tali-*`): the cutscene played in mode 6 on the 3D screen, then the conversation began (mode 5) and the
+   module **left it on the 3D screen as if a load had opened it** (the slice's rule: "not 3 s on foot just before"; the cutscene
+   lasted 13 s). Held by hand (`mevr convo world on`), the snapshot `2026-11-20_00-05-27-140-left.png` shows the scene in first
+   person in stereo: Tali an arm's length in front, Prazza with his rifle, two quarians behind, the room around (the near plane
+   kept: 852 writes).
+2. Fixed (`gOnlyScenesSinceFoot`: only the cinematic and conversation modes since the last stretch on foot is no load) and run
+   again (`convo-tali2-000752`): `[VRSTATE] gm 6 -> 3D screen (MEVR)` for the cutscene, then `gm 5 -> VR` at once (no 3D-screen
+   frame at the conversation's start: the early hold), the opening a cut to Shepard's mark ("where he stood isn't known" after
+   the cutscene), the letterbox cleared, the director's 100-unit near plane replaced.
+3. Not yet: the cutscene itself in first person (the owner's answer 2: ME1's moment rule for ME2's 214 level cutscenes that walk
+   Shepard: not built), the body and the wheel's picture in a snapshot (the eyes looked level at Tali), the circle, the looks.
+
 ## 4. What is left, in order (each item for ME2 and ME3 alike; say what a game lacks)
 
 **The owner's answers (2026-11-19, research/le3-conversations-in-world.md section 9: all (a), every game) set the order's

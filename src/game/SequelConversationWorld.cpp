@@ -130,6 +130,10 @@ Foot gFoot;
 std::uint64_t gOnFootSinceMs = 0;  // 0: not on foot now
 std::uint64_t gLastFootRunMs = 0;  // how long the last stretch on foot lasted (kept when it ends)
 bool gFootSettledAtStart = false;
+// Only the game's cinematic and conversation modes since the last stretch on foot (no load, no movie between): a conversation
+// after a level's cutscene is not one opened around a load (Tali's reintroduction on Freedom's Progress, 2026-11-20: its
+// conversation follows a 13 s cutscene and was left on the 3D screen as if a load had opened it).
+bool gOnlyScenesSinceFoot = false;
 bool gDofBackOwed = false;
 
 // The session's override from the console: -1 the file's, 0 off, 1 on.
@@ -580,6 +584,7 @@ void Tick(conversation_world::Link const& link) {
         }
         if (gOnFootSinceMs == 0) gOnFootSinceMs = GetTickCount64();
         gLastFootRunMs = GetTickCount64() - gOnFootSinceMs;
+        gOnlyScenesSinceFoot = true;
         ue3::Object* const camera = player::Camera(controller);
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         if (pov && pov->location != nullptr && pov->rotation != nullptr && pov->fov != nullptr) {
@@ -587,6 +592,12 @@ void Tick(conversation_world::Link const& link) {
         }
     } else {
         gOnFootSinceMs = 0;
+        if (mode) {
+            auto const context = engine::adapter::GameMode(*mode);
+            if (context != engine::adapter::Mode::Cinematic && context != engine::adapter::Mode::Conversation) gOnlyScenesSinceFoot = false;
+        } else {
+            gOnlyScenesSinceFoot = false;
+        }
     }
     if (gDofBackOwed && gOnFootSinceMs != 0 && GetTickCount64() - gOnFootSinceMs >= 3000) {
         gDofBackOwed = false;
@@ -608,7 +619,7 @@ void Tick(conversation_world::Link const& link) {
     std::uint64_t const now = GetTickCount64();
     if (!gC.on || conversation != gC.controller) {
         End(link, "another conversation began");
-        gFootSettledAtStart = gLastFootRunMs >= 3000 && gFoot.valid && GetTickCount64() - gFoot.ms < 2000;
+        gFootSettledAtStart = gLastFootRunMs >= 3000 && gFoot.valid && (GetTickCount64() - gFoot.ms < 2000 || gOnlyScenesSinceFoot);
         gC.on = true;
         gC.serial = ++gSerial;
         gC.controller = conversation;
