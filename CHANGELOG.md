@@ -15,6 +15,12 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **First-person conversations on Mass Effect 2 and 3 (experimental): more of Mass Effect 1's rules.** People who look at
+  Shepard look at your eyes when you step or lean away from where his body stands; your view sits down with Shepard when a
+  scene seats him and the stick doesn't walk then; a cutscene that walks Shepard with someone beside him waits for you if you
+  fall behind; on Mass Effect 3 your eyes start a conversation where they were on foot (not 30 cm lower), and the hub's
+  characters count as the scene's people. A small ring on the floor shows where the game's fade to black wanted Shepard when
+  you are not moved there.
 - **People leave first-person conversations on Mass Effect 2 too (experimental; Mass Effect 3's is built, not yet tried).**
   The same rule as Mass Effect 1's below: in the first-person conversation mode, someone the game takes away at a scene's end
   while you can see them (Tali and her people after you meet her on Freedom's Progress) walks away with the game's own walk

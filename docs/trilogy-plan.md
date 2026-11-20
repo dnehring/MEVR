@@ -1035,9 +1035,18 @@ These unblock the most: almost every other entry gets smaller once they land.
   GUI screen (`MevrSeams::ConversationHandover` in `WorldUiOwnsGui`); ME3's console fixtures (`mevr instances`, `activate`,
   `setloc`). Seen on ME2 (Tali's, Samara's) and ME3 (the docking officer): the eyes and their height; the presence table misses
   ME3's comm calls whose player VO track names `Player` (the docking officer stayed on the screen by the load rule).
-- **Left:** section 7's "not done" there: looks at the player's eyes, the circle and the squad's formation (`game/AiWalk`), the
-  subtitle and wheel placement, walk-along, the script's GUI black screen, seats on the sequels, the floor marker's
-  "waits" and "black move" sources, ME3's video calls in the presence table. Each item on ME2 and ME3 alike.
+- **Done since (lane FPC4, 2026-11-20, section 9 there):** ME1's records from above on both sequels (`mevr convo stance[s]`,
+  judged by `tools/scene_audit.py` unchanged: person-not-drawn, body-not-drawn and the rest; the canary `mevr convo hide
+  body|person`); ME1's eyes stand-in (`worldLookEyes`: ME2 `BioPawn.SetLookAtTarget`, ME3 `SFXModule_LookAt.ChangeTarget`; seen
+  on ME3); ME1's `StepSeat` (core `cw::StepSeat`) and walk-along (`worldWalkAlong`) in the sequels' conversations and moments;
+  the floor marker's black-move source; ME3 in the game (the embassies): its hub characters are SFXStuntActors, now the scene's
+  people; the eyes on foot taken where the renderer draws them (ME3's 32 units above the game's camera), ME3's eye offset
+  learned 31-33 forward, 10 up; why `mevr thespian pick` was refused (no input focus on the fake headset) and `mevr convo pick`.
+- **Left:** the circle and the squad's formation (`game/AiWalk`; ME3's hub people are stunt actors with no AI controller), the
+  subtitle and wheel placement, the script's GUI black screen, the floor marker's "waits" source (and ME1's black-move source),
+  ME3's video calls and off-screen speakers (Khalisah's at the embassies) in the presence rules, the seats and walk-along seen in
+  the game, ME3's walking conversation, Joker seated and a level cutscene, the face axis on ME2's and ME3's skeletons. Each item
+  on ME2 and ME3 alike.
 - **Closes when:** an ordinary conversation, Tali's meeting and the Miranda scene play in first person on the fake headset
   with the body drawn, the eyes at the player's height and a clean return to gameplay, and the 3D screen unchanged with the
   option off (snapshots and stances under `%LOCALAPPDATA%\MEVR\sessions`); then the owner's headset pass.
