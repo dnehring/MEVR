@@ -528,6 +528,10 @@ void ApplyMevrBaseline() noexcept
     if (note(ME2VR::CalcViewHook::GetCineVrConvo(), "conversations in VR (CineVrConvo)")) ME2VR::CalcViewHook::SetCineVrConvo(false);
     if (note(ME2VR::CalcViewHook::GetCineVrCutscene(), "cutscenes in VR (CineVrCutscene)"))
         ME2VR::CalcViewHook::SetCineVrCutscene(false);
+    // One first-person conversation for the trilogy, ME1's (the mod's, through MevrSeams::ConversationInWorld; the owner,
+    // 2026-11-19, after trying it: upstream's own is not the one), so upstream's experimental ConvoFirstPerson stays off.
+    if (note(ME2VR::ConvoFp::GetEnabled(), "upstream's first-person conversations (ConvoFirstPerson)"))
+        ME2VR::ConvoFp::SetEnabled(false);
     if (note(g_profileHotkeys, "profile hotkeys (ProfileHotkeys)")) g_profileHotkeys = false;
     if (note(g_recenterKey == 'R', "the recenter key R (RecenterKey)")) g_recenterKey = 0;  // rcKey != 0 gates it
     // The menu key is ME1's \ (it opens our main menu, Ctrl or Shift + \ this one), not upstream's Insert; a key the

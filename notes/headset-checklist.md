@@ -126,6 +126,15 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
 
 ## 1. Newest (2026-11-03 to 11-05)
 
+### ME3 Miranda's re-rigged hair, body and look (session: hair-miranda, built 2026-11-19; tools/rig/README.md)
+- [ ] With `MEVR_Miranda.pcc` installed (`tools/rig/install.ps1 -Game LE3`), at her Citadel apartment: her hair at rest
+  looks like the game's (no stray cards, the side locks forward to the jaw), and bends and swings as she or the head moves
+  (`[Hair] followBody` 0.7: how much the ends rest on the shoulders; stiffness and damping as before).
+- [ ] The breasts and glutes at `jiggleIntensity` 0.5 (+-1 cm on a jump): visible at conversation distance, and natural?
+  `mevr hair jiggle 0.75|1|off` for a quick A/B.
+- [ ] Her warm blond highlight (`kMirandaLook`) in two lights (the apartment's window, a warm interior): right strength?
+  `mevr hair param <name> <value>` live; the pick goes into `[Hair] look` or the table.
+
 ### Floor lock (session: floor-lock, built 2026-11-07; research/58 section 6 and research/30 section 8)
 - [ ] After a separately authorized host+mod v34 deployment, PS VR2 standing eye 1.84-1.85 m: recenter standing and bent,
   explore/draw/holster/ADS, idle for a minute, stairs and slopes. `floor lock:` final eye height should equal live STAGE

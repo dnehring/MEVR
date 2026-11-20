@@ -496,4 +496,43 @@ inline std::optional<AllocatorGlobals> AllocatorGlobalsForGame() {
 #endif
 }
 
+// Meshes with a rigged stand-in the hair stage puts on instead (game/Hair, docs/trilogy-hair-plan.md section 4.5; the owner,
+// 2026-11-19: ME3's older Miranda hair is acceptable). Object paths without the class, compared case-insensitively. Entries
+// for one mesh are tried in order: the first that loads is worn (tools/rig's package before the game's own fallback). A
+// package of ours imports the original's materials, which are loaded while the original is worn; `needs` is loaded first
+// when they come from another mesh's package (tools/rig/README.md "The package").
+struct HairStandIn {
+    char const* used;            // the mesh the game puts on
+    char const* rigged;          // a mesh of the same look with the bones we drive (hair chains, soft tissue)
+    char const* needs = nullptr; // loaded before `rigged` (its materials' package)
+    char const* look = nullptr;  // its material's look (game/HairLook: "Name=value; Name=r,g,b"), unless [Hair] look says
+};
+#if defined(MEVR_GAME_LE3)
+// research/trilogy-hair.md: the shipped hair mesh is weighted to the head and neck only; the unused _Old mesh has 13 hair
+// bones; tools/rig/plans/le3-miranda-*.jsonc add hair chains and soft-tissue bones (MEVR_Miranda.pcc, built on the player's
+// machine from their own game files).
+// A dark purple sheen (the owner, 2026-11-19, after the blond: "something like dark purple, it's a little too obvious right
+// now"): both lobes tighter than the game's broad 50, tinted purple, at about the game's own strength.
+inline constexpr char kMirandaLook[] =
+    "Highlight2Color=0.34,0.16,0.44; Highlight1Color=0.13,0.07,0.17; Hightlight1Intensity=1.2; Hightlight2Intensity=1.6; "
+    "Highlight2SpecExp_Scalar=200; Highlight1SpecExp_Scalar=90";
+inline constexpr HairStandIn kHairStandIns[] = {
+    {"BIOG_HMF_ARM_MIR_R.MIRa.HMF_ARM_MIRa_MDL", "MEVR_Miranda.HMF_ARM_MIRa_MEVR"},
+    // Her look: kMirandaLook (research/trilogy-hair.md "Her look"; first a warm blond, then the owner's dark purple).
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR",
+     "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", kMirandaLook},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR", nullptr, kMirandaLook},
+};
+#elif defined(MEVR_GAME_LE2)
+// ME2's Miranda (tools/rig/plans/le2-miranda.jsonc): her hair has no hair bones at all; the rigged one has 7 generated
+// chains, her body the same chain bones and the soft-tissue bones.
+inline constexpr HairStandIn kHairStandIns[] = {
+    {"BIOG_HMF_MIR_LGT_R.LGTa.HMF_MIR_LGTa_MDL", "MEVR_Miranda.HMF_MIR_LGTa_MEVR"},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_MIR_MDL", "MEVR_Miranda.HMF_HIR_MIR_MEVR"},
+};
+#else
+inline constexpr HairStandIn kHairStandIns[] = {{nullptr, nullptr}};
+#endif
+
 } // namespace mevr::engine::adapter

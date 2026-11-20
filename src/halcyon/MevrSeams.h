@@ -414,6 +414,11 @@ bool GalaxyOwnsPresentation(int mode) noexcept;
 // for the screen, e.g. both hands on the War Terminal, which put his arm and shoulder in front of the held eyes: the renderer
 // hides his body as well as his head). Not called by LE1 nor LE2 yet.
 int WorldViewHeld(int mode) noexcept;
+// Any thread: the mod shows the current conversation in the world, first person (ME1's research/59 and 69; on ME3 the slice of
+// T49 the owner asked for 2026-11-19: vr::conversation_world::State fresh with holdRender): no cinematic presentation, the view
+// held at the player's place by WorldViewHoldBegin, Shepard's head hidden (WorldViewHeld 1). ME3's me2_xr.cpp cinematic
+// decision. LE1's is MevrBridge::ConversationInWorld.
+bool ConversationInWorld() noexcept;
 // Present thread, each frame the renderer decides its first-person hides in gameplay (ME3's engine_probe.cpp): true while
 // Shepard's body and head are hidden from the eyes for one of the game's own actions, whatever the first-person state says:
 // a roll (the owner, 2026-11-18, "Yes for now"; vr::HidesBodyForAction: SFXCameraMode_Roll, or a blend into or out of it).

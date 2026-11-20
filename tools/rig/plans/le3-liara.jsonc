@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// ME3's Liara (tools/rig/README.md): the asari body of her Normandy romance scene (ASA_ARM_LIAd_MDL, the human female skeleton)
+// with breast and glute bones for the jiggle (research/trilogy-jiggle.md), to judge the soft tissue on another anatomy than
+// Miranda's (the owner, 2026-11-19). Asari have no hair: the jiggle runs on the body (game/Hair: a hairless person whose body
+// has soft-tissue bones). Put on by hand: `mevr hair body liara MEVR_Liara.ASA_ARM_LIAd_MEVR`. One package, MEVR_Liara.pcc,
+// built on the player's machine from their own game files. Mesh space: +X forward, +Y her right, +Z up, game units (cm).
+// {LE3} is the game's ME3 BioGame folder, {MEVR} %LOCALAPPDATA%\MEVR.
+{
+  "out": "{MEVR}/rig/LE3/MEVR_Liara.pcc",
+  "steps": [
+    {
+      "id": "body",
+      // Placed from its surface (`mevr-rig inspect --dump`, 2026-11-19): breasts peak at x 14.1 around z 134, y +-7.9 (the
+      // cleavage x 11.3); the back peaks at x -14.6 around z 98, y +-6.4. Its materials aren't loaded outside the romance
+      // scene: copied.
+      "source": "{LE3}/CookedPCConsole/BioD_Nor_130RomLiara.pcc",
+      "mesh": "ASA_ARM_LIAd_MDL",
+      "name": "ASA_ARM_LIAd_MEVR",
+      "materials": "copy",
+      "bones": [
+        { "name": "BreastLeft", "parent": "Chest2", "at": [6.5, -7.5, 133.5], "yaw": 0 },
+        { "name": "BreastRight", "parent": "Chest2", "at": [6.5, 7.5, 133.5], "yaw": 0 },
+        { "name": "GluteLeft", "parent": "Pelvis", "at": [-7.0, -6.5, 97.5], "yaw": 180 },
+        { "name": "GluteRight", "parent": "Pelvis", "at": [-7.0, 6.5, 97.5], "yaw": 180 }
+      ],
+      "regions": [
+        { "bone": "BreastLeft", "center": [10.5, -7.5, 134.0], "radius": [6.5, 7.0, 8.0], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "BreastRight", "center": [10.5, 7.5, 134.0], "radius": [6.5, 7.0, 8.0], "weight": 0.9, "inner": 0.3, "from": ["Chest", "Chest1", "Chest2"] },
+        { "bone": "GluteLeft", "center": [-10.0, -6.4, 97.5], "radius": [7.0, 7.5, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] },
+        { "bone": "GluteRight", "center": [-10.0, 6.4, 97.5], "radius": [7.0, 7.5, 10.0], "weight": 0.85, "inner": 0.3, "from": ["Pelvis", "LowerBack", "Root"] }
+      ]
+    }
+  ]
+}

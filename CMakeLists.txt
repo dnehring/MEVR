@@ -361,6 +361,13 @@ set(MEVR_MOD_SOURCES
     src/core/ik/GoalStep.hpp
     src/core/ik/HandContact.cpp
     src/core/ik/HandContact.hpp
+    src/core/ik/Clip.cpp
+    src/core/ik/BodySpheres.cpp
+    src/core/ik/Clip.hpp
+    src/core/ik/HairChain.cpp
+    src/core/ik/HairChain.hpp
+    src/core/ik/Jiggle.cpp
+    src/core/ik/Jiggle.hpp
     src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
     src/core/ik/GunKick.hpp
@@ -473,6 +480,10 @@ set(MEVR_MOD_SOURCES
     src/core/xr/Session.hpp
     src/engine/BonePose.cpp
     src/engine/BonePose.hpp
+    src/engine/ClipPose.cpp
+    src/engine/ClipPose.hpp
+    src/engine/HairPose.cpp
+    src/engine/HairPose.hpp
     src/engine/CallFunction.cpp
     src/engine/CallFunction.hpp
     src/engine/CodeDump.cpp
@@ -569,6 +580,12 @@ set(MEVR_MOD_SOURCES
     src/game/Melee.cpp
     src/game/GunKick.cpp
     src/game/GunKick.hpp
+    src/game/AnimDriver.cpp
+    src/game/AnimDriver.hpp
+    src/game/Hair.cpp
+    src/game/Hair.hpp
+    src/game/HairLook.cpp
+    src/game/HairLook.hpp
     src/game/HandContact.cpp
     src/game/HandContact.hpp
     src/game/HandAim.cpp
@@ -635,6 +652,8 @@ set(MEVR_MOD_SOURCES
     src/game/WorldUi.hpp
     src/game/ConversationWorld.cpp
     src/game/ConversationWorld.hpp
+    src/game/SequelConversationWorld.cpp
+    src/game/SequelConversationWorld.hpp
     src/game/ConversationFlow.cpp
     src/game/ConversationFlow.hpp
     src/game/SoundPlace.cpp
@@ -1053,6 +1072,9 @@ function(mevr_add_plugin game)
     endif ()
     if (game STREQUAL "LE2")
         list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/GalaxyProjectorFlow's status (the sequels' galaxy flow)
+    endif ()
+    if (game STREQUAL "LE1")
+        list(APPEND mod_sources src/core/Json.cpp src/core/Json.hpp)  # game/AnimDriver's generated clips (tools/motion)
     endif ()
     if (game STREQUAL "LE2" OR game STREQUAL "LE3")
         list(APPEND mod_sources src/core/vr/GalaxyRay.cpp src/core/vr/GalaxyRay.hpp)  # game/GalaxyRay: the map picked by a ray
@@ -1536,6 +1558,10 @@ if (MEVR_BUILD_TESTS)
         tests/TraversalTests.cpp
         tests/GoalStepTests.cpp
         tests/HandContactTests.cpp
+        tests/ClipTests.cpp
+        tests/BodySpheresTests.cpp
+    tests/HairChainTests.cpp
+    tests/JiggleTests.cpp
         tests/GameMenuBackOutTests.cpp
         tests/GameMenuLeaveTests.cpp
         tests/TraversalPresentationTests.cpp
@@ -1569,6 +1595,10 @@ if (MEVR_BUILD_TESTS)
         src/core/ik/Fingers.cpp
         src/core/ik/GoalStep.cpp
         src/core/ik/HandContact.cpp
+        src/core/ik/Clip.cpp
+        src/core/ik/BodySpheres.cpp
+        src/core/ik/HairChain.cpp
+        src/core/ik/Jiggle.cpp
         src/core/ik/Melee.cpp
     src/core/ik/GunKick.cpp
         src/core/ik/Ik.cpp
@@ -2062,6 +2092,24 @@ if (MEVR_BUILD_TESTS)
     target_include_directories(mevr-thespian-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(mevr-thespian-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(mevr-thespian-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
+
+    # The hair simulation over a generated clip, offline (tools/hair-bench, tools/motion/README.md): parameter sweeps.
+    add_executable(mevr-hair-bench
+        tools/hair-bench/Main.cpp
+        src/core/Json.cpp
+        src/core/ik/Clip.cpp
+        src/core/ik/BodySpheres.cpp
+        src/core/ik/HairChain.cpp
+        src/core/ik/HandContact.cpp
+        src/core/ik/Rigid.cpp
+        src/core/ik/TwoHand.cpp
+        src/core/ik/Ik.cpp
+        src/core/ik/BoneNames.cpp
+        src/core/ik/Jiggle.cpp
+    )
+    target_include_directories(mevr-hair-bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(mevr-hair-bench PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(mevr-hair-bench PRIVATE /W4 /WX /permissive- /utf-8 /Zc:__cplusplus)
 
     # Every program ctest runs, as one target: CI (.github/workflows) and tools/package-release.ps1 build it before ctest.
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.

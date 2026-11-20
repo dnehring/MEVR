@@ -5,6 +5,7 @@
 #include "game/CameraShake.hpp"
 #include "game/BodyProbe.hpp"
 #include "game/ConversationWorld.hpp"
+#include "game/SequelConversationWorld.hpp"
 #include "game/ConversationFlow.hpp"
 #include "game/AuthoredMoment.hpp"
 
@@ -33,6 +34,8 @@
 #include "game/GalaxyMap.hpp"
 #include "game/GameMenuRequest.hpp"
 #include "game/GunKick.hpp"
+#include "game/AnimDriver.hpp"
+#include "game/Hair.hpp"
 #include "game/HandContact.hpp"
 #include "game/CombatStance.hpp"
 #include "game/Holsters.hpp"
@@ -1058,6 +1061,11 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::string rest;
         std::getline(words, rest);
         std::string const trimmed = rest.substr(rest.find_first_not_of(' ') == std::string::npos ? rest.size() : rest.find_first_not_of(' '));
+#if defined(MEVR_GAME_LE3)
+        if (trimmed.rfind("world", 0) == 0) {
+            return sequel_conversation_world::Console(trimmed.substr(5));  // `mevr convo world [on|off|auto]`: ME3's slice (T49)
+        }
+#endif
         if (trimmed.rfind("flow", 0) == 0) {
             return conversation_flow::Command(trimmed.size() > 4 ? trimmed.substr(4) : std::string());  // `mevr convo flow [list|rescan|restore]`
         }
@@ -1600,6 +1608,16 @@ std::optional<std::string> RunOurs(ue3::Object* pc, std::string const& line) {
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
+    if (verb == "anim") {
+        std::string rest;
+        std::getline(words, rest);
+        return anim_driver::Command(rest);  // `mevr anim list|play|at|pause|resume|stop|status` (game/AnimDriver)
+    }
+    if (verb == "hair") {
+        std::string rest;
+        std::getline(words, rest);
+        return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
+    }
     if (verb == "armik") {
         std::string rest;
         std::getline(words, rest);
@@ -1934,6 +1952,25 @@ std::optional<std::string> RunOursLe3(ue3::Object* pc, std::string const& line) 
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
     }
+    if (verb == "anim") {
+        std::string rest;
+        std::getline(words, rest);
+        return anim_driver::Command(rest);  // `mevr anim list|play|at|pause|resume|stop|status` (game/AnimDriver)
+    }
+    if (verb == "hair") {
+        std::string rest;
+        std::getline(words, rest);
+        return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
+    }
+#if defined(MEVR_GAME_LE3)
+    if (verb == "convo") {
+        std::string rest;
+        std::getline(words, rest);
+        rest.erase(0, rest.find_first_not_of(' '));
+        if (rest.rfind("world", 0) == 0) rest = rest.substr(5);
+        return sequel_conversation_world::Console(rest);  // `mevr convo [world] [on|off|auto]`: ME3's slice of T49
+    }
+#endif
     if (verb == "load") return LoadSave(ue3::runtime::GameEngine(), words);
     if (verb == "savedesc") return CurrentSave(ue3::runtime::GameEngine());
     if (verb == "state") return State(pc);
@@ -2147,6 +2184,16 @@ std::optional<std::string> RunOursLe2(ue3::Object* pc, std::string const& line) 
         std::string rest;
         std::getline(words, rest);
         return hand_contact::Command(rest);  // `mevr contact [on|off|auto|people]` (research/73, hand contact)
+    }
+    if (verb == "anim") {
+        std::string rest;
+        std::getline(words, rest);
+        return anim_driver::Command(rest);  // `mevr anim list|play|at|pause|resume|stop|status` (game/AnimDriver)
+    }
+    if (verb == "hair") {
+        std::string rest;
+        std::getline(words, rest);
+        return hair::Command(rest);  // `mevr hair [on|off|auto | people | trace <s> | mesh <n> <path> | standins on|off]`
     }
     if (verb == "armik") {
         std::string rest;

@@ -265,6 +265,15 @@ switching frameworks.
   date and the new wording there.** New ones follow `docs/knowledge/how-to-write.md`; `python tools/check-okf.py
   docs/knowledge` (ctest `mevr-okf`) checks the bundle.
 - `reference/`: read-only third-party clones (gitignored). Recreate with `tools/fetch-references.ps1`.
+- `tools/motion/`: our generated animation (since 2026-11-19, the owner: author and maintain the flow): NVIDIA ARDY text-to-motion
+  from the owner's game-asset-pipeline (`I:\game-asset-pipeline`, WSL2) retargeted onto ME skeletons, `ardy-clip.py generate |
+  skeleton | retarget | metrics | self-test` (README there: the flow, the `mevr-clip` format, licences). Any change to the flow
+  goes into its README and self-test; skeleton TSVs are game data and stay local.
+- `tools/rig/`: re-rigged characters (since 2026-11-19, the foundation for hair and soft tissue on any character): `mevr-rig`
+  adds hair chains (generated from the hair mesh) and soft-tissue bones to a character's meshes from the player's own game
+  files, into a package of ours (materials as imports), per a plan in `tools/rig/plans/` (ME3 Miranda: `le3-miranda.jsonc`);
+  `install.ps1` for development installs; the mod wears them through `engine/GameAdapter.hpp` `kHairStandIns` and drives
+  the bones in `engine/HairPose` (README there: the flow, what the tool edits, placing regions). Built packages are game data.
 - `notes/headset-checklist.md`: everything that still needs the user in the headset, by area and owning session, plus
   what Claude can check alone on the fake headset. Add a line when you build something that needs the headset; delete it
   (and write the result in its research note) once it's checked.

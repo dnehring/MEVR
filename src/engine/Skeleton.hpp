@@ -80,6 +80,7 @@ struct RefSkeleton {
     std::vector<std::string> names;  // UTF-8, e.g. "RightWrist"
     std::vector<std::uint64_t> keys;  // the raw names, for cheap comparisons
     std::vector<int> parents;        // -1 for the root
+    std::vector<ik::Transform> local;  // each bone's rest transform relative to its parent (game units), as stored
 };
 
 // The mesh asset's reference skeleton; nullopt if unsupported or the mesh has none.
