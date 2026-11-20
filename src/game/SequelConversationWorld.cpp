@@ -112,6 +112,27 @@ struct SpeakerData {
 static_assert(sizeof(SpeakerData) == 16);
 #endif
 
+// The scene's people: pawns, and on ME3 its SFXStuntActors (the hub's conversation characters are stunt actors, not pawns, and
+// not on the world's pawn list: Khalisah at the embassies, 2026-11-20; game/Hair's StuntActors). Their skeletal mesh: a pawn's
+// Mesh, a stunt actor's BodyMesh.
+#if defined(MEVR_GAME_LE3)
+ue3::ClassRef gStuntClass{"SFXGame.SFXStuntActor", ue3::kEveryGame};
+ue3::FieldRef gStuntBody{"SFXGame.SFXStuntActor", "BodyMesh", ue3::kEveryGame};
+#endif
+bool IsPerson(ue3::Object const* actor) {
+#if defined(MEVR_GAME_LE3)
+    if (actor != nullptr && ue3::IsA(actor, gStuntClass)) return true;
+#endif
+    return player::IsBioPawn(actor);
+}
+ue3::Object* PersonMesh(ue3::Object* actor) {
+    if (actor == nullptr || !ue3::runtime::IsAlive(actor)) return nullptr;
+#if defined(MEVR_GAME_LE3)
+    if (ue3::IsA(actor, gStuntClass)) return gStuntBody.Read<ue3::Object*>(actor).value_or(nullptr);
+#endif
+    return player::IsBioPawn(actor) ? player::Mesh(actor) : nullptr;
+}
+
 struct Settings {
     bool world = false;          // [Cinematics] conversations = world (ME1's key and word)
     bool stay = true;            // [Cinematics] worldStay: people kept where they stand
@@ -399,16 +420,20 @@ ue3::Object* LiveConversation(ue3::Object* controller) {
 }
 
 // The dialogue wheel is up (game/Thespian's reader of the conversation handler, each game's own).
-bool WheelUp(ue3::Object* controller) {
+ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
+ue3::Object* WheelHandler(ue3::Object* controller) {
     static ue3::FunctionRef getHandler{"SFXGame.SFXGUIInteraction.GetConversationHandler", ue3::kEveryGame};
-    static ue3::FieldRef displaying{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
     auto* const manager = le3_gui::Manager();
     auto* const function = getHandler.Get();
-    if (controller == nullptr || manager == nullptr || function == nullptr) return false;
+    if (controller == nullptr || manager == nullptr || function == nullptr) return nullptr;
     ue3::Params params(ue3::runtime::Get(), function);
-    if (!params.Valid() || !params.Set("oPlayerController", controller) || !ue3::runtime::Call(manager, function, params)) return false;
+    if (!params.Valid() || !params.Set("oPlayerController", controller) || !ue3::runtime::Call(manager, function, params)) return nullptr;
     auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
-    return handler != nullptr && ue3::runtime::IsAlive(handler) && displaying.ReadBool(handler).value_or(false);
+    return handler != nullptr && ue3::runtime::IsAlive(handler) ? handler : nullptr;
+}
+bool WheelUp(ue3::Object* controller) {
+    ue3::Object* const handler = WheelHandler(controller);
+    return handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
 }
 
 // One element's actor, guarded: the array's storage is the engine's.
@@ -425,8 +450,8 @@ bool ReadSpeaker(SpeakerData const* data, int i, ue3::Object** out) noexcept {
 std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* player) {
     std::vector<ue3::Object*> out;
     auto const list = gSpeakers.Read<ue3::TArray<SpeakerData>>(conversation);
-    if (!list || list->data == nullptr || list->count <= 0 || list->count > 32) return out;
-    for (int i = 0; i < list->count; ++i) {
+    int const count = list && list->data != nullptr && list->count > 0 && list->count <= 32 ? list->count : 0;
+    for (int i = 0; i < count; ++i) {
         ue3::Object* actor = nullptr;
         if (!ReadSpeaker(list->data, i, &actor)) break;
         if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) &&
@@ -438,7 +463,7 @@ std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* playe
     // (research/le3-conversations-in-world.md section 1).
     for (ue3::FieldRef* field : {&gOwner, &gSpeakerNow, &gListenerNow}) {
         ue3::Object* const actor = field->Read<ue3::Object*>(conversation).value_or(nullptr);
-        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && player::IsBioPawn(actor) &&
+        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && IsPerson(actor) &&
             std::find(out.begin(), out.end(), actor) == out.end()) {
             out.push_back(actor);
         }
@@ -480,17 +505,21 @@ ue3::Object* ConversationData(ue3::Object* conversation) {
 constexpr int kGameNumber = 2;
 
 // The dialogue wheel is up (game/Thespian's ME2 reader: the GUI manager's conversation handler).
-bool WheelUp(ue3::Object* controller) {
+ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
+ue3::Object* WheelHandler(ue3::Object* controller) {
     static ue3::FieldRef managerField{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
     static ue3::FunctionRef getHandler{"SFXGame.MassEffectGuiManager.GetConversationHandler", ue3::kEveryGame};
-    static ue3::FieldRef displaying{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
     auto* const manager = controller != nullptr ? managerField.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
     auto* const function = getHandler.Get();
-    if (manager == nullptr || !ue3::runtime::IsAlive(manager) || function == nullptr) return false;
+    if (manager == nullptr || !ue3::runtime::IsAlive(manager) || function == nullptr) return nullptr;
     ue3::Params params(ue3::runtime::Get(), function);
-    if (!ue3::runtime::Call(manager, function, params)) return false;
+    if (!ue3::runtime::Call(manager, function, params)) return nullptr;
     auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
-    return handler != nullptr && ue3::runtime::IsAlive(handler) && displaying.ReadBool(handler).value_or(false);
+    return handler != nullptr && ue3::runtime::IsAlive(handler) ? handler : nullptr;
+}
+bool WheelUp(ue3::Object* controller) {
+    ue3::Object* const handler = WheelHandler(controller);
+    return handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
 }
 
 // The people of the conversation (ME1's m_SpeakerList, its owner, the speaker and listener now), the player's left out.
@@ -581,8 +610,8 @@ struct HeadPose {
 std::map<ue3::Object const*, int> gHeadBones;
 
 std::optional<HeadPose> HeadPoseOf(ue3::Object* actor) {
-    if (actor == nullptr || !ue3::runtime::IsAlive(actor) || !player::IsBioPawn(actor)) return std::nullopt;
-    ue3::Object* const mesh = player::Mesh(actor);
+    if (actor == nullptr || !ue3::runtime::IsAlive(actor) || !IsPerson(actor)) return std::nullopt;
+    ue3::Object* const mesh = PersonMesh(actor);
     ue3::Object const* const asset = mesh != nullptr ? player::SkeletalMesh(mesh) : nullptr;
     if (asset == nullptr) return std::nullopt;
     auto it = gHeadBones.find(asset);
@@ -674,12 +703,51 @@ std::vector<ue3::Object*> LivePawns(ue3::Object* controller) {
     return out;
 }
 
-// The pawns shown within `units` of a point (a moment's people: everyone near), nearest first, at most `most`.
+// ME3's stunt actors in the player's world, found by a scan of the objects at most once a second (game/Hair's way).
+std::vector<ue3::Object*> StuntActors(ue3::Object* controller) {
+#if defined(MEVR_GAME_LE3)
+    static std::vector<ue3::Object*> found;
+    static std::uint64_t nextMs = 0;
+    static ue3::Object const* scannedWorld = nullptr;
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    std::uint64_t const now = GetTickCount64();
+    if (world != scannedWorld || now >= nextMs) {
+        scannedWorld = world;
+        nextMs = now + 1000;
+        found.clear();
+        ue3::Class* const cls = gStuntClass.Get();
+        ue3::Reflection& r = ue3::runtime::Get();
+        for (std::int32_t i = 0, n = cls != nullptr && world != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o != nullptr && r.IsAlive(o) && r.IsA(o, cls) && gActorWorldInfo.Read<ue3::Object*>(o).value_or(nullptr) == world) {
+                found.push_back(o);
+            }
+        }
+    }
+    std::vector<ue3::Object*> out;
+    for (ue3::Object* const o : found) {
+        if (ue3::runtime::IsAlive(o)) out.push_back(o);
+    }
+    return out;
+#else
+    (void)controller;
+    return {};
+#endif
+}
+
+// The world's people: its pawns, and ME3's stunt actors.
+std::vector<ue3::Object*> LivePeople(ue3::Object* controller) {
+    std::vector<ue3::Object*> out = LivePawns(controller);
+    for (ue3::Object* const o : StuntActors(controller)) out.push_back(o);
+    return out;
+}
+
+// The people shown within `units` of a point (a moment's people: everyone near), nearest first, at most `most`.
 std::vector<ue3::Object*> NearPawns(ue3::Object* controller, ik::Vec3 const& at, double units, std::size_t most) {
     ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
     std::vector<std::pair<double, ue3::Object*>> found;
-    for (ue3::Object* const o : LivePawns(controller)) {
-        if (o == pawn || !player::IsBioPawn(o) || gActorHiddenRead.ReadBool(o).value_or(true)) continue;
+    for (ue3::Object* const o : LivePeople(controller)) {
+        if (o == pawn || !IsPerson(o) || gActorHiddenRead.ReadBool(o).value_or(true)) continue;
         auto const p = player::Location(o);
         if (!p) continue;
         double const d = std::hypot(p->x - at.x, p->y - at.y);
@@ -838,9 +906,12 @@ void EyesEnd(ue3::Object* controller, std::vector<ue3::Object*> const& people, c
 // bone, with the head at the recenter point. The slice's 8 forward and 4 up put the eyes inside Shepard's shoulders (Tali's
 // conversation, research/le2-conversations-in-world.md 6.6). Each game's fallback is its on-foot measure on the fake headset
 // (arm IK's "first person camera vs Shepard's head bone" with the headset at the recenter point): ME2 24 forward, 13 up
-// (2026-11-14, lanes B to F); ME3 FPC3's ME3 run (section 7).
+// (2026-11-14, lanes B to F); ME3 34 forward, 5 up (lane FPC4, 2026-11-20, the Citadel's embassies: 33.1..34.3 forward,
+// -2.9..0.0 right, 4.9..9.5 up). The head is the animated one (ShepardSceneHead): the drawn head bone on foot is the body
+// follower's and body scale's (the fake headset's 1.75 m eye against ME3's Shepard scaled it up: 976 samples read the camera
+// 27 units under the drawn head, 2026-11-20).
 #if defined(MEVR_GAME_LE3)
-constexpr cw::Vec3 kEyeFromHeadFallback{8.0, 0.0, 4.0};
+constexpr cw::Vec3 kEyeFromHeadFallback{34.0, 0.0, 5.0};
 #else
 constexpr cw::Vec3 kEyeFromHeadFallback{24.0, 0.0, 13.0};
 #endif
@@ -1380,7 +1451,9 @@ std::string WriteStance(std::string const& tag, bool moment) {
     ue3::Rotator const facing = moment ? gM.facing : gC.facing;
     ik::Vec3 const held = V(heldPlace);
     ik::Vec3 const eyes = gDrawnEyes.value_or(held);
-    std::optional<ik::Vec3> const shepHead = ShepardSceneHead(pawn);
+    // Shepard's head as drawn (ME1's records: HeadOf), the body the player sees; the stand-in decides by the animated one.
+    std::optional<HeadPose> const shepPose = HeadPoseOf(pawn);
+    std::optional<ik::Vec3> const shepHead = shepPose ? std::optional<ik::Vec3>(shepPose->at) : ShepardSceneHead(pawn);
     ue3::Object* const speaker = conversation != nullptr ? gSpeakerNow.Read<ue3::Object*>(conversation).value_or(nullptr) : nullptr;
     ue3::Object* const listener = conversation != nullptr ? gListenerNow.Read<ue3::Object*>(conversation).value_or(nullptr) : nullptr;
     ue3::Object* const owner = conversation != nullptr ? gOwner.Read<ue3::Object*>(conversation).value_or(nullptr) : nullptr;
@@ -1430,7 +1503,7 @@ std::string WriteStance(std::string const& tag, bool moment) {
             gameLook = std::format("{{\"target\": \"{}\", \"rank\": {}, \"aim\": {}}}", JsonText(target), look.rank,
                 look.aim ? P3(V(*look.aim)) : std::string("null"));
         }
-        auto const drawnAgo = DrawnAgoS(controller, player::Mesh(actor));
+        auto const drawnAgo = DrawnAgoS(controller, PersonMesh(actor));
         bool const inSight = !isShepard && head && std::sqrt((head->x - eyes.x) * (head->x - eyes.x) + (head->y - eyes.y) * (head->y - eyes.y) +
             (head->z - eyes.z) * (head->z - eyes.z)) <= 1200.0 && InHeadView(*head).value_or(false) &&
             LineOfSight(pawn, ue3::Vector{static_cast<float>(eyes.x), static_cast<float>(eyes.y), static_cast<float>(eyes.z)},
@@ -1446,9 +1519,9 @@ std::string WriteStance(std::string const& tag, bool moment) {
     }
     std::string others;
     int listed = 0;
-    for (ue3::Object* const o : LivePawns(controller)) {
+    for (ue3::Object* const o : LivePeople(controller)) {
         if (listed >= 64) break;
-        if (o == pawn || !player::IsBioPawn(o) || gActorHiddenRead.ReadBool(o).value_or(true) ||
+        if (o == pawn || !IsPerson(o) || gActorHiddenRead.ReadBool(o).value_or(true) ||
             std::find(who.begin(), who.end(), o) != who.end()) {
             continue;
         }
@@ -1590,8 +1663,8 @@ void ApplyTestHides(ue3::Object* controller, ue3::Object* owner) {
         if (ue3::Object* const mesh = gHiddenForTest[0].Live()) SetTestHidden(0, mesh, false);
         gHiddenForTest[0] = ue3::Kept();
     }
-    if (gHidePersonTest && !gHiddenForTest[1] && owner != nullptr && player::IsBioPawn(owner)) {
-        SetTestHidden(1, player::Mesh(owner), true);
+    if (gHidePersonTest && !gHiddenForTest[1] && owner != nullptr && IsPerson(owner)) {
+        SetTestHidden(1, PersonMesh(owner), true);
     } else if (!gHidePersonTest && gHiddenForTest[1]) {
         if (ue3::Object* const mesh = gHiddenForTest[1].Live()) SetTestHidden(1, mesh, false);
         gHiddenForTest[1] = ue3::Kept();
@@ -1868,10 +1941,33 @@ void Tick(conversation_world::Link const& link) {
         ue3::Object* const camera = player::Camera(controller);
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         if (pov && pov->location != nullptr && pov->rotation != nullptr && pov->fov != nullptr) {
-            gFootPov = {true, *pov->location, *pov->rotation, *pov->fov};
+            // The eyes on foot where the renderer draws them, at the recenter point (the held view's frame origin: the drawn
+            // eye midpoint without the player's own lean), else the game's camera. ME3's renderer draws the first-person eyes
+            // about 28 units above the game's camera on foot and nothing above a held view (2026-11-20: a conversation held
+            // from the camera drew the eyes 0.32 m low), so a held place taken from the camera starts low; from the drawn eyes it
+            // is the view on foot. ME2's drawn eyes are its camera (FPC3's runs), so nothing changes there.
+            ue3::Vector eyes = *pov->location;
+            if (auto const frame = view_anchor::Current(); frame && vr::host_view::Latest().valid) {
+                engine::UnrealVector const origin = engine::OriginWorld(*frame);
+                ue3::Vector const drawn{static_cast<float>(origin.x), static_cast<float>(origin.y), static_cast<float>(origin.z)};
+                double const apart = Distance(drawn, *pov->location);
+                if (apart < 80.0) {
+                    eyes = drawn;
+                    static double s_loggedApart = -1.0;
+                    if (std::abs(apart - s_loggedApart) > 5.0) {
+                        s_loggedApart = apart;
+                        log::Info("conversation world: on foot the eyes are drawn {:.0f} units from the game's camera ({:+.0f}, {:+.0f}, {:+.0f}): "
+                                  "a scene held from the view on foot keeps the drawn eyes", apart, drawn.x - pov->location->x,
+                            drawn.y - pov->location->y, drawn.z - pov->location->z);
+                    }
+                }
+            }
+            gFootPov = {true, eyes, *pov->rotation, *pov->fov};
             if (WorldWanted()) {
                 ue3::Object* const pawn = player::Pawn(controller);
-                LearnEyeFromHead(pawn, *pov->location, *pov->rotation, HeadOf(pawn));
+                std::optional<ik::Vec3> const animated = ShepardSceneHead(pawn);
+                LearnEyeFromHead(pawn, eyes, *pov->rotation,
+                    animated ? std::optional<engine::UnrealVector>(engine::UnrealVector{animated->x, animated->y, animated->z}) : std::nullopt);
             }
         }
     } else {
@@ -1929,7 +2025,10 @@ void Tick(conversation_world::Link const& link) {
     }
     if (gC.skipped) return;
     ue3::Object* const pawn = player::Pawn(controller);
-    auto const head = HeadOf(pawn);
+    // His head as the scene animates it (arm IK's animated head when fresh, else the bone: before our writes, the same), the
+    // measure the eyes from it were learned against.
+    std::optional<ik::Vec3> const sceneHead = ShepardSceneHead(pawn);
+    auto const head = sceneHead ? std::optional<engine::UnrealVector>(engine::UnrealVector{sceneHead->x, sceneHead->y, sceneHead->z}) : HeadOf(pawn);
     auto const rotation = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     if (!gC.placed) {
         if (static_cast<double>(now - gC.startMs) < gSettings.settleS * 1000.0) {
@@ -2195,6 +2294,57 @@ std::string Console(std::string_view args) {
                            "{} kept by the game", gEyesOverride.value_or(gSettings.lookEyes) ? "on" : "off",
             gEyesOverride ? "mevr convo eyes" : "[Cinematics] worldLookEyes", gEyesState.on ? "standing in for Shepard's body" : "not needed",
             gEyesState.gapUnits / 100.0, gEyesState.swapped, gEyesState.refused);
+    }
+    if (a == "people") {
+        // What the reader and the world's pawn list give now (a diagnostic): the conversation's people, then every pawn within 20 m.
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const conversation = controller != nullptr ? LiveConversation(controller) : nullptr;
+        ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+        std::string out = std::format("conversation world: people: the conversation {}", conversation != nullptr ? ue3::runtime::FullName(conversation) : "none");
+        if (conversation != nullptr) {
+            for (auto const& [label, field] : {std::pair<char const*, ue3::FieldRef*>{"owner", &gOwner}, {"speaker", &gSpeakerNow}, {"listener", &gListenerNow}, {"player", &gPlayer}}) {
+                ue3::Object* const o = field->Read<ue3::Object*>(conversation).value_or(nullptr);
+                out += std::format("; {} {}{}", label, o != nullptr ? ue3::runtime::FullName(o) : "none", o != nullptr && IsPerson(o) ? " (a person)" : "");
+            }
+            for (ue3::Object* const o : Speakers(conversation, ConversationPlayer(conversation))) out += "; speaker list: " + ue3::runtime::FullName(o);
+        }
+        auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        int n = 0;
+        for (ue3::Object* const o : LivePeople(controller)) {
+            ++n;
+            auto const p = player::Location(o);
+            if (!at || !p || std::hypot(p->x - at->x, p->y - at->y) > 2000.0) continue;
+            out += std::format("\n  {} person={} hidden={} {:.1f} m", ue3::runtime::FullName(o), IsPerson(o) ? 1 : 0,
+                gActorHiddenRead.ReadBool(o).has_value() ? (gActorHiddenRead.ReadBool(o).value() ? 1 : 0) : -1, std::hypot(p->x - at->x, p->y - at->y) / 100.0);
+        }
+        return out + std::format("\n  {} people in the world (pawns, ME3's stunt actors)", n);
+    }
+    if (a.rfind("pick", 0) == 0) {
+        // A test aid (ME1's `mevr convo pick`): the reply at a position taken as the stick and A take it, the wheel's own
+        // SelectConversationEntry on the location that holds it (m_nSlotsUsed[location] == position); only with the wheel up.
+        // ME3's spoken-reply commands wait for the host's input lease, which the fake headset never gives (no input focus).
+        static ue3::FieldRef slotsUsed{"SFXGame.BioSFHandler_Conversation", "m_nSlotsUsed", ue3::kEveryGame};
+        static ue3::FunctionRef select{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry", ue3::kEveryGame};
+        int position = -1;
+        std::istringstream(a.substr(4)) >> position;
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const handler = WheelHandler(controller);
+        if (handler == nullptr || !gDisplayingWheel.ReadBool(handler).value_or(false) || select.Get() == nullptr) {
+            return "conversation world: no wheel up (mevr convo pick <position> picks only on a wheel)";
+        }
+        std::string slots;
+        for (int location = 0; location < 6; ++location) {
+            std::int32_t const* const slot = slotsUsed.At<std::int32_t>(handler, location);
+            slots += std::format(" {}", slot != nullptr ? *slot : -9);
+            if (slot != nullptr && *slot == position && position >= 0) {
+                ue3::Params p(ue3::runtime::Get(), select.Get());
+                bool const called = p.Valid() && p.Set("nWheelLocation", static_cast<std::uint8_t>(location)) &&
+                    ue3::runtime::Call(handler, select.Get(), p);
+                log::Info("conversation world: mevr convo pick {}: SelectConversationEntry({}) called {} (a test's pick)", position, location, called);
+                return std::format("conversation world: picked position {} at wheel location {}: {}", position, location, called ? "called" : "not called");
+            }
+        }
+        return std::format("conversation world: no wheel location holds position {} (the locations hold:{})", position, slots);
     }
     if (a.rfind("hide", 0) == 0) {
         std::istringstream words(a.substr(4));
