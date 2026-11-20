@@ -2275,6 +2275,15 @@ void CheckFields() {
     CheckField("SFXGame.BioPawn", "m_oHairMesh", SDK_FIELD(ABioPawn, m_oHairMesh));  // game/Hair
     CheckField("SFXGame.BioPawn", "HeadMesh", SDK_FIELD(ABioPawn, HeadMesh));  // game/Hair: rigged bodies' followers
     PARAM(USkeletalMeshComponent_execSetParentAnimComponent_Parms, "Engine.SkeletalMeshComponent.SetParentAnimComponent", NewParentAnimComp);
+    // game/HairLook on ME2 (the same rows as ME3's).
+    PARAM(UMeshComponent_execGetMaterial_Parms, "Engine.MeshComponent.GetMaterial", ElementIndex);
+    PARAM(UMeshComponent_execCreateAndSetMaterialInstanceConstant_Parms, "Engine.MeshComponent.CreateAndSetMaterialInstanceConstant", ElementIndex);
+    PARAM(UMaterialInstanceConstant_execSetScalarParameterValue_Parms, "Engine.MaterialInstanceConstant.SetScalarParameterValue", ParameterName);
+    PARAM(UMaterialInstanceConstant_execSetVectorParameterValue_Parms, "Engine.MaterialInstanceConstant.SetVectorParameterValue", Value);
+    PARAM(UMaterialInterface_execGetScalarParameterValue_Parms, "Engine.MaterialInterface.GetScalarParameterValue", OutValue);
+    CheckField("Engine.MaterialInstance", "Parent", SDK_FIELD(UMaterialInstance, Parent));
+    CheckField("Engine.MaterialExpressionParameter", "ParameterName", SDK_FIELD(UMaterialExpressionParameter, ParameterName));
+    CheckField("Engine.RvrEffectsMaterialUser", "m_pBaseMaterial", SDK_FIELD(URvrEffectsMaterialUser, m_pBaseMaterial));
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", SpawnRotation);  // game/Hair spawn
     PARAM(AActor_execSpawn_Parms, "Engine.Actor.Spawn", ActorTemplate);
     CheckFunction("Engine.SequenceOp.ForceActivateInput");  // game/Hair fire
@@ -3795,6 +3804,7 @@ void CheckFields() {
     CheckField("Engine.MaterialExpressionParameter", "ParameterName", SDK_FIELD(UMaterialExpressionParameter, ParameterName));
     CheckField("Engine.MaterialExpressionScalarParameter", "DefaultValue", SDK_FIELD(UMaterialExpressionScalarParameter, DefaultValue));
     CheckField("Engine.MaterialExpressionVectorParameter", "DefaultValue", SDK_FIELD(UMaterialExpressionVectorParameter, DefaultValue));
+    CheckField("Engine.RvrEffectsMaterialUser", "m_pBaseMaterial", SDK_FIELD(URvrEffectsMaterialUser, m_pBaseMaterial));
     // game/AnimDriver: a cutscene's way of animating a stunt actor (its body's MatineeAnim node), for the hair and jiggle bench.
     CheckClass<USFXModule_Gestures>("SFXGame.SFXModule_Gestures");
     CheckField("SFXGame.SFXModule_Gestures", "m_bInMatinee", SDK_BOOL(USFXModule_Gestures, m_bInMatinee));

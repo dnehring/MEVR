@@ -252,3 +252,11 @@ both, the hair simulated on her body (ME2's follower rule as ME3's), drawn intac
 teleport of her (`mevr hair bring`) or a clip's snap from her aiming pose swung the tips up to 39 cm for a moment, settled
 at once. Not yet on ME2: her look (ME2's hair master material, behind the same effects wrapper, shows no highlight
 parameters there: the look needs the wrapper's own parent, research/trilogy-hair.md section 1's ME2 row).
+- **ME2's look, reached but not picked** (2026-11-19, eighth run): ME2's hair chain is the instance, the effects wrapper
+  (`HMN_HED_PRO_MASTER_HAIR_MAT_USER`, effects parameters only) and its `m_pBaseMaterial`,
+  `BIOG_Humanoid_MASTER_MTR_R.Human.HMN_HED_PRO_MASTER_HAIR_MAT`, whose parameters are the hair's: `Highlight1Specularity`
+  50 and `Highlight2SpecExp_Scalar` 250 (the two exponents only: no highlight colour or intensity, so no blond tint on ME2
+  without B2, the shader route) and `HED_Hair_Colour_Vector` (hers 0.016, 0.011, 0.008). `game/HairLook` now follows a
+  wrapper to its base and takes every material's parameters in the chain. At Freedom's Progress at night, backlit, four
+  exponent pairs (50/250, 90/200, 150/300, 300/200) changed her hair by about 3 of 255 on average (noise): her hair is a
+  silhouette there. ME2's look stays the game's until a lit scene or the headset can judge it.

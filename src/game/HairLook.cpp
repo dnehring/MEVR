@@ -35,6 +35,10 @@ ue3::ClassRef gScalarClass{"Engine.MaterialExpressionScalarParameter", ue3::kEve
 ue3::ClassRef gVectorClass{"Engine.MaterialExpressionVectorParameter", ue3::kEveryGame};
 ue3::ClassRef gInstanceClass{"Engine.MaterialInstance", ue3::kEveryGame};
 ue3::ClassRef gConstantClass{"Engine.MaterialInstanceConstant", ue3::kEveryGame};
+// The sequels' effects wrapper (the hair's "master" is an RvrEffectsMaterialUser): the real material is its base. ME3's
+// wrapper holds the hair's highlight parameters itself; ME2's has only effects ones, the highlights are its base's.
+ue3::ClassRef gEffectsUserClass{"Engine.RvrEffectsMaterialUser", ue3::kEveryGame};
+ue3::FieldRef gEffectsBase{"Engine.RvrEffectsMaterialUser", "m_pBaseMaterial", ue3::kEveryGame};
 
 struct Color {
     float r = 0, g = 0, b = 0, a = 0;
@@ -77,13 +81,19 @@ std::vector<ue3::Object*> Chain(ue3::Object* material) {
     ue3::Reflection& r = ue3::runtime::Get();
     for (ue3::Object* m = material; m != nullptr && chain.size() < 16; ) {
         chain.push_back(m);
-        if (gInstanceClass.Get() == nullptr || !r.IsA(m, gInstanceClass.Get())) {
+        if (gInstanceClass.Get() != nullptr && r.IsA(m, gInstanceClass.Get())) {
+            m = gParent.Read<ue3::Object*>(m).value_or(nullptr);
+        } else if (gEffectsUserClass.Get() != nullptr && r.IsA(m, gEffectsUserClass.Get())) {
+            m = gEffectsBase.Read<ue3::Object*>(m).value_or(nullptr);
+        } else {
             break;
         }
-        m = gParent.Read<ue3::Object*>(m).value_or(nullptr);
     }
     return chain;
 }
+
+// The parameters of every material (not instance) in the chain: the wrapper's and its base's, without repeats.
+std::vector<Param> ParamsOfChain(std::vector<ue3::Object*> const& chain);
 
 // The master material's parameters, from its MaterialExpression*Parameter objects (their outer is the material).
 std::vector<Param> const& ParamsOf(ue3::Object* master) {
@@ -125,17 +135,30 @@ std::vector<Param> const& ParamsOf(ue3::Object* master) {
     return gParams.emplace(master, std::move(params)).first->second;
 }
 
-Param const* FindParam(ue3::Object* component, std::string const& text) {
-    std::vector<ue3::Object*> const chain = Chain(MaterialOf(component));
-    if (chain.empty()) {
-        return nullptr;
-    }
-    for (Param const& p : ParamsOf(chain.back())) {
-        if (Lower(p.text, text)) {
-            return &p;
+std::vector<Param> ParamsOfChain(std::vector<ue3::Object*> const& chain) {
+    std::vector<Param> all;
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (ue3::Object* m : chain) {
+        if (gInstanceClass.Get() != nullptr && r.IsA(m, gInstanceClass.Get())) {
+            continue;
+        }
+        for (Param const& p : ParamsOf(m)) {
+            if (std::none_of(all.begin(), all.end(), [&](Param const& q) { return Lower(q.text, p.text); })) {
+                all.push_back(p);
+            }
         }
     }
-    return nullptr;
+    std::sort(all.begin(), all.end(), [](Param const& a, Param const& b) { return a.text < b.text; });
+    return all;
+}
+
+std::optional<Param> FindParam(ue3::Object* component, std::string const& text) {
+    for (Param const& p : ParamsOfChain(Chain(MaterialOf(component)))) {
+        if (Lower(p.text, text)) {
+            return p;
+        }
+    }
+    return std::nullopt;
 }
 
 // The component's own instance (created once; again if its material was replaced since).
@@ -220,8 +243,8 @@ std::string Describe(ue3::Object* component) {
     for (ue3::Object* m : chain) {
         out += std::format("\n  {}{}", r.PathName(m), gInstances.contains(component) && gInstances[component] == m ? " (our instance)" : "");
     }
-    std::vector<Param> const& params = ParamsOf(chain.back());
-    out += std::format("\nparameters of {} ({}):", r.NameText(chain.back()), params.size());
+    std::vector<Param> const params = ParamsOfChain(chain);
+    out += std::format("\nparameters of the chain's materials ({}):", params.size());
     for (Param const& p : params) {
         std::string const def = p.vector ? std::format("({:.3f}, {:.3f}, {:.3f}, {:.3f})", p.vectorDefault.r, p.vectorDefault.g,
                                                        p.vectorDefault.b, p.vectorDefault.a)
@@ -235,9 +258,9 @@ std::string Set(ue3::Object* component, std::string const& name, std::vector<dou
     if (!ue3::runtime::Up() || component == nullptr) {
         return "no hair component";
     }
-    Param const* const param = FindParam(component, name);
-    if (param == nullptr) {
-        return "the hair's master material has no parameter " + name + " (mevr hair material lists them)";
+    std::optional<Param> const param = FindParam(component, name);
+    if (!param) {
+        return "the hair's materials have no parameter " + name + " (mevr hair material lists them)";
     }
     ue3::Object* const instance = OwnInstance(component);
     if (instance == nullptr) {
@@ -281,8 +304,8 @@ bool Apply(ue3::Object* component, std::string const& look) {
                 values.push_back(*v);
             }
         }
-        Param const* const param = FindParam(component, name);
-        if (param == nullptr || !SetOn(instance, *param, values)) {
+        std::optional<Param> const param = FindParam(component, name);
+        if (!param || !SetOn(instance, *param, values)) {
             ok = false;
             if (gWarned.insert(name).second) {
                 log::Warn("hair look: {} isn't a parameter of this hair's material, or its value is the wrong shape", name);
