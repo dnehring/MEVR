@@ -461,7 +461,7 @@ told by the body mesh's name (`game/Hair` `OutfitJiggle`, `[Hair] jiggleArmour`,
 
 What's left, in order:
 
-1. **Automatic placement in the rig tool.** Today the breast and glute bones and their weight regions are placed by hand per
+1. **Automatic placement in the rig tool.** **Built** (42079a7e: `"place": "auto"`, `mevr-rig place`; within 1 cm per axis of MIRa, NKDc, LIAd; research/trilogy-hair.md "Automatic placement and every female body"). Today the breast and glute bones and their weight regions are placed by hand per
    mesh from its surface (`inspect --dump`, then the front peaks per side in z 120-145 and the back peaks in z 85-105, as in
    `plans/le3-miranda.jsonc` and `plans/le3-liara.jsonc`). A `"bones": "auto"` step (or a `place` verb) finds them: per side,
    the front's furthest vertex in the chest band (y 2..12 cm off the middle) is the breast peak, the bone 7.5 cm behind it
@@ -469,7 +469,7 @@ What's left, in order:
    hip band is the glute peak, bone 7.5 cm inside it on `Pelvis`, region (7.0, 7.5, 10.0); the bands scaled by the skeleton's
    `Chest2` and `Pelvis` heights (a krogan or a child stands otherwise). Check each against the hand placements of Miranda
    (MIRa, NKDc) and Liara (LIAd): within 1 cm.
-2. **The female bodies of each game.** A `find`-driven list per game (`mevr-rig find <CookedPCConsole> *.pcc <regex>`):
+2. **The female bodies of each game.** **Built** (7a7f31a8: `mevr-rig census`, `plans/le1|le2|le3-females.jsonc`; ME1 38 of 38 rigged, ME2 80 of 101, ME3 116 of 143; the rest Shepard's armour pieces without a mound). A `find`-driven list per game (`mevr-rig find <CookedPCConsole> *.pcc <regex>`):
    ME3 `HMF_ARM_*` and `ASA_ARM_*` bodies (squad, NPC, player female armour sets), ME2 `HMF_*`/`ASA_*` (character outfits like
    `HMF_MIR_LGTa`, the female armour sets), ME1 likewise; male and non-humanoid skeletons left out (no `Chest2`/`Pelvis`, or
    `HMM_`). One generated plan per game (`plans/<game>-females.jsonc`), one package per game (`MEVR_Bodies_<GAME>.pcc`).
@@ -481,5 +481,10 @@ What's left, in order:
 4. **ME1 and ME2.** The hair module and the jiggle stage run on LE2 (Miranda at Freedom's Progress); LE1 needs its
    `HairPose` stage wired the same way (check `engine/BonePose`'s hook for it). **Done** (lane B): it already ran there; the
    head's field (`m_oHeadMesh`) and a reflect row were what a body swap lacked.
+Not Shepard (the owner, 2026-11-19): the player's pawn is never simulated (a first-person VR experience; third person isn't
+the priority), so the sequels' modular armour pieces (breasts on the torso piece, glutes on the legs) need no work.
+Left: the armour lists per sequel (`armourBodies`/`fullBodies`: the name rule is right only on ME1), the package's load
+cost at the first lookup per level [verify], and step 5.
+
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
    (`mevr-hair-bench --jiggle`), then the owner in the headset on a sample: one armour, one bodysuit, one casual per game.
