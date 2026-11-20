@@ -318,6 +318,72 @@ looks at the player's eyes (ME2 `BioPawn.SetLookAtTarget`, ME3 `SFXModule_LookAt
 behind), the game's black moving the player, rides and seats on the sequels; the stance records and `scene_audit` rules on the
 sequels; a canary per new rule.
 
+## 7. Lane FPC3 (2026-11-20): the eyes, rides, the handover, ME3's fixtures
+
+The brief's items 0 to 6 on both sequels; what was built, how to check it, what the game showed. Numbers only from the code and
+the logs.
+
+### 7.1 The eyes (item 1)
+
+**The cause of 6.6.** The slice held the view at `PlaceFromHead`: Shepard's head bone (the pawn's mesh, bone `Head`) plus 8 units
+along his facing and 4 up. The arm IK's own measure on foot (`arm IK: first person camera vs Shepard's head bone`, every 5 s in
+first person, the headset at the recenter point) on ME2 is about **24 forward, 13 up** (LE2 runs of 2026-11-14, lanes B to F, the
+fake headset with no floor lock: `forward 23.7..25.5, up 12.8..13.5`; with the floor lock driven by a replay, 2026-11-20, `forward
+28.8, up 25.3`): the conversation's eyes sat about 16 units back and 9 low against first person on foot, inside the collar.
+ME1's constant is the same measure on ME1 (`eyeFromHead` 8.9, 1.7, 29.3).
+
+**The rule now (ME1's, `game/SequelConversationWorld`):**
+
+1. **The opening's eyes** (ME1's `FinishOpening` / the view on foot): a Stay or WalkIn with a fresh view on foot (the place
+   on foot known within 10 s, `gFootPov` valid) holds the eyes where the player had them on foot: `eyeOffset = foot POV -
+   foot pawn`, the facing the foot view's yaw (never turned at the opening; the slice turned the player to the stage's facing).
+   A Cut, or no fresh view on foot: his head bone at the mark plus the first-person eyes from it in the facing's yaw.
+2. **The eyes from the head bone, learned** (`cw::NoteEyeFromHead`, core, unit-tested): on foot in mode 0, with the world mode
+   wanted and the first-person camera the pawn's (`player::FloorLockSample().cameraOwned`), each tick the game's own camera
+   (`CameraCache.POV`: the renderer adds the head's lean after it) against his animated head bone, in the POV's yaw frame, is a
+   sample when the host's view offset (the lean from the recenter point) is under 5 units (the body follower slides the body
+   with a lean) and inside the sanity box (forward and right within 60/30 units, up -45..60); the first sample is taken whole,
+   later ones at a gain of 0.05. Fallback without a sample: ME2 (24, 0, 13); ME3 the slice's (8, 0, 4) until a measure (7.3).
+   Log `conversation world: on foot the first-person eyes are F forward, R right, U up from Shepard's head bone (N samples ...)`
+   at the first sample and every 60 s.
+3. **The eyes' height** (`cw::EyeHeightStep`, core, unit-tested; ME1's `StepEyeHeight`, research/69 item 44): each tick after
+   the opening, the host's drawn eye centre (`host_view.centreZ`: the held place plus the head's lean; the floor lock stands
+   down in a held conversation, so it is the raw centre) is brought to Shepard's cylinder floor (`pin.z -
+   CylinderComponent.CollisionHeight`) plus the player's live standing eye (`stageEyeM`, the floor lock's STAGE eye): 1 m/s in the
+   opening's first 1.5 s, 0.3 m/s after, nothing within 1 cm, nothing without a standing eye (0.5..2.6 m). The step goes into
+   `eyeOffset.z`. Log `conversation world: conversation N: the drawn eyes are X m over the floor under Shepard, the player's Y m:
+   the view goes up|down by Z m`; the end line says where the eyes came from and how far their height was brought. The fake
+   headset's STAGE eye is 1.7526 m (the null driver's), so it acts there too (since the replay drives the floor sample,
+   2026-11-19).
+4. ME1 keeps its own inline `StepEyeHeight` (the same numbers but its eye fallback `gFloorNow`); moving ME1 onto
+   `cw::EyeHeightStep` is a no-op refactor left for an ME1 batch (its compiled code is untouched here).
+
+**Check:** a snapshot of a held conversation's eyes (Tali's on ME2, an ME3 one): no dark shapes in the bottom corners; the
+opening line's `the eyes from the view on foot (x, y, z from his pawn)` or `his head bone (...)`.
+
+### 7.2 Rides (item 4, part)
+
+ME1's `RideBase` (research/69 item 42) on both sequels: each camera update before the pin, each conversation tick and each moment
+tick, the pawn's `Engine.Actor.Base` and its place; while the same base moves 0.01..500 units since the last read (under 250 ms
+apart), the delta moves the pin, the boundary's centre, where the scene wanted Shepard, the kept places of those whose base is
+the same, and a moment's view (`gM.feet`, taken by `TickMoment`). The pin is the reason it matters on the sequels: it puts
+Shepard back where the player stands each camera update, and on a lift that was where the ride began (the ME3 audit's row 23:
+36 full ME3 conversations move a shuttle, car or lift). Logs `conversation world: what Shepard stands on moves (<base>, X m this
+tick): the player rides with it`; the end line `the player rode X m with what Shepard stood on`. LE3 ReflectCheck row
+`Engine.Actor.Base` added (ME2 and ME1 had one). Not seen in a ride yet.
+
+### 7.4 The handover into a GUI screen (item 3, part)
+
+ME1's research/69 item 38 rule on the sequels: `MevrSeams::WorldUiOwnsGui(mode)` (plugin/MenusLe2; ME2's `d3d_capture.cpp` and
+ME3's `UpdatePresentationState` ask it for their GUI mode) answers true for the game's GUI mode while
+`MevrSeams::ConversationHandover()` holds (the mod's "handing over" byte, 150 ms fresh; the mod publishes it for 300 ms after a
+conversation shown in the world ends). Host only; not seen in the game (a conversation that ends into a shop or a GUI screen).
+
+### 7.5 ME3's console for fixtures
+
+`mevr instances <Package.Class> [text]`, `mevr activate <n> [input]` and `mevr setloc <n> X Y Z` (ME2's lines) on ME3 too, so
+`tools/le2-halcyon-run/conversation-world.ps1 -Game LE3 -Start fire:SFXGame.SFXSeqAct_StartConversation:<text>` works there.
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,
