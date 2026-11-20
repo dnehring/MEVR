@@ -490,6 +490,7 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
             continue;
         }
         ue3::Object* hair = gHairMesh.Read<ue3::Object*>(p).value_or(nullptr);
+        if (hair != nullptr && player::SkeletalMesh(hair) == nullptr) hair = nullptr;  // an empty hair component (asari): no hair
         if (hair != nullptr && (!ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false))) {
             continue;
         }
@@ -511,6 +512,7 @@ std::vector<Person> FindPeople(ue3::Object* playerPawn, ue3::Vector at, ue3::Obj
             continue;
         }
         ue3::Object* hair = gStuntHair.Read<ue3::Object*>(s).value_or(nullptr);
+        if (hair != nullptr && player::SkeletalMesh(hair) == nullptr) hair = nullptr;  // an empty hair component (asari): no hair
         if (hair != nullptr && (!ue3::runtime::IsAlive(hair) || gHiddenGame.ReadBool(hair).value_or(false))) {
             continue;
         }
@@ -886,6 +888,24 @@ std::string Bring(std::string const& what, int which) {
     ue3::Params move(ue3::runtime::Get(), setLocation);
     move.Set("NewLocation", to);
     ue3::runtime::Call(pawn, setLocation, move);
+    bool placed = move.Return<bool>().value_or(false);
+    if (!placed) {
+        // SetLocation refuses a far move into another part of the level (a conversation actor whose own sublevel stands 40 m
+        // away: Liara at the Citadel docks, 2026-11-19): the place written directly, the components moved with it.
+        static ue3::FieldRef location{"Engine.Actor", "Location", ue3::kEveryGame};
+        static ue3::FunctionRef forceUpdate{"Engine.Actor.ForceUpdateComponents", ue3::kEveryGame};
+        if (ue3::Vector* const place = location.In<ue3::Vector>(pawn)) {
+            *place = to;
+            write_journal::Wrote("Hair.bringLocation", pawn, sizeof(ue3::Vector));
+            if (ue3::Function* const f = forceUpdate.Get()) {
+                ue3::Params update(ue3::runtime::Get(), f);
+                update.SetBool("bCollisionUpdate", false);
+                update.SetBool("bTransformOnly", true);
+                ue3::runtime::Call(pawn, f, update);
+            }
+            placed = true;
+        }
+    }
     ue3::Params turn(ue3::runtime::Get(), setRotation);
     turn.Set("NewRotation", face);
     ue3::runtime::Call(pawn, setRotation, turn);
@@ -893,7 +913,7 @@ std::string Bring(std::string const& what, int which) {
     std::optional<ue3::Vector> const now = player::Location(pawn);
     log::Info("hair: brought {} in front of the player", matches[static_cast<std::size_t>(which)].second);
     return out + std::format("\n  brought [{}]: SetLocation returned {}, now ({:.0f}, {:.0f}, {:.0f})", which,
-        move.Return<bool>().value_or(false) ? "true" : "false", now ? now->x : 0.0f, now ? now->y : 0.0f, now ? now->z : 0.0f);
+        move.Return<bool>().value_or(false) ? "true" : (placed ? "false (written directly)" : "false"), now ? now->x : 0.0f, now ? now->y : 0.0f, now ? now->z : 0.0f);
 }
 
 void Stop(char const* why) {
