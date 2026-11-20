@@ -971,6 +971,7 @@ mevr::game::thespian::Link ThespianLink() {
             (gHostOwnsVr && MEVR_HOST_HAS(mainMenu) && gHost->mainMenu != nullptr &&
                 (gHost->mainMenu() & (kMainMenuOpen | kOmniRailOpen)) != 0);
     };
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     link.otherUiWhy = []() -> char const* {
 #if defined(MEVR_GAME_LE3)
         if (!gHostOwnsVr) return "the host owns no VR session";
@@ -987,6 +988,7 @@ mevr::game::thespian::Link ThespianLink() {
         }
         return nullptr;
     };
+#endif
     if (MEVR_HOST_HAS(setThespian) && gHost->setThespian != nullptr && gHost->thespianPanelSize == sizeof(vr::thespian::Panel)) {
         link.setPanel = gHost->setThespian;
     }

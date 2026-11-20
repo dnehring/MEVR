@@ -268,14 +268,12 @@ bool OtherUiOwnsInput() {
 }
 // The refusal's text: which owner holds the input (ME3: the host's spoken-input lease, held only while the XR session has input
 // focus and a conversation's panel context is eligible; FPC3's `mevr thespian pick` was refused for it, 2026-11-20).
-std::string OwnsInputText() {
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+std::string OwnsInputText() {
     char const* const why = gLink.otherUiWhy != nullptr ? gLink.otherUiWhy() : nullptr;
     return std::string("another menu owns input") + (why != nullptr ? std::string(" (") + why + ")" : std::string());
-#else
-    return "another menu owns input";
-#endif
 }
+#endif
 bool gWatch = false;
 bool gWheelWasUp = false;
 unsigned gWheels = 0;
@@ -506,7 +504,11 @@ void ClearMute() {
 // ended if the queue refuses, as the handler does.
 std::string Commit(Live const& observed, int position, std::string_view how, bool* accepted = nullptr) {
     if (accepted) *accepted = false;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (OtherUiOwnsInput()) return "thespian: no commit: " + OwnsInputText();
+#else
+    if (OtherUiOwnsInput()) return "thespian: no commit: another menu owns input";
+#endif
     if (gPending.active) return "thespian: no commit: an earlier selection is still pending";
     auto const fresh = ReadLive();
     if (!fresh || !th::SameWheel(observed.identity, fresh->identity))
@@ -554,7 +556,11 @@ std::string Commit(Live const& observed, int position, std::string_view how, boo
     if (!parms.Valid() || !parms.Set("nReply", static_cast<std::int32_t>(position))) {
         return "thespian: no commit: QueueReply parameters unavailable; conversation unchanged";
     }
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     if (OtherUiOwnsInput()) return "thespian: no commit: " + OwnsInputText();
+#else
+    if (OtherUiOwnsInput()) return "thespian: no commit: another menu owns input";
+#endif
     bool const called = ue3::runtime::Call(live.conversation, queue, parms);
     if (!called) {
         return "thespian: no commit: QueueReply could not be called; conversation unchanged";
@@ -1301,7 +1307,11 @@ std::string Command(std::string const& rest) {
     std::string verb;
     words >> verb;
     if ((verb == "wheel" || verb == "pick" || verb == "stick" || verb == "say") && OtherUiOwnsInput())
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
         return "thespian: " + OwnsInputText() + "; no native selection or wheel change";
+#else
+        return "thespian: another menu owns input; no native selection or wheel change";
+#endif
     if (verb == "watch") {
         std::string value;
         words >> value;
