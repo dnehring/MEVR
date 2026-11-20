@@ -51,3 +51,6 @@
 * **Update**: [The mod appends its default settings blocks on its first tick](gotchas/mod-settings-appended-after-xr-ready.md) bit again: `[HandContact]` appended when replayed controllers first appeared, and `[Body.Shepard]` written per load for ME2's run-time mesh (fixed).
 * **Create**: [A build killed mid-compile leaks MSBuild's machine-wide compile slots](gotchas/msbuild-cross-build-semaphore.md), after six builds from the evening before hung for 14 hours with no cl.exe running and the owner suspected locks; CLAUDE.md's build line now carries `-p:EnforceProcessCountAcrossBuilds=false`.
 * **Update**: [A build killed mid-compile leaks MSBuild's machine-wide compile slots](gotchas/msbuild-cross-build-semaphore.md): the owner said yes to turning the property off, and `CMakeLists.txt` no longer sets it.
+
+## 2026-11-20
+* **Create**: [The console answers on a loading screen, so a load that never ends looks like a working game to a script](gotchas/console-answers-during-a-stuck-load.md), after the owner saw ME3 stuck on its loading picture ("game's not loading, this was a problem yesterday") while lane FPC-ME3 kept polling: the host now writes a world-drawn clock into testloop.status and `tools/game-watch.ps1` turns it into a verdict.

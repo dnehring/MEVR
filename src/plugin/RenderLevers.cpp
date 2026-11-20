@@ -530,6 +530,10 @@ void UmbraIssueQueriesHook(void* commander) {
 }
 std::uint8_t* gExe = nullptr;
 bool gHooked = false;
+// The world-drawn clock (WorldDrawn): GetTickCount64 at the last Present and at the last Present with a scene render.
+std::atomic<bool> gSceneCounted{false};
+std::atomic<std::uint64_t> gLastPresentMs{0};
+std::atomic<std::uint64_t> gLastSceneRenderMs{0};
 bool gShareHooked = false;
 bool gReplayHooked = false;     // the light-targets hook marks where the draw replay (sharePass = 2) starts
 bool gCommanderHooked = false;  // the commander's command(): the resolve's parts timed, the query wait switch
@@ -2422,6 +2426,7 @@ bool Install(hook::Context& init) {
     }
     gHooked = haveRender || gCommanderHooked || gQueryDataHooked || gUmbraIssueQueriesHooked || gUmbraReadResultHooked ||
         gBoundShaderStateHooked || gUmbraInstanceVisibleHooked;
+    gSceneCounted.store(haveRender, std::memory_order_relaxed);
     if (haveRender && gSharePassReady) {
         log::Info("render levers: hooked the scene render, its deleter{}{}", gCommanderHooked ? ", the Umbra commander" : "",
             gReplayHooked ? " and the light targets (the draw replay's mark)" : "");
@@ -2685,6 +2690,15 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
         log::Info("render levers: one Draw: {} matching views and a replayable tail; one Draw a frame resumes", gOneDrawResumeAfter);
     }
     int const renders = gRenderIndex.exchange(0, std::memory_order_relaxed);
+    {
+        // The world-drawn clock (WorldDrawn, the test loop's status, tools/game-watch.ps1): a loading screen or a hung
+        // load presents frames with no scene render in them.
+        std::uint64_t const nowMs = GetTickCount64();
+        gLastPresentMs.store(nowMs, std::memory_order_relaxed);
+        if (renders > 0) {
+            gLastSceneRenderMs.store(nowMs, std::memory_order_relaxed);
+        }
+    }
     if (gEyeSeenThisFrame) {
         gFramesWithoutEye = 0;
     } else if (gStereoRenderThisFrame && gEyeTargetStable >= kEyeTargetStable && ++gFramesWithoutEye >= 30) {
@@ -2717,6 +2731,17 @@ void OnPresentEnd(ID3D11DeviceContext* context) {
 
 bool OneDrawWindow() {
     return gOneDrawWindow.load(std::memory_order_relaxed) != 0;
+}
+
+WorldDrawnClock WorldDrawn() {
+    WorldDrawnClock c;
+    c.counted = gSceneCounted.load(std::memory_order_relaxed);
+    std::uint64_t const nowMs = GetTickCount64();
+    std::uint64_t const present = gLastPresentMs.load(std::memory_order_relaxed);
+    std::uint64_t const scene = gLastSceneRenderMs.load(std::memory_order_relaxed);
+    c.msSincePresent = present == 0 ? -1 : static_cast<std::int64_t>(nowMs - present);
+    c.msSinceScene = !c.counted || scene == 0 ? -1 : static_cast<std::int64_t>(nowMs - scene);
+    return c;
 }
 
 bool SecondEyeIsReplay() {

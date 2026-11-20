@@ -61,6 +61,14 @@ function Steer-Ask([string]$command, [int]$timeout = 10) {
     Start-Sleep -Milliseconds 30
     $text = [IO.File]::ReadAllText($result)
     if ($script:SteerOut) { Add-Content -LiteralPath (Join-Path $script:SteerOut 'console.txt') -Value "> $command`n$text" -Encoding utf8 }
+    # The console answers on a loading screen too (the 2026-11-20 ME3 hang): say so once no world has been drawn for 30 s
+    # (tools/game-watch.ps1, common.ps1 Get-MevrWorldVerdict).
+    $verdict = Get-MevrWorldVerdict
+    if ($verdict.State -in 'no-world', 'blocked', 'no-frames' -and $verdict.Seconds -ge 30) {
+        $warning = "game-watch: $($verdict.Detail) (tools/game-watch.ps1 -UntilWorld waits for it, failing at 120 s)"
+        Write-Warning $warning
+        if ($script:SteerOut) { Add-Content -LiteralPath (Join-Path $script:SteerOut 'console.txt') -Value "! $warning" -Encoding utf8 }
+    }
     return $text
 }
 
