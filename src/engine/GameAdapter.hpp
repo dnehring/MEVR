@@ -523,6 +523,13 @@ inline constexpr HairStandIn kHairStandIns[] = {
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL", "BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old"},
     {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_PROMiranda_MDL_Old", "MEVR_Miranda.HMF_HIR_PROMiranda_MEVR", nullptr, kMirandaLook},
 };
+#elif defined(MEVR_GAME_LE2)
+// ME2's Miranda (tools/rig/plans/le2-miranda.jsonc): her hair has no hair bones at all; the rigged one has 7 generated
+// chains, her body the same chain bones and the soft-tissue bones.
+inline constexpr HairStandIn kHairStandIns[] = {
+    {"BIOG_HMF_MIR_LGT_R.LGTa.HMF_MIR_LGTa_MDL", "MEVR_Miranda.HMF_MIR_LGTa_MEVR"},
+    {"BIOG_HMF_HIR_PRO.Hair_PROMiranda.HMF_HIR_MIR_MDL", "MEVR_Miranda.HMF_HIR_MIR_MEVR"},
+};
 #else
 inline constexpr HairStandIn kHairStandIns[] = {{nullptr, nullptr}};
 #endif

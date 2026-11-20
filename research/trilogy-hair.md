@@ -239,3 +239,16 @@ Explorer's importer: `tools/rig` (README there) edits the meshes' binaries throu
   changes under 2x intensity barely show; a highlight colour multiplies the light's, so under this blue light a neutral
   blond reads cyan and a warm one (1.3, 0.85, 0.35) golden. Picked: broad lobe (0.40, 0.27, 0.11) x2 at exponent 90, tight
   lobe (1.3, 0.85, 0.35) x2.8 at 200 (`kMirandaLook`); `[Hair] look` overrides it.
+
+## The same on ME2 (2026-11-19, seventh run)
+
+`tools/rig/plans/le2-miranda.jsonc`, the ME3 plan with ME2's meshes, no code change in the tool: her ME2 hair
+(`HMF_HIR_MIR_MDL` from `BioH_Vixen_00.pcc`, 44 bones, no hair bones at all, 4,370 vertices) got 7 generated chains and
+was re-weighted whole; her body (`HMF_MIR_LGTa_MDL`, 110 bones: the same mesh and rest pose as ME3's conversation outfit,
+6,370 vertices) the chain bones and the four soft-tissue bones with ME3's numbers. Two table entries in
+`engine/GameAdapter.hpp` (LE2). In the game (Freedom's Progress, the runner's Save 4): Miranda, a squad pawn here, wore
+both, the hair simulated on her body (ME2's follower rule as ME3's), drawn intact in her combat stance, the chains
+0.4-0.9 cm off their targets through the generated walk, the soft tissue up to 1.3 cm in ordinary squad motion. A test's
+teleport of her (`mevr hair bring`) or a clip's snap from her aiming pose swung the tips up to 39 cm for a moment, settled
+at once. Not yet on ME2: her look (ME2's hair master material, behind the same effects wrapper, shows no highlight
+parameters there: the look needs the wrapper's own parent, research/trilogy-hair.md section 1's ME2 row).
