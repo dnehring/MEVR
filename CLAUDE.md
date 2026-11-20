@@ -1861,6 +1861,14 @@ Use it to check VR changes yourself instead of asking the user what they see
   three-way). Worktrees whose work is on main stay on disk with their builds (1-6 GB each; H: filled up on 2026-11-13):
   `python tools/clean-worktrees.py` lists the finished ones (clean, on main, idle 12 h), `--apply` removes them.
   First-person scenes are judged from above with the skill `first-person-scene-audit`.
+- **Is the world drawn? `tools/game-watch.ps1`** (2026-11-20, the owner: "you need a better system for polling the failure
+  to load"; gotchas/console-answers-during-a-stuck-load): the console answers on a loading screen, so never judge a load by
+  console answers. The host writes a `"world"` block into `testloop.status` every second (development builds: `unixMs`, the
+  last Present, the last Present with a scene render; `render_levers::WorldDrawn`, all three games); `-UntilWorld [-TimeoutS
+  120]` after any action that can start a load (a pick, a travel, a save's load) exits 0 once drawn, 2 with evidence in
+  `%LOCALAPPDATA%\MEVR\game-watch\` when not, 4 if the game went away; `-Watch` prints a `STUCK` line once a state without a
+  drawn world outlasts `-LimitS` (120 s; the coordinator runs it under its Monitor during lanes' runs); `tools/console.ps1` and
+  `Steer-Ask` warn on every command after 30 s without one.
 - **Repeatable cafeteria QA:** [tools/qa-cafeteria/README.md](tools/qa-cafeteria/README.md) documents the checked
   CIC-to-mess-table walk, High/Current workload, clean turn capture and backup/restore runner. Use `run.ps1 -Plan`
   first, coordinate exclusive native-session ownership, and supply the reviewed ASI hash. Sources generate their
