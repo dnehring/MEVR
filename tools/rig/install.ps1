@@ -23,7 +23,9 @@ $keep = Join-Path $env:LOCALAPPDATA "MEVR\rig-install\$Game"
 $orig = Join-Path $keep 'PCConsoleTOC.bin.orig'
 $list = Join-Path $keep 'installed.txt'
 New-Item -ItemType Directory -Force $keep | Out-Null
-if (Get-Process -Name 'MassEffect*' -ErrorAction SilentlyContinue) { throw 'the game is running: close it first' }
+# Only this game's process matters: another game of the trilogy has its own folder and TOC.
+$exeName = @{ LE1 = 'MassEffect1'; LE2 = 'MassEffect2'; LE3 = 'MassEffect3' }[$Game]
+if (Get-Process -Name $exeName -ErrorAction SilentlyContinue) { throw "$exeName is running: close it first" }
 
 if ($Uninstall) {
     if (Test-Path $list) {
