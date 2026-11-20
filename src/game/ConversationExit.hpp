@@ -13,6 +13,9 @@
 // then comes under a dip from black. Squadmates, anyone the next scene needs, and changes the game makes out of the player's
 // sight go through at once. A load, a level change, a screen, the setting off, an unload or a hot reload apply every held
 // change at once. The live audit's rule `vanished-in-view` watches the scene's people every tick. Game thread.
+// The sequels (research/conversation-exits.md section 9): the same module with a small adapter in the .cpp: the removal is the
+// actor's own Engine.Actor.SetActive(false) (ME2: ModifyPropertyPawn's "Active" row through ProcessEvent; ME3: BioSeqAct_SetActive's
+// script call, engine/ExitHooks' script path), the people from game/SequelConversationWorld's reader, the dip on its cut counter.
 namespace mevr::game::conversation_exit {
 
 // The reflection handles and the hook's provider; after ue3::runtime::Ready.

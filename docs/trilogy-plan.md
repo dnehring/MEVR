@@ -1053,9 +1053,13 @@ These unblock the most: almost every other entry gets smaller once they land.
   research/conversation-exits.md): the shared rule `core/vr/ConversationExit` (unit-tested), ME1's adapter
   `game/ConversationExit` with `engine/ExitHooks` (the deactivation, BioActorBehavior.SetActive through ProcessEvent),
   `[Cinematics] worldExit = walk` by default with the first-person mode; on the fake headset Udina walks off with the game's AI
-  and goes once out of sight, the audit set's `popped-out` canary is caught (2026-11-20). ME2: the same Kismet action but its `Active` row is
-  `Engine.Actor.SetActive` (`AActor::execSetActive` `0x4BC510`); ME3: its own `BioSeqAct_SetActive` (`0x4BFAF0` [verify] the
-  route) and 773 line visibility tracks; teleports of a person in view next on all three (section 7 there).
+  and goes once out of sight, the audit set's `popped-out` canary is caught (2026-11-20). **ME2 and ME3 since lane EXIT2**
+  (2026-11-20, section 9 there): the same module with a sequel adapter; ME2's `Active` row is `Engine.Actor.SetActive` through
+  ProcessEvent (`AActor::execSetActive` `0x4BC510`, Ghidra), ME3's `BioSeqAct_SetActive` is script, so the hook (`0x4BFAF0`)
+  steps over a withheld call on the script's own frame; the people from the sequels' module, its cut counter for the dip (and
+  on foot through the armed word); on ME2's fake headset Tali and Prazza walk off after her reintroduction and go under the dip, the broken
+  run is caught by `vanished-in-view`; ME3 not run yet. ME3's line visibility tracks counted (about 287 in 50 conversations hide people), not held:
+  owner question 6. Teleports of a person in view next on all three (section 7 there).
 
 #### T50 Audio: two ears, and sounds placed where they are [G37, G38]
 - **State:** LE1 done · LE2 check first · LE3 check first

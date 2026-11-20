@@ -366,9 +366,125 @@ post-handler: the change itself lands later) takes out a level holding someone i
 6. **Line hides and holograms** (Saren's hologram going off at the hearing's end; ME3's 773 line visibility tracks): left as
    authored (built: noticed and counted, not held)? Recommendation: leave holograms, hold people hidden by a line (ME3 first).
 
+## 9. The sequels, built (lane EXIT2, 2026-11-20)
+
+One module for the three games: `game/ConversationExit` is ME1's adapter plus the sequels' differences in `#if` blocks (ME1's
+tokens unchanged; its compiled objects compared with main's build: identical code and data except the four that carry the build's
+commit or time). The rule is section 4's, unchanged.
+
+**What reaches the hook, per game (Ghidra, numbers only).**
+
+| | ME1 | ME2 | ME3 |
+|---|---|---|---|
+| The level script's op | `BioSeqAct_ModifyPropertyPawn`, row "Active" (`aBehaviorFunctions`) | the same op, row "Active" mapped to an object function (`aObjectFunctions`) | `BioSeqAct_SetActive` (no ModifyPropertyPawn in ME3) |
+| The function | `SFXGame.BioActorBehavior.SetActive(bSetActive)` on the behaviour | `Engine.Actor.SetActive(bActive)` on the pawn | `Engine.Actor.SetActive(bActive)` on the target actor |
+| How it is called | the op's native Activated, its row helper through the behaviour's vtable slot 0x250 (ProcessEvent) | the InteractProperty ops' native Activated (`0xA7A010`, every target in reverse; `0xA79D50`, the first target: four and three
+class vtables point at them, [verify] which is ModifyPropertyPawn's in the game with `mevr vslot`), each row of type 4 through a helper (`0xA7FC60`, `0xA7F4C0`) calling the pawn's vtable slot **0x240**, ME2's `UObject::ProcessEvent` (`0xD8D50`) | **UnrealScript**: `BioSeqAct_SetActive.Activated` is a script event whose body is `foreach Targets: Actor(target).SetActive(bSetActive)` (read with `tools/conversation-scan --game LE3 --script BioSeqAct_SetActive.Activated`); the native is called by the script VM on that script's own frame |
+| The native hooked | `UBioActorBehavior::execSetActive` `0xBAAB60` | `AActor::execSetActive` **`0x4BC510`** (its C++ `SetActive` at the actor's slot 0x340) | `AActor::execSetActive` **`0x4BFAF0`** (slot 0x330) |
+| The frame the hook reads | ProcessEvent's (Node `SetActive`, Locals the parameters) | the same | the calling script's (Node `BioSeqAct_SetActive.Activated`, Object the op): `engine/ExitHooks`' script path |
+
+Each address is pinned in `engine/Addresses.hpp` with a pattern that runs to the thunk's call through the C++ slot (every
+bool-taking exec thunk begins alike), unique in each game's `.text` (`tools/rva-patterns.py` found none shorter; the scratch
+search over the dumps confirmed one match each).
+
+**ME3's script path (`engine/ExitHooks`, `SetScriptProvider`).** The script calls the native with its own frame, so withholding
+it must leave that frame where the call would have: the hook asks the provider with the target and the op (the op's
+`bSetActive` is the value: the script passes it unchanged), and a withheld call makes the thunk's own steps without its last
+call: `P_GET_UBOOL` (the next token's native through `GNatives`, the value into a local), the `EX_EndFunctionParms` byte, and an
+`EX_DebugInfo` (0x41) after it through `GNatives[0x41]`, exactly as `0x4BFAF0` does (Ghidra). Our own apply calls
+`Engine.Actor.SetActive` through ProcessEvent, the other path. [verify] in the game.
+
+**The sequels' adapter (`game/ConversationExit.cpp`).**
+
+1. The hook's object is the actor itself; each person's "behaviour" is the pawn (`Person::behaviors[0]`), so ME1's lookups,
+   the hold, the swap check and the apply work unchanged; the apply is `Engine.Actor.SetActive(bActive = false)`.
+2. The people: `sequel_conversation_world::ScenePeople` (the sequels' reader: ME2's `m_SpeakerList`, owner, speaker and listener;
+   ME3's `m_aSpeakerData`), read only in the conversation mode (ME2's `m_oCurrentConversation` can outlive its end; the 2 s
+   window covers the end's tick).
+3. Present: ME2 the behaviour's `bActive` (through `oBioComponent`) [verify that ME2's actor SetActive changes it], ME3 the pawn's
+   own `BioPawn.bActive`; both with `bHidden` and the level's streaming.
+4. The game's black screen: a ProcessEvent post-handler on `BioSeqAct_BlackScreen.Activated` (ME1's route; ME3's line track and
+   start flags are not read: research/le3-conversations-in-world.md 5.4).
+5. The dip: `conversation_world::DipFromBlack` forwards to the sequels' module (`gCutSerial`), which publishes it held or, on
+   foot, in the armed word (`PublishArmed` carries `cut` and publishes while it is new); the sequels' fade seam
+   (`plugin/HalcyonSequelBridge` `TransitionFadeLayer`) reads `FootCut()` on foot as LE1's does.
+6. The world mode: the sequels' module's word (the file's `[Cinematics] conversations`, or `mevr convo world on|off|auto`).
+7. The walk: `game/AiWalk`'s adapters (ME2 `BioAiController.PrecisionMoveTo`, ME3 `MoveToSlot`) behind ME1's reachability check.
+8. Test aid: `mevr convo exit end` (the sequels): `BioWorldInfo.EndCurrentConversation`, the world's own early end, so a start
+   action's outputs run without playing every line. Runner: `tools/le2-halcyon-run/conversation-exit.ps1`.
+
+**ME2's fixture (the scratch scan, 171 deactivations reachable within 6 ops of a start's outputs).** Tali's reintroduction on
+Freedom's Progress: `BioD_ProFre_201Tali`, sequence `Tali_Conversation`: `SFXSeqAct_StartConversation_0` (`profre_tali_intro_d_dlg`)
+`Out` -> `SeqAct_Gate_2` -> `BioSeqAct_PMExecuteTransition_1` ("Tali_Left -> True") -> **`BioSeqAct_ModifyPropertyPawn_0`, Active
+false on Tali (`hench_tali`, the owner), Prazza (`profre_quar_leader`) and two guards**, no delay, no black screen. Reached by
+script from the VR career's `Save_0004` (lane FPC2's route: `mevr setloc` into the room, the chain fired from its
+`BioSeqAct_CancelHint`). The Normandy's debriefs are the next (Miranda, Jacob and the Illusive Man's hologram after each
+`nor*_debrief_d_dlg`), from a Normandy save.
+
+**ME3's line visibility tracks (count only; owner question 6).** A scratch scan of every ME3 package's `InterpTrackVisibility`
+inside a conversation's line matinees (base game and DLC, deduplicated by conversation and track): 2,461 tracks in 198
+conversations (section 3's 773 in 147 counted fewer packages). 1,187 only show. Of the 1,274 that hide (a Hide or Toggle key), by
+the actor their group names or finds (`m_nmFindActor`):
+
+| what is hidden | tracks | conversations | of which hidden after the line's start (a pop mid-line) |
+|---|---|---|---|
+| one of the conversation's people (a speaker tag, the owner, or a group named for one: a double can't be told apart in the data) | 220 | 37 | 50 tracks in 17 conversations |
+| a squadmate (`hench_*`) | 67 | 18 | 11 in 4 |
+| someone else (guards, soldiers, extras by name) | 220 | 56 | 99 in 25 |
+| the player | 45 | 15 | 5 in 4 |
+| a hologram, screen or vision | 70 | 23 | 39 in 16 |
+| a camera, light or effect | 77 | 24 | 59 in 20 |
+| a prop or unknown (Reapers, doors, glass, ships, backdrops) | 575 | 101 | 220 in 58 |
+
+So **about 287 tracks in about 50 conversations hide people of the scene (220 people, 67 squadmates)**, 61 of them mid-line; a
+hide at the line's start (time 0) is the composition of a new shot (who is in it), not a person leaving in view. Classification
+by names, an estimate. Not built (owner question 6).
+
+**Checked in the game:** see section 10.
+
+## 10. ME2 in the game (fake headset, 2026-11-20 03:02-03:15, lane EXIT2)
+
+Stretch `%LOCALAPPDATA%\MEVR\sessions\20261120-030229-295-LE2-exit2` (`prep.ps1 -Holder EXIT2`, `launch.ps1`, `load.ps1 -Save
+VR_31_Soldier_141126_336072f\Save_0004.pcsav`, then `conversation-exit.ps1` with `-Before "god", "mevr instances
+SFXGame.SFXPawn_PlayerSoldier", "mevr setloc 0 -9600 16600 -12060", "sleep:12", ... "mevr setloc 0 -9600 15250 -12060"`: the room
+streamed in and the player inside it; restored with 0 differences). Folders `exit-tali-*` there (lines.txt, console.txt).
+
+1. **The route, verified in the game:** every deactivation of the scene's end reached `AActor::execSetActive` with ProcessEvent's
+   frame (the hook's `fromEvent` equals its `calls`: 5, 9, 13 ...), as Ghidra said.
+2. **Run A (the full chain from its CancelHint: the cutscene held as a moment, the conversation in first person, ended after 26 s
+   by `mevr convo exit end`):** `the script deactivates SFXPawn_Tali_1 (hench_tali) in the player's view (1.7 m from the eyes):
+   held back`; Prazza behind the player let through at once (out of sight); the two guards are nobody of the scene (owner question
+   1); Tali `walks away 3.0 m ... with the game's AI` (`BioAiController.PrecisionMoveTo`: it moves a person after the conversation
+   mode, verified), arrived 2.75 m in 9 s, still in view, so after the look-away's 3 s: `applied after 12.2 s: the player kept
+   looking, under a dip from black; hidden now yes, put back where it stood`; the host's dip on foot through `FootCut()`:
+   `transition fade: the world -> the world: from black over 0.35 s` (03:06:18). Snapshots
+   `%LOCALAPPDATA%\MEVR\snapshots\2026-11-20_03-06-07-541-left.png` (Tali held, turning to leave), `..._03-06-11-509-left.png`
+   (walking off), `..._03-06-20-656-left.png` (gone after the dip, the journal updated: the plot went on).
+3. **Run B, the broken run (`-Exit off`, the start fired directly; it ends by itself in 11 s):** Tali and Prazza let through in view
+   and **`convo: audit: vanished-in-view` caught both** (5.5 and 7.0 m from the eyes).
+4. **Run C (`-Exit walk`, the same start, its natural end):** both held in view (5.7 and 7.2 m), both walked 3 m with the game's AI
+   (2.76 m in 9.2 s), applied after 12.2 s under the dip; no `vanished-in-view`.
+5. **Found and fixed:** (a) `mevr convo exit` was routed to the sequels' world console on ME2 and ME3 (ConsoleRequest's sequel
+   `convo` verb): now `exit` goes to this module on every game; (b) `game/AiWalk`'s ME2 speed call used ME1's parameter names
+   (`Engine.Pawn.SetDesiredSpeed` is `fSpeedScaling` on ME2): every call failed. Fixed; the pace stayed the same (run D: 2.76 m in
+   9.3 s), so it is `PrecisionMoveTo`'s own. (c) Tried `MoveToSlot` (ME3's) on ME2 (run E): it moved neither person (`stalled
+   after 0.00 m`, the retry too, then the dip at 7.1 s): ME2 keeps `PrecisionMoveTo`.
+6. **What the player sees on ME2 today:** in Tali's room the picker found hidden places (2-4 of 36) but none with a way the AI takes,
+   so people walk 3 m straight away at about 0.3 m/s and go under a dip 12 s after the scene. Next: a faster ME2 walk (the AI's
+   path move, [verify] which ME2 function walks an NPC at walking pace; `MoveToSlot` does not) and longer walks.
+
+**ME3 (not run in the game in this lane; the run lock was another lane's for the first hour).** Fixtures from the same scratch scan
+(189 deactivations within 6 ops of a start's outputs), on the Citadel hub `Save_0090` loads (`BioD_CitHub_HanarPlot`,
+`BioD_CitHub_Embassy*`): `citprs_hanarplot_intro_d_dlg` (its end switches off its owner `cit_sal_spectre`, one op on), and
+`citprs_james_m_dlg` (`hench_marine`, a squadmate when in the party: let through). Check first that the hook's script path counts
+(`mevr convo exit status`: the hook's `calls` grow while `fromEvent` doesn't: ME3's script frames) and that the script goes on after
+a withheld call (the op's other targets switched, the level's script not stuck).
+
 ## Log
 
 - 2026-11-19/20: the packages read and counted for the three games; Udina's case found; the natives read in an isolated copy of
   the LE1 Ghidra project (the shared one was locked by another session's MCP server); the rule, ME1's side and the audit built.
 - 2026-11-20: runs 1-4 on the fake headset; why the AI never walked Udina (the move state's own reachability test), fixed with
   `PointReachable`; people whose level streams out applied at once; the audit set once (long) and the `popped-out` canary caught.
+- 2026-11-20 (lane EXIT2): the sequels' adapter (section 9), ME2 run on the fake headset (section 10), ME3's line visibility tracks
+  counted; ME3 not run in the game.

@@ -553,13 +553,17 @@ void Publish(conversation_world::Link const& link, ue3::Object* controller) {
 // the handover after one shown in the world.
 void PublishArmed(conversation_world::Link const& link, bool armed, bool handover) {
     static bool s_published = false;
-    if (link.publish == nullptr || (!armed && !handover && !s_published)) return;
+    static std::uint32_t s_cut = 0;  // the cut counter last published on foot: a newer one is a dip (game/ConversationExit)
+    bool const dip = gCutSerial != s_cut;
+    if (link.publish == nullptr || (!armed && !handover && !dip && !s_published)) return;
     cw::State s{};
     s.active = 0;
+    s.cut = gCutSerial;  // the host's FootCut (its dip on foot, as LE1's)
     s.holdPad[0] = armed ? 1 : 0;
     s.holdPad[1] = handover ? 1 : 0;
     link.publish(&s);
-    s_published = armed || handover;
+    s_cut = gCutSerial;
+    s_published = armed || handover || dip;
 }
 
 // The right stick turns a held facing about the drawn eyes ([Comfort] turn: smooth or snap): the place under the eyes moves so
@@ -1274,6 +1278,24 @@ std::string Console(std::string_view args) {
                               : "not placed yet: " + gC.why)
               : std::string("none"),
         gLast);
+}
+
+// ---- game/ConversationExit's questions (people leaving a conversation; research/conversation-exits.md section 9) ---------------
+ue3::Object* ScenePeople(std::vector<ue3::Object*>& people) {
+    people.clear();
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const conversation = controller != nullptr ? LiveConversation(controller) : nullptr;
+    if (conversation == nullptr) return nullptr;
+    people = Speakers(conversation, ConversationPlayer(conversation));
+    return conversation;
+}
+
+void DipFromBlack() {
+    ++gCutSerial;  // published with the held scene's state, or on foot with the armed word (PublishArmed)
+}
+
+std::uint32_t CutCount() {
+    return gCutSerial;
 }
 
 } // namespace mevr::game::sequel_conversation_world

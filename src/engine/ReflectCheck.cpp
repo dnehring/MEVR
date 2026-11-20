@@ -4516,6 +4516,45 @@ void CheckMemory() {
     });
 }
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// game/ConversationExit on the sequels (research/conversation-exits.md section 9): the held SetActive (the actor's own), what
+// says the pawn is still active, the black screen that lets a removal through, and the walk's reachability question.
+void CheckSequelConversationExit() {
+    CheckFunction("Engine.Actor.SetActive");
+    PARAM(AActor_execSetActive_Parms, "Engine.Actor.SetActive", bActive);
+    PARMS(AActor_execSetActive_Parms, "Engine.Actor.SetActive");
+#if defined(MEVR_GAME_LE2)
+    CheckField("SFXGame.BioActorBehavior", "bActive", SDK_BOOL(UBioActorBehavior, bActive));
+    CheckField("Engine.Actor", "oBioComponent", SDK_FIELD(AActor, oBioComponent));
+    PARAM(APawn_execSetDesiredSpeed_Parms, "Engine.Pawn.SetDesiredSpeed", fSpeedScaling);  // game/AiWalk's ME2 speed
+#else
+    CheckField("SFXGame.BioPawn", "bActive", SDK_BOOL(ABioPawn, bActive));
+    CheckFunction("SFXGame.BioSeqAct_SetActive.Activated");
+    CheckField("SFXGame.BioSeqAct_SetActive", "bSetActive", SDK_BOOL(UBioSeqAct_SetActive, bSetActive));
+#endif
+    CheckFunction("SFXGame.BioSeqAct_BlackScreen.Activated");
+    CheckField("SFXGame.BioSeqAct_BlackScreen", "m_eBlackScreenAction", SDK_FIELD(UBioSeqAct_BlackScreen, m_eBlackScreenAction));
+    CheckField("Engine.Actor", "bHidden", SDK_BOOL(AActor, bHidden));
+    CheckField("Engine.Actor", "Tag", SDK_FIELD(AActor, Tag));
+    CheckField("Engine.WorldInfo", "PawnList", SDK_FIELD(AWorldInfo, PawnList));
+    CheckField("Engine.Pawn", "NextPawn", SDK_FIELD(APawn, NextPawn));
+    CheckField("Engine.Pawn", "Controller", SDK_FIELD(APawn, Controller));
+    CheckField("Engine.WorldInfo", "StreamingLevels", SDK_FIELD(AWorldInfo, StreamingLevels));
+    CheckField("Engine.LevelStreaming", "LoadedLevel", SDK_FIELD(ULevelStreaming, LoadedLevel));
+    CheckField("Engine.LevelStreaming", "PackageName", SDK_FIELD(ULevelStreaming, PackageName));
+    CheckField("Engine.LevelStreaming", "bShouldBeVisible", SDK_BOOL(ULevelStreaming, bShouldBeVisible));
+    CheckField("Engine.LevelStreaming", "bIsVisible", SDK_BOOL(ULevelStreaming, bIsVisible));
+    CheckFunction("Engine.Controller.PointReachable");
+    PARAM(AController_execPointReachable_Parms, "Engine.Controller.PointReachable", aPoint);
+    PARAM(AController_execPointReachable_Parms, "Engine.Controller.PointReachable", ReturnValue);
+    PARMS(AController_execPointReachable_Parms, "Engine.Controller.PointReachable");
+    CheckFunction("Engine.Actor.Trace");
+    CheckFunction("Engine.Actor.FastTrace");
+    CheckFunction("Engine.Actor.SetLocation");
+    CheckFunction("Engine.Actor.SetRotation");
+}
+#endif
+
 std::filesystem::path OutputPath() {
     wchar_t buffer[MAX_PATH]{};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) {
@@ -4602,6 +4641,7 @@ bool Run(hook::Context& context) {
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckSequelWalk();
     CheckSequelSquadAck();
+    CheckSequelConversationExit();
 #endif
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
     CheckLeave();
