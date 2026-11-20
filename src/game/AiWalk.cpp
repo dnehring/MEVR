@@ -60,7 +60,7 @@ ue3::FunctionRef gStop{"SFXGame.BioPawn.StopMovement", ue3::kEveryGame};
 ue3::FunctionRef gSetDesiredSpeed{"Engine.Pawn.SetDesiredSpeed", ue3::kEveryGame};
 constexpr double kGoalNearUnits = 250.0;   // a navigation point this near the point (flat) is its goal
 constexpr double kGoalRiseUnits = 120.0;   // ... on the same floor
-constexpr double kGoalArriveUnits = 90.0;  // the AI stops at a goal's cylinder, not on its centre
+constexpr double kGoalArriveUnits = 90.0;  // the AI stops at a goal's cylinder, not on its centre (once its state has ended)
 int gLe2Move = 0;                          // 0: the goal walk, PrecisionMoveTo without a goal; 1: PrecisionMoveTo (`walkby`)
 #else
 constexpr char kMoveName[] = "MoveToSlot";
@@ -336,10 +336,25 @@ Phase Step(Walk& w) {
     if (!at) return w.phase;
     std::uint64_t const now = GetTickCount64();
 #if defined(MEVR_GAME_LE2)
-    if (Flat(*at, w.to) <= (w.moveAction != nullptr ? kGoalArriveUnits : kArriveUnits)) {  // a goal walk ends at its cylinder
-#else
-    if (Flat(*at, w.to) <= kArriveUnits) {
+    // A goal walk ends with the AI's own: MovingToGoal pops once ReachedDestination says so (its PoppedState clears MoveGoal),
+    // the pawn at the goal's cylinder; a goal cleared far from it is the AI giving the walk up (no path after all). Judged by
+    // distance alone, a walk ended 90 units short at the edge of a hidden place, still in sight (Tali, 2026-11-20).
+    if (w.moveAction != nullptr) {
+        ue3::Object* const goalNow = gMoveGoal.Read<ue3::Object*>(w.controller).value_or(nullptr);
+        double const left = Flat(*at, w.to);
+        if (left <= kArriveUnits || (goalNow != w.moveAction && left <= kGoalArriveUnits)) {
+            w.phase = Phase::Arrived;
+            ++gArrived;
+            return w.phase;
+        }
+        if (goalNow != w.moveAction) {
+            w.phase = Phase::Stalled;
+            ++gStalled;
+            return w.phase;
+        }
+    }
 #endif
+    if (Flat(*at, w.to) <= kArriveUnits) {
         w.phase = Phase::Arrived;
         ++gArrived;
     } else if (Flat(*at, w.progressAt) >= kStallUnits) {

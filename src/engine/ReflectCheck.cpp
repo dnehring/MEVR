@@ -4553,6 +4553,15 @@ void CheckSequelConversationExit() {
     PARAM(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward", MaxPathLength);
     PARAM(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward", ReturnValue);
     PARMS(AController_execFindPathToward_Parms, "Engine.Controller.FindPathToward");
+    CheckClass<UGoal_AtActor>("Engine.Goal_AtActor");  // ... with the constraints MovingToGoal pushes before its search
+    CheckFunction("Engine.Goal_AtActor.AtActor");
+    PARAM(UGoal_AtActor_execAtActor_Parms, "Engine.Goal_AtActor.AtActor", P);
+    PARAM(UGoal_AtActor_execAtActor_Parms, "Engine.Goal_AtActor.AtActor", Goal);
+    PARAM(UGoal_AtActor_execAtActor_Parms, "Engine.Goal_AtActor.AtActor", ReturnValue);
+    CheckClass<UPath_TowardGoal>("Engine.Path_TowardGoal");
+    CheckFunction("Engine.Path_TowardGoal.TowardGoal");
+    PARAM(UPath_TowardGoal_execTowardGoal_Parms, "Engine.Path_TowardGoal.TowardGoal", P);
+    PARAM(UPath_TowardGoal_execTowardGoal_Parms, "Engine.Path_TowardGoal.TowardGoal", Goal);
 #else
     CheckField("SFXGame.BioPawn", "bActive", SDK_BOOL(ABioPawn, bActive));
     CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // ME3's hub people: held as pawns are, never walked

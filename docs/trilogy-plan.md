@@ -1065,7 +1065,10 @@ These unblock the most: almost every other entry gets smaller once they land.
   ProcessEvent (`AActor::execSetActive` `0x4BC510`, Ghidra), ME3's `BioSeqAct_SetActive` is script, so the hook (`0x4BFAF0`)
   steps over a withheld call on the script's own frame; the people from the sequels' module, its cut counter for the dip (and
   on foot through the armed word); on ME2's fake headset Tali and Prazza walk off after her reintroduction and go under the dip, the broken
-  run is caught by `vanished-in-view`. **ME3 in the game since lane EXIT3** (section 11 there): its hub people are stunt actors (held,
+  run is caught by `vanished-in-view`. **ME2's walk is the Kismet's own since lane EXIT3** (section 12 there): `SFXAI_Core.MoveToGoal`
+  to a navigation point along the AI's path (the places include navigation points the eyes can't see with a path, asked with UE3's
+  constraints), so Tali and Prazza walk out of sight in 2-3 s and go with no dip; ModifyPropertyPawn's Activated is `0xA7A010`.
+  **ME3 in the game since lane EXIT3** (section 11 there): its hub people are stunt actors (held,
   never walked: no AI), read from the controller's owner, found actors and extras too; the hub's crew members (`hench_` tags) are
   squadmates (owner question 7); at the Prothean's moment the script path held three people in view, the op's loop and the level's
   script went on, the broken run is caught; ME3's walk (`MoveToSlot`) still unchecked (no pawn in a hub conversation).

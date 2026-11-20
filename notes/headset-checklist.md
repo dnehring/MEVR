@@ -264,10 +264,12 @@ roughly when. A snapshot is End, or a quick tap of both stick clicks; a recordin
   not vanish beside Anderson; looking at him the whole time, he goes after a few seconds under a short fade. Also Anderson
   after his final chat, right after. Does the walk look like his own (no slide), does the fade feel justified, and is anyone the next scene
   needs ever missing? `mevr convo exit off` is the old pop, for comparison.
-- [ ] 2026-11-20 People leaving a first-person conversation on ME2 and ME3 (lane EXIT2; research/conversation-exits.md section 9):
-  ME2, Tali's reintroduction on Freedom's Progress in first person: at the conversation's end Tali, Prazza and the two guards
-  should walk off and be gone once out of your view, not vanish in front of you. ME3: any conversation whose end switches
-  someone off in view (none checked yet). Does the walk look like their own, and is anyone missing later?
+- [ ] 2026-11-20 People leaving a first-person conversation on ME2 and ME3 (lanes EXIT2, EXIT3; research/conversation-exits.md sections 9-12):
+  ME2, Tali's reintroduction on Freedom's Progress in first person: at the conversation's end Tali and Prazza should walk off
+  through the room (lane EXIT3: the game's own path, about 2 m/s) and be gone once behind the partition, no fade; the two guards
+  still vanish (question 1). Is it a walk or a run, does it look like their own? ME3, the Citadel's embassies: Javik's moment with
+  the hanar (From Ashes): looking at the hanar and the two bystanders as it ends, they stay about 3 s and go under a short fade
+  (they can't walk); Javik goes as the game has him go. Does the wait read badly (question 8)? Is anyone missing later?
 - [ ] 2026-11-17 ME3's map on the CIC's projector (lane GX3; docs/galaxy-projector-handoff.md "travel, the opening and closing"):
   from the Normandy's CIC console, A: the camera's flight into the map should not show (the CIC stays, 2.5 s), then the map on
   the projector with no blue band over the pit. Fly to the Pax system's Mass Relay, travel to another cluster: the relay's movie

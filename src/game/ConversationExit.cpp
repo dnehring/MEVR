@@ -627,15 +627,43 @@ std::optional<bool> Reachable(ue3::Object* pawn, ik::Vec3 const& to) {
 ue3::FieldRef gNavList{"Engine.WorldInfo", "NavigationPointList", ue3::kEveryGame};
 ue3::FieldRef gNextNav{"Engine.NavigationPoint", "nextNavigationPoint", ue3::kEveryGame};
 ue3::FunctionRef gFindPathToward{"Engine.Controller.FindPathToward", ue3::kEveryGame};
+// UE3's path search runs on the constraints pushed onto the pawn before it (the native clears them after): MovingToGoal's own
+// ApplyPathConstraints pushes Goal_AtActor.AtActor and Path_TowardGoal.TowardGoal (static functions, on the classes' default
+// objects) before its FindPathToward; without them every search came back empty (in sight or not, 2026-11-20).
+ue3::ClassRef gGoalAtActorClass{"Engine.Goal_AtActor", ue3::kEveryGame};
+ue3::FunctionRef gAtActor{"Engine.Goal_AtActor.AtActor", ue3::kEveryGame};
+ue3::ClassRef gTowardGoalClass{"Engine.Path_TowardGoal", ue3::kEveryGame};
+ue3::FunctionRef gTowardGoal{"Engine.Path_TowardGoal.TowardGoal", ue3::kEveryGame};
+ue3::Kept gAtActorDefaults;
+ue3::Kept gTowardGoalDefaults;
+
+// A class's default object (the static functions' context), found once by its name.
+ue3::Object* DefaultsOf(ue3::ClassRef& cls, ue3::Kept& kept) {
+    if (ue3::Object* const live = kept.Live()) {
+        return live;
+    }
+    ue3::Class* const c = cls.Get();
+    ue3::Reflection& r = ue3::runtime::Get();
+    for (std::int32_t i = 0, n = c != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.IsAlive(o) && r.ClassOf(o) == c && r.NameText(o).starts_with("Default__")) {
+            kept = ue3::Kept(o);
+            return o;
+        }
+    }
+    return nullptr;
+}
 constexpr int kNavMax = 6;          // candidates added
 constexpr int kNavAsked = 24;       // hidden ones asked for a path at most
 constexpr double kNavRiseUnits = 100.0;
+std::string gNavWhy;                // the last search, for the walk's log line
 
 int AddNavCandidates(ue3::Object* pawn, ik::Vec3 const& at, std::vector<ik::Vec3> const& refused, std::vector<cx::Candidate>& out) {
     ue3::Object* const ai = gController.Read<ue3::Object*>(pawn).value_or(nullptr);
     ue3::Object* const world = gWorldOfActor.Read<ue3::Object*>(pawn).value_or(nullptr);
     ue3::Function* const find = gFindPathToward.Get();
     if (!gEyes || ai == nullptr || !ue3::runtime::IsAlive(ai) || world == nullptr || find == nullptr) {
+        gNavWhy = "navigation points not searched (no eyes, AI, world or FindPathToward)";
         return 0;
     }
     struct Spot {
@@ -658,18 +686,41 @@ int AddNavCandidates(ue3::Object* pawn, ik::Vec3 const& at, std::vector<ik::Vec3
     }
     std::sort(spots.begin(), spots.end(), [](Spot const& a, Spot const& b) { return a.flat < b.flat; });
     ue3::Object* const tracer = pawn;
-    int added = 0, asked = 0;
+    ue3::Object* const atActorDefaults = gAtActor.Get() != nullptr ? DefaultsOf(gGoalAtActorClass, gAtActorDefaults) : nullptr;
+    ue3::Object* const towardDefaults = gTowardGoal.Get() != nullptr ? DefaultsOf(gTowardGoalClass, gTowardGoalDefaults) : nullptr;
+    if (atActorDefaults == nullptr || towardDefaults == nullptr) {
+        gNavWhy = "navigation points not searched (no Goal_AtActor or Path_TowardGoal)";
+        return 0;
+    }
+    auto const pathTo = [&](ue3::Object* goal) {
+        ue3::Params at(ue3::runtime::Get(), gAtActor.Get());
+        if (!at.Valid() || !at.Set("P", pawn) || !at.Set("Goal", goal) || !ue3::runtime::Call(atActorDefaults, gAtActor.Get(), at) ||
+            !at.ReturnBool().value_or(false)) {
+            return false;
+        }
+        ue3::Params toward(ue3::runtime::Get(), gTowardGoal.Get());
+        if (toward.Valid() && toward.Set("P", pawn) && toward.Set("Goal", goal)) {
+            ue3::runtime::Call(towardDefaults, gTowardGoal.Get(), toward);
+        }
+        ue3::Params p(ue3::runtime::Get(), find);
+        return p.Valid() && p.Set("anActor", goal) && p.Set("MaxPathLength", std::int32_t{2000}) && ue3::runtime::Call(ai, find, p) &&
+            p.Return<ue3::Object*>().value_or(nullptr) != nullptr;
+    };
+    int added = 0, asked = 0, seenCount = 0, seenAsked = 0, seenPathed = 0;
     for (Spot const& n : spots) {
         if (added >= kNavMax || asked >= kNavAsked) {
             break;
         }
         if (Clear(tracer, gEyes->at, n.spot + ik::Vec3{0.0, 0.0, 70.0}) || Clear(tracer, gEyes->at, n.spot)) {
+            ++seenCount;
+            if (seenAsked < 2) {  // a control: the path search answers for places in sight
+                ++seenAsked;
+                seenPathed += pathTo(n.nav) ? 1 : 0;
+            }
             continue;  // in sight: the straight candidates cover walking off in view
         }
         ++asked;
-        ue3::Params p(ue3::runtime::Get(), find);
-        if (!p.Valid() || !p.Set("anActor", n.nav) || !p.Set("MaxPathLength", std::int32_t{2000}) || !ue3::runtime::Call(ai, find, p) ||
-            p.Return<ue3::Object*>().value_or(nullptr) == nullptr) {
+        if (!pathTo(n.nav)) {
             continue;
         }
         cx::Candidate c;
@@ -679,6 +730,8 @@ int AddNavCandidates(ue3::Object* pawn, ik::Vec3 const& at, std::vector<ik::Vec3
         out.push_back(c);
         ++added;
     }
+    gNavWhy = std::format("navigation points: {} within reach on the floor, {} of them in sight ({} of {} asked with a path), {} "
+                          "hidden asked for a path, {} with one", spots.size(), seenCount, seenPathed, seenAsked, asked, added);
     return added;
 }
 #endif
@@ -743,7 +796,8 @@ std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::
             gLimits.minUnits / kUnitsPerMeter, gLimits.maxUnits / kUnitsPerMeter, pathCount, candidates.size(), hiddenCount, unreachable,
             unknown > 0 ? std::format(", {} not asked", unknown) : std::string());
 #if defined(MEVR_GAME_LE2)
-        why += std::format("; {} navigation points hidden with a path", navAdded);
+        why += "; " + gNavWhy;
+        (void)navAdded;
 #endif
         return std::nullopt;
     }
@@ -751,8 +805,7 @@ std::optional<ik::Vec3> Destination(ue3::Object* pawn, ik::Vec3 const& at, std::
     why = std::format("{} of {} points with a way, {} hidden, {} clear but not reachable for the AI{}", pathCount, candidates.size(),
         hiddenCount, unreachable, unknown > 0 ? std::format(", {} not asked", unknown) : std::string());
 #if defined(MEVR_GAME_LE2)
-    why += std::format("; {} navigation points hidden with a path{}", navAdded,
-        pick->index >= straight ? ": a navigation point picked (the walk follows the AI's path)" : "");
+    why += std::format("; {}{}", gNavWhy, navAdded > 0 && pick->index >= straight ? ": one picked (the walk follows the AI's path)" : "");
 #endif
     return I(candidates[pick->index].at);
 }
