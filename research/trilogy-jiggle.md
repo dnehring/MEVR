@@ -324,3 +324,16 @@ The owner shared a research brief written for another LE3 project ("Soft-Body Se
   all. Offline only: nothing of it ships or runs in the game.
 - Its tone note matches ours: subtle and physically motivated.
 - Out of scope here: its Character Creator 5 skin pipeline and Reallusion licensing (another project's look development).
+
+## In the game (2026-11-19)
+
+`tools/rig` added the four stand-in bones to ME3 Miranda's body (`BreastLeft/Right` on `Chest2`, `GluteLeft/Right` on
+`Pelvis`, placed from her mesh's surface: the front peaks at x 12.5 cm around 132-138 cm, the back at x -12.7 around 92-98
+cm) and weighted them (ellipsoids taking only the chest's or the pelvis's share: 92-112 vertices a breast on LOD 0, about
+80 a glute, peak shares 0.8 and 0.5). Their rest axes are the body's (X out of the body), so at run time each bone's own
+animated rotation is its jiggle frame. The hair stage drives them with `core/ik/Jiggle` on the same call as the hair.
+
+Measured on the generated jump (the stage's trace, intensity 0.5, the fake headset's 32 fps): breasts +-1.0-1.2 cm
+vertical, lagging at the take-off and overshooting at the landing, settled within 0.3 s; glutes +-0.3 cm; the two sides
+agree. Subtle by design (the suit is tight): `[Hair] jiggleIntensity` (0..1) scales the reach, `mevr hair jiggle <f>|off`
+live. Still to judge in the headset: whether 0.5 reads at all at conversation distance.

@@ -207,3 +207,35 @@ over two loops; then 37 more with `mevr hair off` for an A/B at the same pose an
 - **A walk out of the camera's view**: with a walk and turn 90 she walked along the corridor out of the fixed first-person
   view; footage walks in place. Each range end of a walk is a 180-degree turn, which resets the hair chains (136 resets in
   one run): a walk for hair should turn smoothly.
+
+## The re-rig in the game (2026-11-19, fifth and sixth runs)
+
+The plan's A3 and P3 (re-rigged meshes; does the game take a mesh with added bones), done without Blender or Legendary
+Explorer's importer: `tools/rig` (README there) edits the meshes' binaries through Legendary Explorer's library.
+
+- **The game takes a mesh with added bones.** ME3 loaded `MEVR_Miranda.pcc` (installed in `CookedPCConsole` with a TOC
+  entry), and Miranda wore `HMF_ARM_MIRa_MEVR` (155 bones: 123 + 28 hair-chain + 4 soft-tissue) and
+  `HMF_HIR_PROMiranda_MEVR` (151 bones), drawn exactly as before at rest, textures and all: the materials are imports by the
+  original's path, resolved against the loaded originals (`RequireImportsAlreadyLoaded`).
+- **LE meshes keep no CPU copies of their vertices**: the GPU skin buffer is the only copy (rigid vertices too, one bone at
+  255). Miranda's body: 4 LODs, one chunk each (64 bones in LOD 0's map, room for 11 under UE3's 75); her `_Old` hair: one
+  LOD, 3,881 vertices, a 14-bone map.
+- **Hair chains generated from the hair mesh**: 7 chains of 4 bones (back, back-sides, sides, front locks; the face the
+  open front), from the hairline at 170 cm down to each sector's tip (142 cm behind, 149 at the sides); every vertex
+  re-weighted. At rest the chains sit on their targets (0.0-0.2 cm).
+- **Chains hung from the head turned the hair on the shoulders with it** (her head turned in the conversation's idle: the
+  side lock went behind the ear and uncovered a stray card): the game's own rigs hang the lower hair bones from the neck and
+  collars. `core/ik/HairChain` `followBody` (0.7): bone i of n targets the pose the upper chest carries by followBody * i /
+  (n - 1), the relation taken from the **bind pose** (`engine/Skeleton` reads each bone's rest transform: `FMeshBone`
+  orientation at +0x10, position at +0x20); recorded from the live pose instead it changed nothing (the head was already
+  turned). With it the hair matched the original's shape at rest. Unit test `TestFollowBody`.
+- **Through the generated walk** (side-on, 26 frames per second of motion slowed 100 times): the back of the hair bends
+  along its length and swings out behind the shoulders and back, where the 13 one-bone strands moved one panel. It is still
+  a shell of cards: it bends, it doesn't part into locks.
+- **Her look** (B1, `game/HairLook`): the master material (`HMN_HED_PRO_MASTER_HAIR_MAT_USER`) has two highlight lobes,
+  `Highlight1SpecExp_Scalar` 50 / `Highlight2SpecExp_Scalar` 750, `Highlight1Color`/`Highlight2Color`,
+  `Hightlight1Intensity`/`Hightlight2Intensity` (the game's spelling); hers: a dark broad lobe (0.108, 0.070, 0.053) and the
+  default reddish tight one (0.57, 0.25, 0.14). Three same-pose sheets (the apartment's wide shot, cool window light):
+  changes under 2x intensity barely show; a highlight colour multiplies the light's, so under this blue light a neutral
+  blond reads cyan and a warm one (1.3, 0.85, 0.35) golden. Picked: broad lobe (0.40, 0.27, 0.11) x2 at exponent 90, tight
+  lobe (1.3, 0.85, 0.35) x2.8 at 200 (`kMirandaLook`); `[Hair] look` overrides it.

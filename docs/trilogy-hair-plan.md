@@ -437,3 +437,16 @@ skeleton). So:
   (breasts on Chest2, glutes on Pelvis): a walk 0.7 cm, the jump 2.2 cm (4.5 at intensity 1), settled within 0.15 s. In the
   game it still needs the added bones and weights (the A3 route, built on the player's machine); its look, defaults and
   whether it is on go to the owner first.
+- **The re-rig works in the game** (A3 and P3 answered; research/trilogy-hair.md "The re-rig in the game";
+  `tools/rig/README.md`): no Blender or importer needed: `tools/rig` adds bones and weights by editing the meshes through
+  Legendary Explorer's library, from the player's own game files, into our package (materials as imports). ME3 Miranda wears
+  `MEVR_Miranda.HMF_HIR_PROMiranda_MEVR` (7 generated chains of 4 bones; the lower joints rest with the shoulders,
+  `followBody`, from the bind pose) and `HMF_ARM_MIRa_MEVR` (the same chain bones plus breast and glute bones); she draws
+  as before at rest, the back of the hair bends along its length through a walk, and the soft tissue moves on the jump
+  (+-1 cm breasts, +-0.3 cm glutes at intensity 0.5).
+- **B1 done for Miranda** (`game/HairLook`): her highlight a warm blond (both lobes tighter, warmer, stronger), from three
+  same-pose sheets; `[Hair] look` overrides, `mevr hair material | param`.
+- **Next**: the owner in the headset (followBody, the jiggle's intensity, the highlight; notes/headset-checklist.md); ME2's
+  Miranda through the same plan format (her hair has no hair bones at all: the hair step alone; her body the bones);
+  the players' install of a rig (MEVR Setup building the plan's package on the player's machine, docs section 7); other
+  characters by a plan each.
