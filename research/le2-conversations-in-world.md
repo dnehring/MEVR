@@ -318,6 +318,17 @@ looks at the player's eyes (ME2 `BioPawn.SetLookAtTarget`, ME3 `SFXModule_LookAt
 behind), the game's black moving the player, rides and seats on the sequels; the stance records and `scene_audit` rules on the
 sequels; a canary per new rule.
 
+## 7. People leaving a scene on ME2 (lane EXIT2, 2026-11-20)
+
+ME1's rule (research/conversation-exits.md: hold the script's removal of one of the scene's people while the player sees them,
+walk them away with the game's AI, apply once out of sight) on the sequels, from the same module `game/ConversationExit`; the
+whole guide, per game, is that note's section 9. What this module gave it: one accessor, `ScenePeople` (the reader's people of
+the live conversation), and the cut counter's `DipFromBlack`/`CutCount`; the armed word on foot now carries `cut` (the host's
+`FootCut`, a dip over a removal on foot). ME2's first fixture is Tali's reintroduction (section 3.2's route): at
+`profre_tali_intro_d_dlg`'s end the level's `BioSeqAct_ModifyPropertyPawn_0` deactivates Tali, Prazza and two guards in the
+clear; `tools/le2-halcyon-run/conversation-exit.ps1` reaches it by script (`mevr convo exit end` ends the conversation by the
+world's own call so the script's end runs).
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,

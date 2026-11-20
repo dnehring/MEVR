@@ -15,6 +15,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **People leave first-person conversations on Mass Effect 2 and 3 too (experimental).** The same rule as Mass Effect 1's
+  below: in the first-person conversation mode, someone the game takes away at a scene's end while you can see them (Tali
+  and her people after you meet her on Freedom's Progress) walks away with the game's own walk first and is gone once out
+  of your sight, or when you look away. Same settings (`[Cinematics] worldExit`).
 - **People leave a first-person conversation instead of vanishing (Mass Effect 1, experimental).** In the first-person
   conversation mode, when the game takes someone away at a scene's end while you can see them (Udina after the council
   hearing's aftermath), they now walk away with the game's own walk first and are gone once out of your sight; with nowhere

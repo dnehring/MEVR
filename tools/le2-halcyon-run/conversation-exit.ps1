@@ -11,7 +11,7 @@
 #                          or the first action of the chain that leads to it).
 # -Talk <s>                seconds in the conversation before `mevr convo exit end` (0: let it play; -After then waits for it).
 # -Exit                    `mevr convo exit <word>` for the run (walk: the default; off: the broken run, the game's own pop).
-# -Before                  console lines run before the start (`mevr setloc ...`, `god`).
+# -Before                  console lines run before the start (`mevr setloc ...`, `god`); `sleep:<s>` waits that long.
 # Results: the stretch's session folder, exit-<tag>-<time>\ (steer.txt, console.txt, snapshots.txt, lines.txt: the module's
 # `convo exit:` and `ai walk:` lines, the audit's, the sequels' `conversation world:` lines and the renderer's [VRSTATE]).
 param(
@@ -56,7 +56,11 @@ Steer-Note ('exit: ' + (Steer-Ask "mevr convo exit $Exit").Trim())
 Steer-Note ('shots: ' + (Steer-Ask 'mevr convo exit shots on').Trim())
 Steer-Hold
 try {
-    foreach ($line in $Before) { Steer-Note ("before: {0}: {1}" -f $line, (Steer-Ask $line).Trim()); Start-Sleep -Milliseconds 1500 }
+    foreach ($line in $Before) {
+        if ($line -match '^sleep:(\d+)$') { Start-Sleep -Seconds ([int]$Matches[1]); continue }
+        Steer-Note ("before: {0}: {1}" -f $line, (Steer-Ask $line).Trim())
+        Start-Sleep -Milliseconds 1500
+    }
     Steer-Note ('instances: ' + (Steer-Ask ("mevr instances {0} {1}" -f $fireClass, $fireText)).Trim())
     Steer-Note ('activate: ' + (Steer-Ask 'mevr activate 0 0').Trim())
     $deadline = (Get-Date).AddSeconds($Talk)
