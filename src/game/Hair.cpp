@@ -1014,6 +1014,11 @@ std::string Command(std::string const& args) {
         return gFollowOverride ? std::format("long hair chains follow the shoulders by {:.2f} (until auto)", *gFollowOverride)
                                : "long hair chains follow the shoulders as the settings say";
     }
+    if (verb == "surface") {
+        // `mevr hair surface reload`: the bodies' sphere files read again at the next pose (a refit by `mevr-rig colliders`).
+        gParts.clear();
+        return "the bodies' surfaces (tools/rig's sphere files) are read again at the next pose";
+    }
     if (verb == "jiggle") {
         std::string v;
         words >> v;

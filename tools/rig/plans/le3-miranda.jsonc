@@ -41,9 +41,10 @@
       "mesh": "HMF_ARM_MIRa_MDL",
       "name": "HMF_ARM_MIRa_MEVR",
       "bonesOf": ["hair"],
-      // No body spheres for the hair (tools/rig/README.md "Body spheres"): her suit's high collar trapped the nape's hair on
-      // them in the bench (2026-11-19: the walk's hair never settled, 8.7 mm deeper than its pose against 7.1 without).
-      "colliders": false,
+      // Body spheres for the hair (tools/rig/README.md "Body spheres") of 3.5 cm and up: her suit's armour folds made many
+      // small ones the hair rattled on (the walk's jitter 4.7 mm); from 3.5 cm her walk's hair sank 0.2 mm (peak 2.3) deeper
+      // than at rest against 12.4 (44) with the capsules, jitter 1.9 mm (2026-11-19).
+      "minSphereCm": 3.5,
       "bones": [
         { "name": "BreastLeft", "parent": "Chest2", "at": [5.5, -6.5, 133.0], "yaw": 0 },
         { "name": "BreastRight", "parent": "Chest2", "at": [5.5, 6.5, 133.0], "yaw": 0 },

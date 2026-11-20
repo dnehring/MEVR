@@ -33,7 +33,11 @@ internal static class Colliders
 
     public readonly record struct Sphere(string Bone, Vector3 Centre, float Radius, Vector3 Normal);  // Normal: the skin's outward side
 
-    public static List<Sphere> Fit(SkeletalMesh mesh, Report report)
+    // `minRadius` (game units): spheres smaller than this after the shrink are left out, a smoother surface for a body whose
+    // folds made many small ones (Miranda's suit: its armour's 1.5-cm spheres rattled the hair; from 3.5 cm her walk's hair
+    // was calm, 2026-11-19). 0: every sphere (a body without folds needs its small ones: the underwear body's surface had
+    // 10-cm holes without them).
+    public static List<Sphere> Fit(SkeletalMesh mesh, Report report, float minRadius = 0f)
     {
         var lod = mesh.LODModels[0];
         var data = lod.VertexBufferGPUSkin.VertexData;
@@ -119,7 +123,7 @@ internal static class Colliders
                 if (d < nearest) nearest = d;
             }
             r = Math.Min(r, nearest);
-            if (r < 0.6f * MinRadius) continue;
+            if (r < 0.6f * MinRadius || r < minRadius) continue;
             // An inner surface (a high collar's inside, facing the neck: its normal toward the spine's column, measured
             // level): hair lies over a collar, never in it, and spheres under that face trapped the nape's hair (Miranda's
             // suit, 2026-11-19: on the bench her walk's hair never settled with them).
@@ -176,14 +180,16 @@ internal static class Colliders
     public static string FileFor(string outPackage, string meshName) =>
         Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outPackage)), "colliders", meshName + ".json");
 
-    // `mevr-rig colliders <package.pcc> <mesh> [--out file.json]`: the spheres of a mesh already built (or any body).
+    // `mevr-rig colliders <package.pcc> <mesh> [--out file.json] [--min-radius cm]`: the spheres of a mesh already built (or any
+    // body).
     public static int Run(string[] args)
     {
         using var package = LegendaryExplorerCore.Packages.MEPackageHandler.OpenMEPackage(args[1], forceLoadFromDisk: true);
         var export = Lex.FindMesh(package, args[2]);
         var mesh = ObjectBinary.From<SkeletalMesh>(export);
         var report = new Report();
-        var spheres = Fit(mesh, report);
+        float min = float.Parse(Program.Arg(args, "--min-radius") ?? "0", CultureInfo.InvariantCulture);
+        var spheres = Fit(mesh, report, min);
         string output = Program.Arg(args, "--out") ?? FileFor(args[1], export.ObjectName.Instanced);
         Write(output, export.ObjectName.Instanced, spheres);
         report.Print();
