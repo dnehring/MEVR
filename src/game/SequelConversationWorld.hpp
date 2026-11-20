@@ -23,7 +23,7 @@
 //   - People kept where they stand (ME1's worldStay): after the opening, a speaker the stage moves by more than 0.3 m and less
 //     than 6 m in one camera update is put back with Actor.SetLocation before the frame is drawn; a placement the game repeats
 //     at once is its own (ME1's cw::Insists) and stays.
-// Not here yet (ME1 has them): looks at the player's eyes, walking to marks, the circle, walking during the conversation, the
+// Not here yet (ME1 has them): looks at the player's eyes, people walking to marks, the circle, walls and floors for the stick's walk, the
 // subtitle at the speaker and the wheel at the hand (the conversation's UI is on the HUD panel), moments. Game thread.
 namespace mevr::game::sequel_conversation_world {
 
