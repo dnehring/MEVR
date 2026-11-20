@@ -7,6 +7,9 @@
 #include "engine/SettingsFile.hpp"
 #include "game/ConsoleRequest.hpp"
 #include "game/HeadTracking.hpp"
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+#include "game/WorldDrawn.hpp"
+#endif
 
 #include <Windows.h>
 
@@ -197,6 +200,14 @@ void ObserveMode(std::optional<unsigned char> mode) {
     }
 }
 
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+// The sequels: whether the world is drawn just now (game/WorldDrawn, set by Tick each poll; the tests set it). No scale set
+// while it isn't: ME3's cab ride loads in game mode 0 behind its loading picture, and a scale set as that load began hung it for
+// good (2026-11-20, gotchas/me2-scale-set-during-load).
+bool gWorldDrawn = true;
+bool gToldWaiting = false;
+#endif
+
 // The poll is separated from engine reads so regression tests exercise the real command path.
 void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProtected,
           fs::path const& path, void const* world, std::optional<bool> hostSecondEyeIsReplay = std::nullopt) {
@@ -255,6 +266,22 @@ void Poll(float elapsed, std::optional<unsigned char> mode, bool motionBlurProte
         !shadowsNow) {
         return;
     }
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    // Whatever is due (a new level, a return to gameplay, the shadows, an edit, the first apply) waits for the world to be drawn,
+    // tried again every poll, never dropped.
+    if (!gWorldDrawn) {
+        if (backToGameplay) gLeftGameplay = true;  // the return to gameplay waits too
+        if (!gToldWaiting) {
+            gToldWaiting = true;
+            log::Info("system settings: a scale set waits: the world isn't drawn just now (a loading screen; game/WorldDrawn)");
+        }
+        return;
+    }
+    if (gToldWaiting) {
+        gToldWaiting = false;
+        log::Info("system settings: the world is drawn again: the waiting scale set goes now");
+    }
+#endif
 #if defined(MEVR_GAME_LE2)
     // ME2: a scale set while a level loads (any key, even the value it already had, directly or through its opposite)
     // with the game's depth of field on faulted the render thread in the level's first gameplay frame under Halcyon's
@@ -370,6 +397,9 @@ void Tick(float deltaSeconds, bool motionBlurProtected, std::optional<bool> seco
     if (gSincePoll < kPollSeconds) return;
     float const elapsed = gSincePoll;
     gSincePoll = 0.0f;
+#if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+    gWorldDrawn = world_drawn::Now();
+#endif
     Poll(elapsed, mode, motionBlurProtected, FilePath(), engine::World(), secondEyeIsReplay);
 }
 

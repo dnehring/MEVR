@@ -100,6 +100,7 @@
 #include "game/GalaxyDump.hpp"
 #include "game/GalaxyMap.hpp"
 #include "game/WorldUi.hpp"
+#include "game/WorldDrawn.hpp"
 #include "game/AiWalk.hpp"
 #include "game/ConversationExit.hpp"
 #include "game/ConversationWorld.hpp"
@@ -2028,6 +2029,9 @@ MEVR_MOD_API void MevrModTick(float deltaSeconds) {
 #endif
         game::world_ui::Tick(WorldUiLink());
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
+        // Whether the world is drawn just now (game/WorldDrawn: no scale set during a loading screen). The sequels' for now, so
+        // ME1's compiled code stays as it is; every game's once game/SystemSettings asks it.
+        game::world_drawn::Tick();
         // The sequels' conversations in the world, ME1's rules (T49): after world_ui, its Hold is ours in mode 5 (ME2) or 7 (ME3).
         // Its source hooks (engine/ConversationHooks) and their providers are its own: ME1's modules below don't tick here.
         EnsureConversationHooks();

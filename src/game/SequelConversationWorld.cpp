@@ -20,6 +20,7 @@
 #include "game/DepthOfFieldHold.hpp"
 #include "game/HandCalibration.hpp"
 #include "game/SquadWeapons.hpp"
+#include "game/WorldDrawn.hpp"
 #include "core/vr/Comfort.hpp"
 #if defined(MEVR_GAME_LE3)
 #include "game/Le3Gui.hpp"
@@ -187,10 +188,10 @@ Foot gFoot;
 // The engine's depth of field is switched through the console (`scale set`), never around a load: a switch as the docking
 // officer's conversation handed over to the Citadel's load (2026-11-19, 20:56) left that load spinning with no scene drawn,
 // as ME2's scale set during a load hung its rendering (gotchas/me2-scale-set-during-load). Off only after 3 s on foot before
-// the conversation; back only after 3 s on foot again, and only while the world is drawn (WorldDrawnNow): ME3's rapid transit
+// the conversation; back only after 3 s on foot again, and only while the world is drawn (world_drawn::Now): ME3's rapid transit
 // hands a conversation over to a load in game mode 0 (the cab ride's loading screen draws no scene), and the switch back 3 s
-// into it left the load spinning (2026-11-20, the docking officer's ride held by hand). A conversation opened around a load and
-// held by hand (`mevr convo world on`) never switches it.
+// into it left the load spinning (2026-11-20, the docking officer's ride held by hand): game/WorldDrawn. A conversation opened
+// around a load and held by hand (`mevr convo world on`) never switches it.
 std::uint64_t gOnFootSinceMs = 0;  // 0: not on foot now
 std::uint64_t gLastFootRunMs = 0;  // how long the last stretch on foot lasted (kept when it ends)
 bool gFootSettledAtStart = false;
@@ -726,22 +727,6 @@ std::optional<double> DrawnAgoS(ue3::Object* controller, ue3::Object* mesh) {
     auto const last = gCompLastRender.Read<float>(mesh);
     if (!now || !last) return std::nullopt;
     return *now - *last;
-}
-
-// The world drawn now: Shepard's body drawn within the last half second of wall time (its PrimitiveComponent.LastRenderTime
-// moved). Never during a loading screen (no scene is drawn; the world's clock may stand still too, so the drawn time is
-// compared with the wall clock, not with WorldInfo.TimeSeconds). NoteDrawn runs every tick (Tick's start).
-float gBodyDrawnLast = -1.0f;
-std::uint64_t gBodyDrawnMovedMs = 0;
-void NoteDrawn(ue3::Object* pawn) {
-    ue3::Object* const mesh = pawn != nullptr && ue3::runtime::IsAlive(pawn) ? player::Mesh(pawn) : nullptr;
-    auto const last = mesh != nullptr ? gCompLastRender.Read<float>(mesh) : std::nullopt;
-    if (!last) return;
-    if (gBodyDrawnLast >= 0.0f && *last != gBodyDrawnLast) gBodyDrawnMovedMs = GetTickCount64();
-    gBodyDrawnLast = *last;
-}
-bool WorldDrawnNow() {
-    return gBodyDrawnMovedMs != 0 && GetTickCount64() - gBodyDrawnMovedMs < 500;
 }
 
 // Whether a world point stands inside the head's view (ME1's InHeadView: 35 degrees each way across), nullopt without a view
@@ -2205,7 +2190,6 @@ void Tick(conversation_world::Link const& link) {
     RefreshSettings();
     ue3::Object* const controller = player::Controller();
     gShepardPawn = controller != nullptr ? player::Pawn(controller) : nullptr;
-    NoteDrawn(gShepardPawn);
     // The source hooks' questions are ours while the world mode is wanted (Mod.cpp installs the hooks then).
     engine::conversation_hooks::SetKeepProvider(WorldWanted() ? &KeepAtSource : nullptr);
     engine::conversation_hooks::SetMoveTrackProvider(WorldWanted() ? &OnMoveTrack : nullptr);
@@ -2262,11 +2246,11 @@ void Tick(conversation_world::Link const& link) {
             gOnlyScenesSinceFoot = false;
         }
     }
-    if (gDofBackOwed && gOnFootSinceMs != 0 && GetTickCount64() - gOnFootSinceMs >= 3000 &&
-        WorldDrawnNow()) {
+    if (gDofBackOwed && gOnFootSinceMs != 0 && GetTickCount64() - gOnFootSinceMs >= 3000) {
         gDofBackOwed = false;
-        gDof.Back("the conversation in the world ended (after 3 s on foot, the world drawn)");
+        gDof.Back("the conversation in the world ended (after 3 s on foot)");  // sent once the world is drawn (game/WorldDrawn)
     }
+    gDof.Step();
     if (!conversationMode || !WorldWanted() || link.publish == nullptr) {
         End(link, !conversationMode ? "the game left its conversation mode" : !WorldWanted() ? "the world mode is off" : "an older host");
         // A level cutscene that walks Shepard (a moment, ME1's worldMoments = view): its own held view.
