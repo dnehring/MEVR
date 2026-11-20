@@ -525,6 +525,11 @@ std::string Console(std::string_view args) {
     a.erase(0, a.find_first_not_of(' '));
     if (a == "on" || a == "off") {
         gOverride = a == "on" ? 1 : 0;
+        // Asked for by hand: the conversation now (one a hot reload found mid-way, or the game opened around a load) is held too.
+        if (a == "on" && gC.on && gC.skipped) {
+            gC.skipped = false;
+            log::Info("conversation world: conversation {} held in the world on request (mevr convo world on)", gC.serial);
+        }
     } else if (a == "auto") {
         gOverride = -1;
     }
