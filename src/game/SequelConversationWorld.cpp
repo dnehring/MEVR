@@ -7,15 +7,19 @@
 // is the BioConversationController); everything after it is one code path.
 #if defined(MEVR_GAME_LE2) || defined(MEVR_GAME_LE3)
 
+#include "core/Ini.hpp"
 #include "core/Log.hpp"
 #include "core/WriteJournal.hpp"
+#include "core/ik/Rigid.hpp"
 #include "core/vr/Controllers.hpp"
 #include "core/vr/ConversationWorld.hpp"
 #include "core/vr/HostView.hpp"
 #include "core/vr/SettingsFile.hpp"
 #include "engine/GameAdapter.hpp"
+#include "game/ArmIk.hpp"
 #include "game/DepthOfFieldHold.hpp"
 #include "game/HandCalibration.hpp"
+#include "game/SquadWeapons.hpp"
 #include "core/vr/Comfort.hpp"
 #if defined(MEVR_GAME_LE3)
 #include "game/Le3Gui.hpp"
@@ -34,10 +38,15 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <format>
+#include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -56,6 +65,13 @@ ue3::FieldRef gPlayer{kController, "m_pPlayer", ue3::kEveryGame};
 ue3::FieldRef gSpeakers{kController, "m_aSpeakerData", ue3::kEveryGame};
 ue3::FieldRef gOwner{kController, "m_pOwner", ue3::kEveryGame};
 ue3::ClassRef gControllerClass{kController, ue3::kEveryGame};
+// Who speaks to whom now, and the entry (the stance records' roles and lines).
+ue3::FieldRef gSpeakerNow{kController, "m_pSpeaker", ue3::kEveryGame};
+ue3::FieldRef gListenerNow{kController, "m_pListener", ue3::kEveryGame};
+ue3::FieldRef gEntryNow{kController, "m_nCurrentEntry", ue3::kEveryGame};
+ue3::FieldRef gFoundActors{kController, "m_aAllFoundActors", ue3::kEveryGame};
+ue3::FieldRef gFoundActor{gFoundActors, "pSpeakerActor"};
+ue3::FieldRef gExtraParticipants{kController, "m_aExtraParticipants", ue3::kEveryGame};
 #else
 // ME2: ME1's live conversation (BioWorldInfo.m_oCurrentConversation, a BioConversation) and its people, ME1's own fields
 // (game/ConversationWorld's gCurrentConversation, gSpeakerList, gConvPlayer ...; research/le2-conversations-in-world.md).
@@ -67,6 +83,7 @@ ue3::FieldRef gSpeakerNow{"SFXGame.BioConversation", "m_pSpeaker", ue3::kEveryGa
 ue3::FieldRef gListenerNow{"SFXGame.BioConversation", "m_pListener", ue3::kEveryGame};
 ue3::FieldRef gSpeakerList{"SFXGame.BioConversation", "m_SpeakerList", ue3::kEveryGame};
 ue3::FieldRef gSpeakerActor{gSpeakerList, "aSpeaker"};
+ue3::FieldRef gEntryNow{"SFXGame.BioConversation", "m_nCurrentEntry", ue3::kEveryGame};
 #endif
 // The director's near plane (ME1's worldNearPlane, research/69 "The first shot"): a conversation's camera writes
 // LocalPlayer.NearClipPlane per shot (a metre or more), which from the player's eyes cuts away the floor underfoot, the
@@ -77,6 +94,13 @@ ue3::FieldRef gNearClip{"Engine.LocalPlayer", "NearClipPlane", ue3::kEveryGame};
 float gFootNear = 10.0f;      // the plane on foot (read each tick there)
 float gNearReplaced = 0.0f;   // the director's plane last replaced (logged when it changes)
 unsigned gNearWrites = 0;
+float gDrawnNear = -1.0f;    // the near plane the last held frame was drawn with (after the write-back; the records')
+std::optional<bool> gCameraOverride;  // `mevr convo camera on|off` over [Cinematics] worldCamera
+bool gCameraFile = false;
+unsigned gCameraHoldWrites = 0;
+bool CameraHeld() {
+    return gCameraOverride.value_or(gCameraFile);
+}
 ue3::FunctionRef gUpdateCamera{"Engine.Camera.UpdateCamera", ue3::kEveryGame};
 ue3::FunctionRef gSetLocation{"Engine.Actor.SetLocation", ue3::kEveryGame};
 // The conversation camera constrains the picture to its 16:9 band (a letterbox): the stereo capture never matches it and the
@@ -96,6 +120,27 @@ struct SpeakerData {
 };
 static_assert(sizeof(SpeakerData) == 16);
 #endif
+
+// The scene's people: pawns, and on ME3 its SFXStuntActors (the hub's conversation characters are stunt actors, not pawns, and
+// not on the world's pawn list: Khalisah at the embassies, 2026-11-20; game/Hair's StuntActors). Their skeletal mesh: a pawn's
+// Mesh, a stunt actor's BodyMesh.
+#if defined(MEVR_GAME_LE3)
+ue3::ClassRef gStuntClass{"SFXGame.SFXStuntActor", ue3::kEveryGame};
+ue3::FieldRef gStuntBody{"SFXGame.SFXStuntActor", "BodyMesh", ue3::kEveryGame};
+#endif
+bool IsPerson(ue3::Object const* actor) {
+#if defined(MEVR_GAME_LE3)
+    if (actor != nullptr && ue3::IsA(actor, gStuntClass)) return true;
+#endif
+    return player::IsBioPawn(actor);
+}
+ue3::Object* PersonMesh(ue3::Object* actor) {
+    if (actor == nullptr || !ue3::runtime::IsAlive(actor)) return nullptr;
+#if defined(MEVR_GAME_LE3)
+    if (ue3::IsA(actor, gStuntClass)) return gStuntBody.Read<ue3::Object*>(actor).value_or(nullptr);
+#endif
+    return player::IsBioPawn(actor) ? player::Mesh(actor) : nullptr;
+}
 
 struct Settings {
     bool world = false;          // [Cinematics] conversations = world (ME1's key and word)
@@ -118,6 +163,14 @@ struct Settings {
     double leashUnits = 400.0;
     double speedUnitsPerS = 140.0;
     double clearUnits = 70.0;
+    // ME1's worldLookEyes (research/69 "Heads that look past the player"): while Shepard's head stands away from the drawn eyes, a
+    // look-at target at the eyes takes the game's looks at him (EyesStep below).
+    bool lookEyes = true;
+    // ME1's worldStances (research/69 "Stances from above"): the scene from above written by itself (StanceStep below).
+    bool stances = false;
+    // ME1's worldWalkAlong (research/69 "Walking along"): a moment's matinee waits for a player who falls behind.
+    bool walkAlong = true;
+    cw::WalkAlongSettings walkAlongSettings;
 };
 
 // Where Shepard stood on foot, the last game tick before a conversation (ME1's opening: he is put back there).
@@ -228,6 +281,16 @@ struct Conversation {
     vr::comfort::SnapTurn snap;
     double turnedDeg = 0.0;
     unsigned wheelHeld = 0;      // ticks the wheel kept the left stick
+    // The floor marker's black-move source (cw::StepMarker, MarkerNeed::BlackMove; the owner's yes of 2026-11-19, need (c)):
+    // where the game's fade to black wanted Shepard and the player was not moved (a curated walk, or a step within "where he
+    // stands", which ME1 walks by the stick and the sequels leave to the player), on the floor; until the player stands in it.
+    std::optional<ue3::Vector> blackMarker;
+    cw::MarkerState marker;
+    unsigned markers = 0;
+    std::uint64_t markerMs = 0;
+    // ME1's StepSeat (core cw::StepSeat): the view sits with him; the stick doesn't walk while he sits.
+    cw::SeatState seat;
+    std::uint64_t seatMs = 0;
 };
 Conversation gC;
 bool gMomentHeld = false;  // a moment holds the view (the camera update's letterbox and near plane; set by TickMoment)
@@ -343,6 +406,21 @@ void RefreshSettings() {
     gSettings.dofOff = vr::settings_file::Int(L"Cinematics", L"worldDof", 0, path.c_str()) == 0;
     gSettings.nearPlane = vr::settings_file::Int(L"Cinematics", L"worldNearPlane", 1, path.c_str()) != 0;
     gSettings.blackMoves = vr::settings_file::Int(L"Cinematics", L"worldBlackMoves", 1, path.c_str()) != 0;
+    gSettings.lookEyes = vr::settings_file::Int(L"Cinematics", L"worldLookEyes", 1, path.c_str()) != 0;
+    gCameraFile = vr::settings_file::Int(L"Cinematics", L"worldCamera", 0, path.c_str()) != 0;
+    gSettings.stances = vr::settings_file::Int(L"Cinematics", L"worldStances", 0, path.c_str()) != 0;
+    gSettings.walkAlong = vr::settings_file::Int(L"Cinematics", L"worldWalkAlong", 1, path.c_str()) != 0;
+    auto const metres = [&](wchar_t const* key, double fallback, double low, double high) {
+        wchar_t text[32] = {};
+        vr::settings_file::String(L"Cinematics", key, L"", text, static_cast<DWORD>(std::size(text)), path.c_str());
+        std::string narrow;
+        for (wchar_t const* c = text; *c != 0; ++c) narrow.push_back(static_cast<char>(*c & 0x7F));
+        return std::clamp(ini::Number(narrow).value_or(fallback), low, high);
+    };
+    gSettings.walkAlongSettings.pauseUnits = metres(L"worldWalkAlongPauseM", 3.0, 0.5, 30.0) * 100.0;
+    gSettings.walkAlongSettings.resumeUnits = std::min(metres(L"worldWalkAlongResumeM", 1.5, 0.2, 30.0) * 100.0,
+        gSettings.walkAlongSettings.pauseUnits);
+    gSettings.walkAlongSettings.maxPauseS = metres(L"worldWalkAlongMaxS", 120.0, 0.0, 3600.0);
     wchar_t curated[256] = {};
     vr::settings_file::String(L"Cinematics", L"worldCuratedWalks", L"", curated, static_cast<DWORD>(std::size(curated)), path.c_str());
     gSettings.curated.clear();
@@ -370,16 +448,20 @@ ue3::Object* LiveConversation(ue3::Object* controller) {
 }
 
 // The dialogue wheel is up (game/Thespian's reader of the conversation handler, each game's own).
-bool WheelUp(ue3::Object* controller) {
+ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
+ue3::Object* WheelHandler(ue3::Object* controller) {
     static ue3::FunctionRef getHandler{"SFXGame.SFXGUIInteraction.GetConversationHandler", ue3::kEveryGame};
-    static ue3::FieldRef displaying{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
     auto* const manager = le3_gui::Manager();
     auto* const function = getHandler.Get();
-    if (controller == nullptr || manager == nullptr || function == nullptr) return false;
+    if (controller == nullptr || manager == nullptr || function == nullptr) return nullptr;
     ue3::Params params(ue3::runtime::Get(), function);
-    if (!params.Valid() || !params.Set("oPlayerController", controller) || !ue3::runtime::Call(manager, function, params)) return false;
+    if (!params.Valid() || !params.Set("oPlayerController", controller) || !ue3::runtime::Call(manager, function, params)) return nullptr;
     auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
-    return handler != nullptr && ue3::runtime::IsAlive(handler) && displaying.ReadBool(handler).value_or(false);
+    return handler != nullptr && ue3::runtime::IsAlive(handler) ? handler : nullptr;
+}
+bool WheelUp(ue3::Object* controller) {
+    ue3::Object* const handler = WheelHandler(controller);
+    return handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
 }
 
 // One element's actor, guarded: the array's storage is the engine's.
@@ -396,14 +478,31 @@ bool ReadSpeaker(SpeakerData const* data, int i, ue3::Object** out) noexcept {
 std::vector<ue3::Object*> Speakers(ue3::Object* conversation, ue3::Object* player) {
     std::vector<ue3::Object*> out;
     auto const list = gSpeakers.Read<ue3::TArray<SpeakerData>>(conversation);
-    if (!list || list->data == nullptr || list->count <= 0 || list->count > 32) return out;
-    for (int i = 0; i < list->count; ++i) {
+    int const count = list && list->data != nullptr && list->count > 0 && list->count <= 32 ? list->count : 0;
+    for (int i = 0; i < count; ++i) {
         ue3::Object* actor = nullptr;
         if (!ReadSpeaker(list->data, i, &actor)) break;
         if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) &&
             std::find(out.begin(), out.end(), actor) == out.end()) {
             out.push_back(actor);
         }
+    }
+    // The speaker data lists only who has spoken (the Prothean's moment had its owner, Javik, and a bystander out of it: lane EXIT3,
+    // 2026-11-20): the owner and who speaks or listens now (ME2's and ME1's reader), every actor the start found for its nodes, and
+    // the extra participants. The one reading of ME3's scene people: game/ConversationExit takes it through ScenePeople.
+    auto const add = [&](ue3::Object* actor) {
+        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && std::find(out.begin(), out.end(), actor) == out.end()) {
+            out.push_back(actor);
+        }
+    };
+    for (ue3::FieldRef* field : {&gOwner, &gSpeakerNow, &gListenerNow}) {
+        add(field->Read<ue3::Object*>(conversation).value_or(nullptr));
+    }
+    if (auto const found = gFoundActors.ElementsOf(conversation, 32)) {
+        for (std::int32_t i = 0; i < found->count; ++i) add(gFoundActor.Read<ue3::Object*>(found->At(i)).value_or(nullptr));
+    }
+    if (auto const extras = gExtraParticipants.ElementsOf(conversation, 32); extras && extras->stride == static_cast<std::int32_t>(sizeof(void*))) {
+        for (std::int32_t i = 0; i < extras->count; ++i) add(*static_cast<ue3::Object* const*>(extras->At(i)));
     }
     return out;
 }
@@ -442,17 +541,21 @@ ue3::Object* ConversationData(ue3::Object* conversation) {
 constexpr int kGameNumber = 2;
 
 // The dialogue wheel is up (game/Thespian's ME2 reader: the GUI manager's conversation handler).
-bool WheelUp(ue3::Object* controller) {
+ue3::FieldRef gDisplayingWheel{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
+ue3::Object* WheelHandler(ue3::Object* controller) {
     static ue3::FieldRef managerField{"Engine.PlayerController", "m_oCachedScaleFormManager", ue3::kEveryGame};
     static ue3::FunctionRef getHandler{"SFXGame.MassEffectGuiManager.GetConversationHandler", ue3::kEveryGame};
-    static ue3::FieldRef displaying{"SFXGame.BioSFHandler_Conversation", "m_bDisplayingWheel", ue3::kEveryGame};
     auto* const manager = controller != nullptr ? managerField.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
     auto* const function = getHandler.Get();
-    if (manager == nullptr || !ue3::runtime::IsAlive(manager) || function == nullptr) return false;
+    if (manager == nullptr || !ue3::runtime::IsAlive(manager) || function == nullptr) return nullptr;
     ue3::Params params(ue3::runtime::Get(), function);
-    if (!ue3::runtime::Call(manager, function, params)) return false;
+    if (!ue3::runtime::Call(manager, function, params)) return nullptr;
     auto* const handler = params.Return<ue3::Object*>().value_or(nullptr);
-    return handler != nullptr && ue3::runtime::IsAlive(handler) && displaying.ReadBool(handler).value_or(false);
+    return handler != nullptr && ue3::runtime::IsAlive(handler) ? handler : nullptr;
+}
+bool WheelUp(ue3::Object* controller) {
+    ue3::Object* const handler = WheelHandler(controller);
+    return handler != nullptr && gDisplayingWheel.ReadBool(handler).value_or(false);
 }
 
 // The people of the conversation (ME1's m_SpeakerList, its owner, the speaker and listener now), the player's left out.
@@ -517,14 +620,342 @@ double Distance(ue3::Vector const& a, ue3::Vector const& b) {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+// Each game's look-at chain (whom a person looks at, the game's call to change it).
+#include "game/SequelLook.inc"
+
+// Where the player's eyes are drawn this tick (the held frame's head), in a held scene.
+std::optional<ik::Vec3> gDrawnEyes;
+
+ik::Vec3 V(ue3::Vector const& v) {
+    return {v.x, v.y, v.z};
+}
+
+// ---- What is drawn and where heads point (ME1's records, research/69 "Obvious bugs, measured" and "Stances from above") -----
+ue3::FieldRef gCompLastRender{"Engine.PrimitiveComponent", "LastRenderTime", ue3::kEveryGame};
+ue3::FieldRef gWorldSeconds{"Engine.WorldInfo", "TimeSeconds", ue3::kEveryGame};
+ue3::FieldRef gWorldPawns{"Engine.WorldInfo", "PawnList", ue3::kEveryGame};
+ue3::FieldRef gNextPawn{"Engine.Pawn", "NextPawn", ue3::kEveryGame};
+ue3::FieldRef gActorHiddenRead{"Engine.Actor", "bHidden", ue3::kEveryGame};
+ue3::FunctionRef gPrimitiveSetHidden{"Engine.PrimitiveComponent.SetHidden", ue3::kEveryGame};
+
+// A pawn's head bone: its world place and axes (ME1's HeadOf; cached per skeletal mesh asset).
+struct HeadPose {
+    ik::Vec3 at;
+    ik::Vec3 axis[3];
+};
+std::map<ue3::Object const*, int> gHeadBones;
+
+std::optional<HeadPose> HeadPoseOf(ue3::Object* actor) {
+    if (actor == nullptr || !ue3::runtime::IsAlive(actor) || !IsPerson(actor)) return std::nullopt;
+    ue3::Object* const mesh = PersonMesh(actor);
+    ue3::Object const* const asset = mesh != nullptr ? player::SkeletalMesh(mesh) : nullptr;
+    if (asset == nullptr) return std::nullopt;
+    auto it = gHeadBones.find(asset);
+    if (it == gHeadBones.end()) {
+        int index = -1;
+        if (auto const skeleton = engine::skeleton::ReadRefSkeleton(mesh)) {
+            for (std::size_t i = 0; i < skeleton->names.size() && index < 0; ++i) {
+                if (ini::Lower(skeleton->names[i]) == "head") index = static_cast<int>(i);
+            }
+        }
+        it = gHeadBones.emplace(asset, index).first;
+    }
+    int const bone = it->second;
+    auto const bases = engine::skeleton::SpaceBases(mesh);
+    if (bone < 0 || static_cast<std::size_t>(bone) >= bases.size()) return std::nullopt;
+    ik::Affine const toWorld = engine::skeleton::LocalToWorld(mesh);
+    ik::Transform const t = engine::skeleton::ToTransform(bases[static_cast<std::size_t>(bone)]);
+    HeadPose h;
+    h.at = ik::TransformPoint(toWorld, t.translation);
+    ik::Vec3 const units[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    for (int a = 0; a < 3; ++a) {
+        h.axis[a] = ik::Normalize(ik::TransformDirection(toWorld, ik::Rotate(t.rotation, units[a])), units[a]);
+    }
+    return h;
+}
+
+// Shepard's head where the scene animates him (arm IK's animated head, before the body follower slides his drawn body under the
+// player: ME1's MarkHeadOf), else his head bone as drawn.
+std::optional<ik::Vec3> ShepardSceneHead(ue3::Object* pawn) {
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn)) return std::nullopt;
+    if (auto const animated = arm_ik::AnimatedHeadComponent()) {
+        if (ue3::Object* const mesh = player::Mesh(pawn)) return ik::TransformPoint(engine::skeleton::LocalToWorld(mesh), *animated);
+    }
+    if (auto const head = HeadPoseOf(pawn)) return head->at;
+    return std::nullopt;
+}
+
+// The face's axis of a head bone (ME1's is the bone's X). [verify] on ME2's and ME3's skeletons: the records also give each
+// axis's angle to where the game's look-at chain aims (`faceAxesToAimDeg`), the measure that names the face.
+constexpr int kFaceAxis = 0;
+
+double AngleDeg(ik::Vec3 const& a, ik::Vec3 const& b) {
+    double const na = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z), nb = std::sqrt(b.x * b.x + b.y * b.y + b.z * b.z);
+    if (na < 1e-6 || nb < 1e-6) return 0.0;
+    double const c = std::clamp((a.x * b.x + a.y * b.y + a.z * b.z) / (na * nb), -1.0, 1.0);
+    return std::acos(c) * (180.0 / 3.14159265358979323846);
+}
+
+// The world's clock (WorldInfo.TimeSeconds: what LastRenderTime is written in).
+std::optional<double> WorldNowS(ue3::Object* controller) {
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    auto const t = world != nullptr && ue3::runtime::IsAlive(world) ? gWorldSeconds.Read<float>(world) : std::nullopt;
+    return t ? std::optional<double>(*t) : std::nullopt;
+}
+
+// Seconds since a view last drew a mesh (PrimitiveComponent.LastRenderTime: the frustum, occlusion and hide flags all leave it
+// behind).
+std::optional<double> DrawnAgoS(ue3::Object* controller, ue3::Object* mesh) {
+    if (mesh == nullptr || !ue3::runtime::IsAlive(mesh)) return std::nullopt;
+    auto const now = WorldNowS(controller);
+    auto const last = gCompLastRender.Read<float>(mesh);
+    if (!now || !last) return std::nullopt;
+    return *now - *last;
+}
+
+// Whether a world point stands inside the head's view (ME1's InHeadView: 35 degrees each way across), nullopt without a view
+// frame. Up and down the sequels' eye images are narrower than ME1's near-square ones: ME2 renders 16:9 (4352x2448: 0.70 x 9/16),
+// ME3 3072x2216 (0.70 x 0.72). With ME1's 35 degrees there, Samara kneeling 29 degrees under a level gaze on the Normandy read
+// "in sight" and "never drawn": she was below the picture, and drawn the moment the head looked down (2026-11-20).
+#if defined(MEVR_GAME_LE3)
+constexpr double kInViewUpDown = 0.70 * 2216.0 / 3072.0;
+#else
+constexpr double kInViewUpDown = 0.70 * 9.0 / 16.0;
+#endif
+std::optional<bool> InHeadView(ik::Vec3 const& p) {
+    auto const frame = view_anchor::Current();
+    if (!frame) return std::nullopt;
+    XrVector3f const t = engine::ToTracking(*frame, engine::UnrealVector{p.x, p.y, p.z});
+    XrPosef const& head = frame->head;
+    ik::Quat const toHead = ik::Conjugate({head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w});
+    ik::Vec3 const v = ik::Rotate(toHead, {t.x - head.position.x, t.y - head.position.y, t.z - head.position.z});
+    return v.z < -0.05 && std::abs(v.x) <= -0.70 * v.z && std::abs(v.y) <= -kInViewUpDown * v.z;
+}
+
+// The world's pawns, stopping at the first dead entry (a level torn down under a scene leaves freed pawns in the list: ME1's
+// LivePawns).
+std::vector<ue3::Object*> LivePawns(ue3::Object* controller) {
+    std::vector<ue3::Object*> out;
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    if (world == nullptr || !ue3::runtime::IsAlive(world)) return out;
+    int guard = 0;
+    for (ue3::Object* p = gWorldPawns.Read<ue3::Object*>(world).value_or(nullptr); p != nullptr && guard < 512;
+         p = gNextPawn.Read<ue3::Object*>(p).value_or(nullptr), ++guard) {
+        if (!ue3::runtime::IsAlive(p)) break;
+        out.push_back(p);
+    }
+    return out;
+}
+
+// ME3's stunt actors in the player's world, found by a scan of the objects at most once a second (game/Hair's way).
+std::vector<ue3::Object*> StuntActors(ue3::Object* controller) {
+#if defined(MEVR_GAME_LE3)
+    static std::vector<ue3::Object*> found;
+    static std::uint64_t nextMs = 0;
+    static ue3::Object const* scannedWorld = nullptr;
+    ue3::Object* const world = controller != nullptr ? gActorWorldInfo.Read<ue3::Object*>(controller).value_or(nullptr) : nullptr;
+    std::uint64_t const now = GetTickCount64();
+    if (world != scannedWorld || now >= nextMs) {
+        scannedWorld = world;
+        nextMs = now + 1000;
+        found.clear();
+        ue3::Class* const cls = gStuntClass.Get();
+        ue3::Reflection& r = ue3::runtime::Get();
+        for (std::int32_t i = 0, n = cls != nullptr && world != nullptr ? r.ObjectCount() : 0; i < n; ++i) {
+            ue3::Object* const o = r.ObjectAt(i);
+            if (o != nullptr && r.IsAlive(o) && r.IsA(o, cls) && gActorWorldInfo.Read<ue3::Object*>(o).value_or(nullptr) == world) {
+                found.push_back(o);
+            }
+        }
+    }
+    std::vector<ue3::Object*> out;
+    for (ue3::Object* const o : found) {
+        if (ue3::runtime::IsAlive(o)) out.push_back(o);
+    }
+    return out;
+#else
+    (void)controller;
+    return {};
+#endif
+}
+
+// The world's people: its pawns, and ME3's stunt actors.
+std::vector<ue3::Object*> LivePeople(ue3::Object* controller) {
+    std::vector<ue3::Object*> out = LivePawns(controller);
+    for (ue3::Object* const o : StuntActors(controller)) out.push_back(o);
+    return out;
+}
+
+// The people shown within `units` of a point (a moment's people: everyone near), nearest first, at most `most`.
+std::vector<ue3::Object*> NearPawns(ue3::Object* controller, ik::Vec3 const& at, double units, std::size_t most) {
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    std::vector<std::pair<double, ue3::Object*>> found;
+    for (ue3::Object* const o : LivePeople(controller)) {
+        if (o == pawn || !IsPerson(o) || gActorHiddenRead.ReadBool(o).value_or(true)) continue;
+        auto const p = player::Location(o);
+        if (!p) continue;
+        double const d = std::hypot(p->x - at.x, p->y - at.y);
+        if (d <= units) found.push_back({d, o});
+    }
+    std::sort(found.begin(), found.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
+    std::vector<ue3::Object*> out;
+    for (auto const& [d, o] : found) {
+        if (out.size() >= most) break;
+        out.push_back(o);
+    }
+    return out;
+}
+
+// ---- The eyes stand-in (ME1's StepEyes, worldLookEyes; core cw::EyesStandIn): while Shepard's head as the scene animates it
+// stands half a metre (flat) from where the player's eyes are drawn, a look-at target of the game's own kind
+// (SFXGame.BioLookAtTarget, made once, kept at the drawn eyes) takes his place: each look the game aims at his pawn is moved to
+// it at its own rank (ME2: BioPawn.SetLookAtTarget; ME3: SFXModule_LookAt.ChangeTarget), and given back when his head is with
+// the eyes again or the scene ends. Pinned under the player (every opening on the sequels) his head stays within ME1's 0.5 m:
+// it acts in moments (the script walks him) and when the player's own steps or lean take the eyes away from his body.
+ue3::ClassRef gEyesClass{"SFXGame.BioLookAtTarget", ue3::kEveryGame};
+ue3::FunctionRef gActorSpawn{"Engine.Actor.Spawn", ue3::kEveryGame};
+ue3::FieldRef gActorStatic{"Engine.Actor", "bStatic", ue3::kEveryGame};
+ue3::FieldRef gActorNoDelete{"Engine.Actor", "bNoDelete", ue3::kEveryGame};
+struct EyesState {
+    ue3::Kept target;            // the BioLookAtTarget (alive across scenes; made again after a level change)
+    bool failed = false;         // could not be made (logged once)
+    bool on = false;             // this tick: his head is away and the eyes stand in for him
+    unsigned swapped = 0;        // looks moved to the eyes (this scene)
+    unsigned refused = 0;        // ... the game kept its own
+    unsigned given = 0;          // ... given back to him
+    double gapUnits = -1.0;      // his head from the drawn eyes, flat, last step
+    std::vector<void const*> logged;
+};
+EyesState gEyesState;
+std::optional<bool> gEyesOverride;  // `mevr convo eyes on|off` (an A/B); unset: [Cinematics] worldLookEyes
+
+ue3::Object* EnsureEyes(ue3::Object* controller, ik::Vec3 const& at) {
+    if (ue3::Object* const live = gEyesState.target.Live()) return live;
+    if (gEyesState.failed) return nullptr;
+    ue3::Class* const cls = gEyesClass.Get();
+    ue3::Function* const spawn = gActorSpawn.Get();
+    if (controller == nullptr || cls == nullptr || spawn == nullptr) {
+        gEyesState.failed = true;
+        log::Warn("conversation world: eyes: no BioLookAtTarget class or Actor.Spawn: heads keep looking at Shepard's body");
+        return nullptr;
+    }
+    ue3::Reflection& r = ue3::runtime::Get();
+    ue3::Object* defaults = nullptr;
+    for (std::int32_t i = 0, n = r.ObjectCount(); i < n && defaults == nullptr; ++i) {
+        ue3::Object* const o = r.ObjectAt(i);
+        if (o != nullptr && r.ClassOf(o) == cls && (r.FlagsOf(o) & 0x200) != 0) defaults = o;  // RF_ClassDefaultObject
+    }
+    bool const wasStatic = defaults != nullptr && gActorStatic.ReadBool(defaults).value_or(false);
+    bool const wasNoDelete = defaults != nullptr && gActorNoDelete.ReadBool(defaults).value_or(false);
+    if (wasStatic) gActorStatic.WriteBool(defaults, false);      // journalled by FieldRef; put back right after the spawn
+    if (wasNoDelete) gActorNoDelete.WriteBool(defaults, false);
+    ue3::Params p(r, spawn);
+    p.Set("SpawnClass", cls);
+    p.Set("SpawnOwner", controller);
+    p.Set("SpawnLocation", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)});
+    p.SetBool("bNoCollisionFail", true);
+    ue3::runtime::Call(controller, spawn, p);
+    if (wasStatic) gActorStatic.WriteBool(defaults, true);
+    if (wasNoDelete) gActorNoDelete.WriteBool(defaults, true);
+    ue3::Object* const made = p.Return<ue3::Object*>().value_or(nullptr);
+    if (made == nullptr || !ue3::IsA(made, gEyesClass)) {
+        gEyesState.failed = true;
+        log::Warn("conversation world: eyes: Actor.Spawn made no BioLookAtTarget (defaults{}{}): heads keep looking at Shepard's body",
+            wasStatic ? " bStatic" : "", wasNoDelete ? " bNoDelete" : "");
+        return nullptr;
+    }
+    gEyesState.target = ue3::Kept(made);
+    log::Info("conversation world: eyes: a look-at target made for the player's eyes ({})", ue3::runtime::FullName(made));
+    return made;
+}
+
+bool PutEyesAt(ue3::Object* eyes, ik::Vec3 const& at) {
+    ue3::Function* const setLocation = gSetLocation.Get();
+    if (eyes == nullptr || setLocation == nullptr) return false;
+    ue3::Params p(ue3::runtime::Get(), setLocation);
+    return p.Valid() && p.Set("NewLocation", ue3::Vector{static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z)}) &&
+        ue3::runtime::Call(eyes, setLocation, p);
+}
+
+// Every look at the eyes back to Shepard's pawn, at its own rank.
+void GiveBackEyes(std::vector<ue3::Object*> const& people, ue3::Object* shepard, char const* why) {
+    ue3::Object* const eyes = gEyesState.target.Live();
+    if (eyes == nullptr) return;
+    unsigned given = 0;
+    for (ue3::Object* const actor : people) {
+        LookNow const look = LookOf(actor);
+        if (!look.known || look.target != eyes) continue;
+        if (shepard != nullptr && ue3::runtime::IsAlive(shepard) && SetLookRanked(actor, shepard, look.rank)) ++given;
+    }
+    gEyesState.given += given;
+    if (given != 0) {
+        log::Info("conversation world: eyes: {} look{} at the player's eyes given back to Shepard ({})", given, given == 1 ? "" : "s", why);
+    }
+}
+
+// One step (each tick of a held conversation or moment, after the drawn eyes are known): `people` are whose looks it may move.
+void EyesStep(ue3::Object* controller, std::vector<ue3::Object*> const& people, std::optional<ik::Vec3> const& drawnEyes,
+    char const* scene, std::uint32_t serial) {
+    ue3::Object* const shepard = controller != nullptr ? player::Pawn(controller) : nullptr;
+    bool const wanted = gEyesOverride.value_or(gSettings.lookEyes);
+    std::optional<ik::Vec3> const head = ShepardSceneHead(shepard);
+    gEyesState.gapUnits = head && drawnEyes ? std::hypot(head->x - drawnEyes->x, head->y - drawnEyes->y) : -1.0;
+    bool const away = wanted && head && drawnEyes && cw::EyesStandIn(gEyesState.on, gEyesState.gapUnits);
+    if (!away) {
+        if (gEyesState.on) {
+            gEyesState.on = false;
+            GiveBackEyes(people, shepard, wanted ? "Shepard's head is with the player's eyes again" : "the stand-in is off");
+        }
+        return;
+    }
+    ue3::Object* const eyes = EnsureEyes(controller, *drawnEyes);
+    if (eyes == nullptr) {
+        gEyesState.on = false;
+        return;
+    }
+    PutEyesAt(eyes, *drawnEyes);  // where the player's eyes are drawn (the head's tracking in it), not the game's camera
+    if (!gEyesState.on) {
+        gEyesState.on = true;
+        log::Info("conversation world: {} {}: eyes: Shepard's head stands {:.2f} m from the player's drawn eyes: heads that look at him "
+                  "look at the player's eyes", scene, serial, gEyesState.gapUnits / 100.0);
+    }
+    for (ue3::Object* const actor : people) {
+        if (actor == nullptr || actor == shepard || !ue3::runtime::IsAlive(actor)) continue;
+        LookNow const look = LookOf(actor);
+        if (!look.known || look.target == nullptr || look.target != shepard) continue;
+        bool const moved = SetLookRanked(actor, eyes, look.rank) && LookOf(actor).target == eyes;
+        moved ? ++gEyesState.swapped : ++gEyesState.refused;
+        if (std::find(gEyesState.logged.begin(), gEyesState.logged.end(), actor) == gEyesState.logged.end()) {
+            gEyesState.logged.push_back(actor);
+            log::Info("conversation world: {} {}: eyes: {}'s look at Shepard (rank {}) {}", scene, serial, ue3::runtime::FullName(actor),
+                look.rank, moved ? "moved to the player's eyes" : "could not be moved (the game kept its own)");
+        }
+    }
+}
+
+// The scene's end: every look given back, the counts logged.
+void EyesEnd(ue3::Object* controller, std::vector<ue3::Object*> const& people, char const* scene, std::uint32_t serial) {
+    if (gEyesState.on) GiveBackEyes(people, controller != nullptr ? player::Pawn(controller) : nullptr, "the scene ended");
+    if (gEyesState.swapped + gEyesState.refused != 0) {
+        log::Info("conversation world: {} {}: eyes: {} looks moved to the player's eyes, {} kept by the game, {} given back", scene, serial,
+            gEyesState.swapped, gEyesState.refused, gEyesState.given);
+    }
+    gEyesState.on = false;
+    gEyesState.swapped = gEyesState.refused = gEyesState.given = 0;
+    gEyesState.logged.clear();
+}
+
 // The first-person eyes from Shepard's head bone (ME1's eyeFromHead; core cw::NoteEyeFromHead): learned on foot from the game's
 // own first-person camera (its POV, before the renderer adds the head's lean from the recenter point) against his animated head
 // bone, with the head at the recenter point. The slice's 8 forward and 4 up put the eyes inside Shepard's shoulders (Tali's
 // conversation, research/le2-conversations-in-world.md 6.6). Each game's fallback is its on-foot measure on the fake headset
 // (arm IK's "first person camera vs Shepard's head bone" with the headset at the recenter point): ME2 24 forward, 13 up
-// (2026-11-14, lanes B to F); ME3 FPC3's ME3 run (section 7).
+// (2026-11-14, lanes B to F); ME3 34 forward, 5 up (lane FPC4, 2026-11-20, the Citadel's embassies: 33.1..34.3 forward,
+// -2.9..0.0 right, 4.9..9.5 up). The head is the animated one (ShepardSceneHead): the drawn head bone on foot is the body
+// follower's and body scale's (the fake headset's 1.75 m eye against ME3's Shepard scaled it up: 976 samples read the camera
+// 27 units under the drawn head, 2026-11-20).
 #if defined(MEVR_GAME_LE3)
-constexpr cw::Vec3 kEyeFromHeadFallback{8.0, 0.0, 4.0};
+constexpr cw::Vec3 kEyeFromHeadFallback{34.0, 0.0, 5.0};
 #else
 constexpr cw::Vec3 kEyeFromHeadFallback{24.0, 0.0, 13.0};
 #endif
@@ -646,8 +1077,8 @@ void PublishHeld(conversation_world::Link const& link, ue3::Object* controller, 
     link.publish(&s);
 }
 
-void Publish(conversation_world::Link const& link, ue3::Object* controller) {
-    PublishHeld(link, controller, gC.serial, gCutSerial, gC.held, gC.facing, gC.fov);
+void Publish(conversation_world::Link const& link, ue3::Object* controller, MarkerOut const& marker = {}) {
+    PublishHeld(link, controller, gC.serial, gCutSerial, gC.held, gC.facing, gC.fov, marker);
 }
 
 // On foot with the world mode wanted (and 3 s on foot: never around a load), the host is told a conversation may begin this
@@ -697,8 +1128,50 @@ void PublishOff(conversation_world::Link const& link) {
     link.publish(&s);
 }
 
+// The view goes on from the held facing on foot (lane EXIT3's finding on ME3, 2026-11-20: at a held conversation's end the view
+// turned in one tick from the held yaw to the pawn's own facing, and the people in view were out of it a tick later). The game's
+// on-foot camera takes its yaw from the controller and the pawn; both are turned to the held facing's yaw as the hold lets go, so
+// the first frame on foot looks where the last held one did (ME1's continuity: the held place is the place on foot).
+// `mevr convo endfacing on|off` (tests).
+ue3::FunctionRef gSetRotation{"Engine.Actor.SetRotation", ue3::kEveryGame};
+bool gEndFacing = true;
+void FaceOnFoot(ue3::Rotator const& facing, std::uint32_t serial) {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    ue3::Function* const setRotation = gSetRotation.Get();
+    auto const controllerRot = controller != nullptr ? player::Rotation(controller) : std::nullopt;
+    auto const pawnRot = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
+    auto const deg = [](std::int32_t yaw) { return std::remainder(yaw * (360.0 / 65536.0), 360.0); };
+    log::Info("conversation world: conversation {} ends: the held facing {:.1f} deg, the controller's {}, the pawn's {}{}", serial,
+        deg(facing.yaw), controllerRot ? std::format("{:.1f}", deg(controllerRot->yaw)) : std::string("?"),
+        pawnRot ? std::format("{:.1f}", deg(pawnRot->yaw)) : std::string("?"),
+        gEndFacing ? ": both turned to the held facing (the view goes on from it on foot)" : " (left as the game has them: endfacing off)");
+    if (!gEndFacing || setRotation == nullptr) return;
+    for (auto const& [actor, rot] : {std::pair{controller, controllerRot}, std::pair{pawn, pawnRot}}) {
+        if (actor == nullptr || !rot || !ue3::runtime::IsAlive(actor)) continue;
+        ue3::Rotator turned = *rot;
+        turned.yaw = facing.yaw;
+        ue3::Params p(ue3::runtime::Get(), setRotation);
+        if (p.Valid() && p.Set("NewRotation", turned)) ue3::runtime::Call(actor, setRotation, p);
+    }
+}
+
+// (Below, with the moments' state.)
+std::string WriteStance(std::string const& tag, bool moment);
+bool StancesOn();
+void ShowTestHidden();
+
 void End(conversation_world::Link const& link, char const* why) {
     if (!gC.on) return;
+    if (gC.placed && !gC.skipped) {
+        if (StancesOn()) log::Info("conversation world: {}", WriteStance("end", false));
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const conversation = gC.controller != nullptr && ue3::runtime::IsAlive(gC.controller) ? gC.controller : nullptr;
+        EyesEnd(controller, conversation != nullptr ? Speakers(conversation, ConversationPlayer(conversation)) : std::vector<ue3::Object*>{},
+            "conversation", gC.serial);
+    }
+    ShowTestHidden();
+    gDrawnEyes.reset();
     gLast = std::format("conversation {}: {} after {:.1f} s; opening {}, walked {:.0f} units, Shepard put back {} times after the "
                         "fact; {}; {} re-placements by lasting jumps; at the source: Shepard's placements {}, people's {}, Shepard's "
                         "track moves {}{}; people kept after the fact: {} undone, {} yielded, {} refused by SetLocation, {} track "
@@ -717,11 +1190,13 @@ void End(conversation_world::Link const& link, char const* why) {
         gLast += std::format("; the player rode {:.2f} m with what Shepard stood on", gRide.units / 100.0);
     }
     if (gC.blackMoves > 0) gLast += std::format("; moved with Shepard under the game's fade to black {} times", gC.blackMoves);
+    if (gC.markers > 0) gLast += std::format("; {} floor marker{}", gC.markers, gC.markers == 1 ? "" : "s");
     gRide.units = 0.0;
     gRide.logged = false;
     log::Info("conversation world: {}", gLast);
     if (gC.placed) view_anchor::Hold(std::nullopt);
     if (gC.placed || gC.early) gEndedShownMs = GetTickCount64();
+    if (gC.placed && !gC.skipped) FaceOnFoot(gC.facing, gC.serial);
     if (gC.placed) {
         // Its held place is the place on foot for what follows (a moment straight after it, the next conversation's opening).
         gFoot = {true, gC.pin, GetTickCount64()};
@@ -780,12 +1255,48 @@ void RideBase(ue3::Object* pawn) {
 // stands" (cw::OpeningLimits stayUnits, 1.5 m) from the pin, under the game's fade to black or within 1.5 s of it, moves the pin
 // there (the camera update's pin puts his pawn there) under the host's dip; not in a curated walk. A step within 1.5 m stays the
 // pin's (ME1 walks it by the stick, which the sequels lack).
+// ME1's StepSeat on the sequels (research/69 item 43; the owner, 2026-11-16, for all three games): his head as the scene animates
+// it against his pawn's place; seated, the held view follows his head down (and up again), and the stick does not walk. The
+// thresholds are ME1's (standing 0.70 m or more above his place; ME3's Shepard stands with his head 0.75 m above it, the embassy's
+// records of 2026-11-20).
+ue3::FieldRef gPawnCrouched{"Engine.Pawn", "bIsCrouched", ue3::kEveryGame};
+void StepSeatTick(ue3::Object* pawn, std::uint64_t now) {
+    double const dt = gC.seatMs != 0 ? std::clamp(static_cast<double>(now - gC.seatMs) / 1000.0, 0.0, 0.1) : 0.0;
+    gC.seatMs = now;
+    auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+    std::optional<ik::Vec3> const head = ShepardSceneHead(pawn);
+    if (!at || !head) return;
+    double const h = head->z - at->z;
+    cw::SeatStep const step = cw::StepSeat(gC.seat, cw::Vec3{head->x, head->y, head->z}, h,
+        gPawnCrouched.ReadBool(pawn).value_or(false), dt);
+    if (step.sat) {
+        log::Info("conversation world: conversation {}: Shepard sits down (his head {:.2f} m above his place{}): the view goes with his "
+                  "head", gC.serial, h / 100.0, gC.seat.haveStand ? std::format(", {:.2f} m standing", gC.seat.standUnits / 100.0) : std::string());
+    }
+    if (step.stood) {
+        log::Info("conversation world: conversation {}: Shepard gets up (his head {:.2f} m above his place): the view comes up with him, "
+                  "{:.2f} m followed", gC.serial, h / 100.0, gC.seat.followedUnits / 100.0);
+    }
+    gC.eyeOffset.x += static_cast<float>(step.move.x);
+    gC.eyeOffset.y += static_cast<float>(step.move.y);
+    gC.eyeOffset.z += static_cast<float>(step.move.z);
+}
+
 void StepBlackMove(std::uint64_t now) {
     if (gC.sceneAsks == gC.sceneAsksTaken) return;
     gC.sceneAsksTaken = gC.sceneAsks;
-    if (!gSettings.blackMoves || gC.curated || !gC.sceneWantsShepard || gBlackMs == 0 || now - gBlackMs > 1500) return;
+    if (!gC.sceneWantsShepard || gBlackMs == 0 || now - gBlackMs > 1500) return;
     double const away = std::hypot(gC.sceneWants.x - gC.pin.x, gC.sceneWants.y - gC.pin.y);
-    if (away <= cw::OpeningLimits{}.stayUnits) return;
+    if (away <= cw::MarkerLimits{}.inUnits) return;  // he is there already
+    if (!gSettings.blackMoves || gC.curated || away <= cw::OpeningLimits{}.stayUnits) {
+        // Not moved (a curated walk keeps its walk, worldBlackMoves = 0, or a step within where he stands): the floor marker shows
+        // where the black wanted him (need (c)), for the player to step to.
+        gC.blackMarker = gC.sceneWants;
+        log::Info("convo: marker: conversation {}: under the game's fade to black the scene wants Shepard {:.2f} m away and the player "
+                  "stays ({}): a marker there", gC.serial, away / 100.0,
+            gC.curated ? "a curated walk" : !gSettings.blackMoves ? "worldBlackMoves = 0" : "within where he stands");
+        return;
+    }
     log::Info("conversation world: conversation {}: under the game's fade to black the scene wants Shepard {:.2f} m away: the player "
               "goes with him under a dip (ME1's worldBlackMoves)", gC.serial, away / 100.0);
     gC.pin = gC.sceneWants;  // the eyes keep their offset over his place; StepEyeHeight brings them to the new floor
@@ -813,10 +1324,10 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
         }
     }
     // ME1's worldNearPlane: the director's near plane never cuts the player's view (the body, the floor, the people near).
-    if (gSettings.nearPlane) {
+    {
         ue3::Object* const local = gLocalPlayer.Read<ue3::Object*>(controller).value_or(nullptr);
         float* const plane = local != nullptr ? gNearClip.In<float>(local) : nullptr;
-        if (plane != nullptr && std::isfinite(*plane) && *plane != gFootNear) {
+        if (gSettings.nearPlane && plane != nullptr && std::isfinite(*plane) && *plane != gFootNear) {
             if (*plane != gNearReplaced) {
                 log::Info("conversation world: the director's near plane is {:.1f} units in this shot: the on-foot plane ({:.1f}) "
                           "kept instead ({} writes so far)", *plane, gFootNear, gNearWrites);
@@ -825,6 +1336,23 @@ void OnUpdateCamera(ue3::Object* camera, ue3::Function* /*function*/, void* /*pa
             *plane = gFootNear;
             write_journal::Wrote("ConversationWorld.nearClipPlane", plane, sizeof(float));
             ++gNearWrites;
+        }
+        if (plane != nullptr && std::isfinite(*plane)) gDrawnNear = *plane;  // what this frame draws with (the records')
+    }
+    // ME1's worldCamera (research/69 "The council during the walk" and the comm room's QA of 2026-11-06): the game's own camera
+    // written at the held place after its update, so the engine's culling and streaming see from the player's eyes, not the
+    // director's camera (Samara on the Normandy, in sight 2.9 m from the held eyes and never drawn: lane FPC4, 2026-11-20).
+    // `mevr convo camera on|off`, [Cinematics] worldCamera (ME1's key; 0 by default as ME1's).
+    if (gC.on && gC.placed && !gC.skipped && CameraHeld()) {
+        if (auto const pov = player::CameraPov(camera); pov && pov->location != nullptr && pov->rotation != nullptr && pov->fov != nullptr) {
+            *pov->location = gC.held;
+            *pov->rotation = gC.facing;
+            *pov->fov = gC.fov;
+            write_journal::Wrote("ConversationWorld.cameraHold", pov->location, sizeof(ue3::Vector));
+            if (gCameraHoldWrites++ == 0) {
+                log::Info("conversation world: conversation {}: the game's camera held at the player's place (worldCamera): the engine "
+                          "culls and streams from the player's eyes", gC.serial);
+            }
         }
     }
     if (!gC.on || !gC.placed) return;  // (a moment: the script's Shepard walks, nobody is kept)
@@ -954,6 +1482,311 @@ struct Moment {
 };
 Moment gM;
 
+// ---- Stances from above (ME1's records, research/69 "Stances from above" and "Auditing scenes by rule"): the same JSON, so
+// tools/scene_audit.py's rules and tools/conversation-stance.py (--heads, --findings, the sheets) judge the sequels' scenes as they
+// judge ME1's. `mevr convo stance [tag]`, or by itself with `mevr convo stances on` / [Cinematics] worldStances = 1: after the
+// opening, after a dip, at each new line, when someone moved a metre or turned 40 degrees, every 2 s, at the end; a moment's
+// every 1.5 s. %LOCALAPPDATA%\MEVR\stances\<stamp>-<number>-<scene>-<tag>.json. No wall scan (ME1's `walls`), no circle yet.
+std::optional<bool> gStancesOverride;  // `mevr convo stances on|off` over [Cinematics] worldStances
+struct Stances {
+    double lastS = -10.0;           // the scene's seconds at the last record
+    bool opening = false;           // the opening's record written
+    std::int32_t entry = -2;
+    std::uint32_t cut = 0;
+    double cutS = -1.0;             // a dip seen at this time, its record 0.5 s later
+    std::map<void const*, std::pair<ik::Vec3, double>> seen;  // places and facings at the last record
+    ik::Vec3 eyes;
+    unsigned written = 0;
+};
+Stances gStances;
+
+// `mevr convo hide body|person on|off` (the broken runs, research/69 "Broken runs the audit must catch"): the player's body mesh, or
+// the conversation owner's, hidden while a scene plays in the world, so the audit's body-not-drawn / person-not-drawn must catch it.
+// Shown again when switched off and at the scene's end; never set otherwise.
+bool gHideBodyTest = false;
+bool gHidePersonTest = false;
+ue3::Kept gHiddenForTest[2];
+
+bool StancesOn() {
+    return gStancesOverride.value_or(gSettings.stances);
+}
+
+std::string JsonText(std::string_view s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '"' || c == '\\') {
+            out.push_back('\\');
+            out.push_back(c);
+        } else if (static_cast<unsigned char>(c) < 32) {
+            out.push_back(' ');
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+std::string P3(ik::Vec3 const& v) {
+    return std::format("[{:.0f}, {:.0f}, {:.0f}]", v.x, v.y, v.z);
+}
+
+double YawDeg(ue3::Rotator const& r) {
+    return r.yaw * (360.0 / 65536.0);
+}
+
+std::string ShortName(ue3::Object const* o) {
+    return o != nullptr ? ue3::runtime::Get().NameText(o) : std::string("none");
+}
+
+std::string DisplayName(ue3::Object* actor, ue3::Object* pawn) {
+    if (actor != nullptr && actor == pawn) return "Shepard";
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (m.pawn == actor && !m.name.empty()) return m.name;
+    }
+    return ShortName(actor);
+}
+
+bool IsSquad(ue3::Object* actor) {
+    for (squad_weapons::MemberView const& m : squad_weapons::Members()) {
+        if (m.pawn == actor) return true;
+    }
+    return false;
+}
+
+// One record. `moment`: a moment's (the people everyone shown within 20 m); else the held conversation's.
+std::string WriteStance(std::string const& tag, bool moment) {
+    ue3::Object* const controller = player::Controller();
+    ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+    if (moment ? !gM.on : !(gC.on && gC.placed && !gC.skipped)) return "stance: no scene held in the world";
+    if (controller == nullptr || pawn == nullptr) return "stance: no player";
+    ue3::Object* const conversation = moment ? nullptr : gC.controller;
+    if (!moment && (conversation == nullptr || !ue3::runtime::IsAlive(conversation))) return "stance: the conversation is gone";
+    std::uint64_t const now = GetTickCount64();
+    double const seconds = static_cast<double>(now - (moment ? gM.startMs : gC.startMs)) / 1000.0;
+    ue3::Vector const heldPlace = moment ? gM.held : gC.held;
+    ue3::Rotator const facing = moment ? gM.facing : gC.facing;
+    ik::Vec3 const held = V(heldPlace);
+    ik::Vec3 const eyes = gDrawnEyes.value_or(held);
+    // Shepard's head as drawn (ME1's records: HeadOf), the body the player sees; the stand-in decides by the animated one.
+    std::optional<HeadPose> const shepPose = HeadPoseOf(pawn);
+    std::optional<ik::Vec3> const shepHead = shepPose ? std::optional<ik::Vec3>(shepPose->at) : ShepardSceneHead(pawn);
+    ue3::Object* const speaker = conversation != nullptr ? gSpeakerNow.Read<ue3::Object*>(conversation).value_or(nullptr) : nullptr;
+    ue3::Object* const listener = conversation != nullptr ? gListenerNow.Read<ue3::Object*>(conversation).value_or(nullptr) : nullptr;
+    ue3::Object* const owner = conversation != nullptr ? gOwner.Read<ue3::Object*>(conversation).value_or(nullptr) : nullptr;
+    ue3::Object* const eyesTarget = gEyesState.target.Live();
+    std::vector<ue3::Object*> who;
+    std::string name;
+    if (moment) {
+        who = NearPawns(controller, eyes, 2000.0, 24);
+        name = std::format("moment_{}", gM.serial);
+    } else {
+        who = Speakers(conversation, ConversationPlayer(conversation));
+        name = ue3::runtime::FullName(ConversationData(conversation));
+    }
+    who.push_back(pawn);
+    std::string people;
+    for (ue3::Object* const actor : who) {
+        if (actor == nullptr || !ue3::runtime::IsAlive(actor)) continue;
+        auto const at = player::Location(actor);
+        auto const rot = player::Rotation(actor);
+        if (!at || !rot) continue;
+        bool const isShepard = actor == pawn;
+        std::optional<HeadPose> const pose = HeadPoseOf(actor);
+        std::optional<ik::Vec3> const head = isShepard ? shepHead : pose ? std::optional<ik::Vec3>(pose->at) : std::nullopt;
+        std::string const role = actor == speaker ? "speaker" : actor == listener ? "listener" : "bystander";
+        LookNow const look = isShepard ? LookNow{} : LookOf(actor);
+        std::string heading = "null";
+        if (pose && !isShepard) {
+            ik::Vec3 const f = pose->axis[kFaceAxis];
+            heading = std::format("{{\"yaw\": {:.0f}, \"pitch\": {:.0f}, \"toYouDeg\": {:.0f}, \"toHeldDeg\": {:.0f}",
+                std::atan2(f.y, f.x) * (180.0 / 3.14159265358979323846),
+                std::atan2(f.z, std::hypot(f.x, f.y)) * (180.0 / 3.14159265358979323846), AngleDeg(f, eyes - pose->at),
+                AngleDeg(f, held - pose->at));
+            if (shepHead) heading += std::format(", \"toShepardDeg\": {:.0f}", AngleDeg(f, *shepHead - pose->at));
+            if (look.aim) {  // which of the head bone's axes points where the chain aims (the face's axis, [verify] per skeleton)
+                ik::Vec3 const aim = V(*look.aim) - pose->at;
+                heading += std::format(", \"axesToAimDeg\": [{:.0f}, {:.0f}, {:.0f}]", AngleDeg(pose->axis[0], aim),
+                    AngleDeg(pose->axis[1], aim), AngleDeg(pose->axis[2], aim));
+            }
+            heading += "}";
+        }
+        std::string gameLook = "null";
+        if (look.known) {
+            std::string const target = look.target == nullptr ? std::string()
+                : look.target == eyesTarget && eyesTarget != nullptr ? std::string("you")
+                : look.target == pawn ? std::string("Shepard")
+                : DisplayName(look.target, pawn);
+            gameLook = std::format("{{\"target\": \"{}\", \"rank\": {}, \"aim\": {}}}", JsonText(target), look.rank,
+                look.aim ? P3(V(*look.aim)) : std::string("null"));
+        }
+        auto const drawnAgo = DrawnAgoS(controller, PersonMesh(actor));
+        bool const inSight = !isShepard && head && std::sqrt((head->x - eyes.x) * (head->x - eyes.x) + (head->y - eyes.y) * (head->y - eyes.y) +
+            (head->z - eyes.z) * (head->z - eyes.z)) <= 1200.0 && InHeadView(*head).value_or(false) &&
+            LineOfSight(pawn, ue3::Vector{static_cast<float>(eyes.x), static_cast<float>(eyes.y), static_cast<float>(eyes.z)},
+                ue3::Vector{static_cast<float>(head->x), static_cast<float>(head->y), static_cast<float>(head->z)});
+        people += std::format("{}\n  {{\"name\": \"{}\", \"id\": \"{}\", \"at\": {}, \"yaw\": {:.0f}, \"head\": {}, \"start\": {}, "
+                              "\"role\": \"{}\", \"owner\": {}, \"squad\": {}, \"shepard\": {}, \"hidden\": {}, \"walks\": false, "
+                              "\"walk\": null, \"held\": null, \"looksAt\": \"\", \"face\": {}, \"gameLook\": {}, \"inSight\": {}, "
+                              "\"drawnAgoS\": {}}}",
+            people.empty() ? "" : ",", JsonText(DisplayName(actor, pawn)), JsonText(ShortName(actor)), P3(V(*at)), YawDeg(*rot),
+            head ? P3(*head) : std::string("null"), P3(V(*at)), role, actor == owner ? "true" : "false", IsSquad(actor) ? "true" : "false",
+            isShepard ? "true" : "false", gActorHiddenRead.ReadBool(actor).value_or(false) ? "true" : "false", heading, gameLook,
+            inSight ? "true" : "false", drawnAgo ? std::format("{:.2f}", std::min(*drawnAgo, 600.0)) : std::string("null"));
+    }
+    std::string others;
+    int listed = 0;
+    for (ue3::Object* const o : LivePeople(controller)) {
+        if (listed >= 64) break;
+        if (o == pawn || !IsPerson(o) || gActorHiddenRead.ReadBool(o).value_or(true) ||
+            std::find(who.begin(), who.end(), o) != who.end()) {
+            continue;
+        }
+        auto const at = player::Location(o);
+        auto const rot = player::Rotation(o);
+        if (!at || !rot || std::hypot(at->x - held.x, at->y - held.y) > 2000.0) continue;
+        others += std::format("{}{{\"name\": \"{}\", \"at\": {}, \"yaw\": {:.0f}}}", others.empty() ? "" : ", ",
+            JsonText(DisplayName(o, pawn)), P3(V(*at)), YawDeg(*rot));
+        ++listed;
+    }
+    gStances.seen.clear();
+    for (ue3::Object* const actor : who) {
+        if (actor == nullptr || !ue3::runtime::IsAlive(actor)) continue;
+        auto const at = player::Location(actor);
+        auto const rot = player::Rotation(actor);
+        if (at && rot) gStances.seen[actor] = {V(*at), YawDeg(*rot)};
+    }
+    gStances.eyes = eyes;
+    ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+    auto const halfHeight = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+    ue3::Vector const feet = moment ? gM.feet : gC.pin;
+    double const floor = feet.z - (halfHeight ? *halfHeight : 90.0f);
+    auto const bodyDrawnAgo = DrawnAgoS(controller, player::Mesh(pawn));
+    std::int32_t const entry = conversation != nullptr ? gEntryNow.Read<std::int32_t>(conversation).value_or(-1) : -1;
+    std::string const json = std::format(
+        "{{\"game\": \"" MEVR_GAME_NAME_A "\", \"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, "
+        "\"staged\": false, \"opening\": \"{}\", \"entry\": {}, \"line\": \"\", \"unitsPerMeter\": 100, \"walkAlong\": null, \"cut\": {},\n"
+        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, "
+        "\"turnedDeg\": {:.0f}, \"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, "
+        "\"steering\": false, \"armIk\": \"{}\", \"hands\": {}, \"bodyDrawnAgoS\": {}, \"nearPlane\": {:.0f}}},\n"
+        "\"people\": [{}],\n\"others\": [{}],\n\"circle\": null,\n\"ahead\": {{\"now\": [], \"later\": []}}}}\n",
+        JsonText(name), moment ? gM.serial : gC.serial, JsonText(tag), seconds, moment ? "moment" : cw::Name(gC.opening), entry, gCutSerial,
+        P3(held), YawDeg(facing), P3(eyes), gDrawnEyes ? "true" : "false",
+        shepHead ? std::format("{:.2f}", std::hypot(shepHead->x - eyes.x, shepHead->y - eyes.y) / 100.0) : std::string("null"),
+        moment && gM.hid ? "true" : "false", moment ? gM.turnedDeg : gC.turnedDeg, P3(V(moment ? gM.feet : gC.start)),
+        gSettings.leashUnits / 100.0, floor, gEyesState.on ? "true" : "false",
+        !moment && gC.sceneWantsShepard ? P3(V(gC.sceneWants)) : std::string("null"), JsonText(arm_ik::Status().substr(0, 40)),
+        arm_ik::HandsJson(), bodyDrawnAgo ? std::format("{:.2f}", std::min(*bodyDrawnAgo, 600.0)) : std::string("null"),
+        moment ? -1.0f : gDrawnNear, people, others);
+    wchar_t buffer[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", buffer, MAX_PATH) == 0) return "stance: no LOCALAPPDATA";
+    std::filesystem::path const folder = std::filesystem::path(buffer) / L"MEVR" / L"stances";
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    std::string safeName = name.substr(name.rfind('.') == std::string::npos ? 0 : name.rfind('.') + 1);
+    std::string safeTag = tag;
+    for (std::string* s : {&safeName, &safeTag}) {
+        for (char& c : *s) {
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-') c = '_';
+        }
+    }
+    std::filesystem::path const file = folder / std::format("{:04}-{:02}-{:02}_{:02}-{:02}-{:02}-{:03}-{}-{}-{}.json", t.wYear, t.wMonth,
+        t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, moment ? gM.serial : gC.serial, safeName, safeTag);
+    FILE* out = _wfopen(file.c_str(), L"wb");
+    if (out == nullptr) return "stance: could not write " + ini::Utf8(file);
+    std::fwrite(json.data(), 1, json.size(), out);
+    std::fclose(out);
+    gStances.lastS = seconds;
+    ++gStances.written;
+    return std::format("stance: {} ({})", ini::Utf8(file), tag);
+}
+
+// Whether the scene moved since the last record: someone of it a metre from where it stood then or turned 40 degrees, or the
+// player's eyes 0.75 m.
+bool MovedSinceStance(std::vector<ue3::Object*> const& people) {
+    if (gDrawnEyes && std::hypot(gDrawnEyes->x - gStances.eyes.x, gDrawnEyes->y - gStances.eyes.y) > 75.0) return true;
+    for (ue3::Object* const actor : people) {
+        auto const seen = gStances.seen.find(actor);
+        if (actor == nullptr || !ue3::runtime::IsAlive(actor) || seen == gStances.seen.end()) continue;
+        auto const at = player::Location(actor);
+        auto const rot = player::Rotation(actor);
+        if (!at || !rot) continue;
+        double const turned = std::abs(std::remainder(YawDeg(*rot) - seen->second.second, 360.0));
+        if (std::hypot(at->x - seen->second.first.x, at->y - seen->second.first.y) > 100.0 || turned > 40.0) return true;
+    }
+    return false;
+}
+
+// Each tick of a held conversation (after its place is taken): the records ME1's StanceTick writes.
+void StanceStep(std::vector<ue3::Object*> const& people) {
+    if (!StancesOn()) return;
+    std::uint64_t const now = GetTickCount64();
+    double const s = static_cast<double>(now - gC.startMs) / 1000.0;
+    char const* tag = nullptr;
+    if (!gStances.opening) {
+        if (now - gC.placedMs < 1500) return;  // the opening settles (ME1: after its first drawn frames)
+        gStances.opening = true;
+        gStances.cut = gCutSerial;
+        gStances.entry = gEntryNow.Read<std::int32_t>(gC.controller).value_or(-1);
+        tag = "opening";
+    } else if (gCutSerial != gStances.cut) {
+        gStances.cut = gCutSerial;
+        gStances.cutS = s;
+        return;
+    } else if (gStances.cutS >= 0.0 && s - gStances.cutS >= 0.5) {
+        gStances.cutS = -1.0;
+        tag = "after-dip";
+    } else if (s - gStances.lastS >= 1.0) {
+        std::int32_t const entry = gEntryNow.Read<std::int32_t>(gC.controller).value_or(-1);
+        if (entry != gStances.entry) {
+            gStances.entry = entry;
+            tag = "line";
+        } else if (MovedSinceStance(people)) {
+            tag = "moved";
+        } else if (s - gStances.lastS >= 2.0) {
+            tag = "tick";
+        }
+    }
+    if (tag != nullptr) log::Info("conversation world: {}", WriteStance(tag, false));
+}
+
+// The test hides (`mevr convo hide`), each tick of a held scene: hidden while switched on, shown again when off.
+void SetTestHidden(int slot, ue3::Object* mesh, bool hide) {
+    ue3::Function* const fn = gPrimitiveSetHidden.Get();
+    if (mesh == nullptr || !ue3::runtime::IsAlive(mesh) || fn == nullptr) {
+        gHiddenForTest[slot] = ue3::Kept();
+        return;
+    }
+    ue3::Params p(ue3::runtime::Get(), fn);
+    if (!p.Valid() || !p.SetBool("NewHidden", hide)) return;
+    ue3::runtime::Call(mesh, fn, p);
+    gHiddenForTest[slot] = hide ? ue3::Kept(mesh) : ue3::Kept();
+    log::Info("conversation world: {} {}'s mesh for a broken run", hide ? "hid" : "showed again", slot == 0 ? "the player's body" : "a person");
+}
+
+void ShowTestHidden() {
+    for (int slot : {0, 1}) {
+        if (ue3::Object* const mesh = gHiddenForTest[slot].Live()) SetTestHidden(slot, mesh, false);
+        gHiddenForTest[slot] = ue3::Kept();
+    }
+}
+
+void ApplyTestHides(ue3::Object* controller, ue3::Object* owner) {
+    if (gHideBodyTest && !gHiddenForTest[0]) {
+        SetTestHidden(0, player::Mesh(player::Pawn(controller)), true);
+    } else if (!gHideBodyTest && gHiddenForTest[0]) {
+        if (ue3::Object* const mesh = gHiddenForTest[0].Live()) SetTestHidden(0, mesh, false);
+        gHiddenForTest[0] = ue3::Kept();
+    }
+    if (gHidePersonTest && !gHiddenForTest[1] && owner != nullptr && IsPerson(owner)) {
+        SetTestHidden(1, PersonMesh(owner), true);
+    } else if (!gHidePersonTest && gHiddenForTest[1]) {
+        if (ue3::Object* const mesh = gHiddenForTest[1].Live()) SetTestHidden(1, mesh, false);
+        gHiddenForTest[1] = ue3::Kept();
+    }
+}
+
 // Where a move track's walk ends (engine/ConversationHooks' MoveTrackEnd: its position curve's last key). Game thread.
 std::optional<ue3::Vector> TrackEnd(void const* track, void const* instance) {
     float place[3];
@@ -973,8 +1806,149 @@ bool HideShepard(ue3::Object* pawn, bool hide) {
     return p.Valid() && p.SetBool("bNewHidden", hide) && ue3::runtime::Call(pawn, function, p);
 }
 
+// ---- Walking along (ME1's StepWalkAlongTick, research/69 "Walking along"; core cw::StepWalkAlong): when someone the moment's
+// matinee also moves walks within 5 m of where it has Shepard, and the player's eyes fall worldWalkAlongPauseM behind, the
+// matinee pauses (its own SeqAct_Interp.bPaused) at the end of a line if one is playing (ME2: someone's FaceFX; ME3's
+// IsPlayingFaceFXAnim takes a name, and its sound tracks are Wwise: no line read there, the pause comes at once), and goes on
+// once the player is back within worldWalkAlongResumeM. ME2's cutscenes park Shepard's pawn at the world's origin and walk a
+// stand-in (research/le2-conversations-in-world.md 6.2), so nobody walks within 5 m of the pawn there: it never pauses; ME3's
+// moments walk his real pawn (research/le3-conversations-in-world.md 5.5).
+ue3::ClassRef gSeqInterpClass{"Engine.SeqAct_Interp", ue3::kEveryGame};
+ue3::FieldRef gInterpPaused{"Engine.SeqAct_Interp", "bPaused", ue3::kEveryGame};
+ue3::FieldRef gInterpIsPlaying{"Engine.SeqAct_Interp", "bIsPlaying", ue3::kEveryGame};
+ue3::FieldRef gInterpGroupInst{"Engine.SeqAct_Interp", "GroupInst", ue3::kEveryGame};
+ue3::FieldRef gGroupInstActor{"Engine.InterpGroupInst", "GroupActor", ue3::kEveryGame};
+ue3::FieldRef gGroupInstTracks{"Engine.InterpGroupInst", "TrackInst", ue3::kEveryGame};
+ue3::ClassRef gTrackInstMoveClass{"Engine.InterpTrackInstMove", ue3::kEveryGame};
+#if defined(MEVR_GAME_LE2)
+ue3::FunctionRef gFaceFxPlaying{"Engine.SkeletalMeshComponent.IsPlayingFaceFXAnim", ue3::kEveryGame};
+#endif
+struct WalkAlong {
+    ue3::Kept matinee;               // the SeqAct_Interp walking Shepard (written: bPaused)
+    bool pausedByUs = false;
+    cw::WalkAlongState state;
+    int companions = 0;
+    double gapUnits = 0.0;
+    bool logged = false;
+};
+WalkAlong gWalkAlong;
+
+void PauseWalk(bool paused, std::string const& why) {
+    ue3::Object* const seq = gWalkAlong.matinee.Live();
+    if (seq == nullptr) {
+        gWalkAlong.pausedByUs = false;
+        return;
+    }
+    if (gInterpPaused.WriteBool(seq, paused)) {  // (journalled by FieldRef)
+        gWalkAlong.pausedByUs = paused;
+        log::Info("conversation world: moment {}: walk along: {} ({})", gM.serial, paused ? "the walk pauses" : "the walk goes on", why);
+    } else {
+        log::Warn("conversation world: moment {}: walk along: could not {} the matinee", gM.serial, paused ? "pause" : "resume");
+    }
+}
+
+void ReleaseWalkAlong(char const* why) {
+    if (gWalkAlong.pausedByUs) PauseWalk(false, why);
+    if (gWalkAlong.state.pauses != 0) {
+        log::Info("conversation world: moment {}: walk along: {} pause{} of {:.1f} s in all{}", gM.serial, gWalkAlong.state.pauses,
+            gWalkAlong.state.pauses == 1 ? "" : "s", gWalkAlong.state.pausedTotalS,
+            gWalkAlong.state.gaveUp ? "; one ran out (worldWalkAlongMaxS)" : "");
+    }
+    gWalkAlong = {};
+}
+
+void StepWalkAlong(ue3::Object* pawn, std::optional<ue3::Vector> const& at, double dt) {
+    if (!gSettings.walkAlong) {
+        if (gWalkAlong.pausedByUs) ReleaseWalkAlong("worldWalkAlong is off");
+        return;
+    }
+    if (!gWalkAlong.matinee) {
+        auto* const inst = static_cast<ue3::Object*>(const_cast<void*>(gShepardTrackInstance));
+        ue3::Class* const cls = gSeqInterpClass.Get();
+        if (inst == nullptr || cls == nullptr || !ue3::runtime::IsAlive(inst)) return;
+        ue3::Object* const seq = ue3::runtime::Get().OuterOfA(inst, cls);
+        if (seq == nullptr) return;
+        gWalkAlong.matinee = ue3::Kept(seq);
+    }
+    ue3::Object* const seq = gWalkAlong.matinee.Live();
+    if (seq == nullptr || !at) {
+        gWalkAlong.pausedByUs = false;
+        return;
+    }
+    int companions = 0;
+    bool line = false;
+    std::string beside;
+    if (auto const groups = gInterpGroupInst.ElementsOf(seq, 64); groups && groups->stride == static_cast<std::int32_t>(sizeof(void*))) {
+        for (std::int32_t i = 0; i < groups->count; ++i) {
+            ue3::Object* const group = *static_cast<ue3::Object**>(groups->At(i));
+            if (group == nullptr || !ue3::runtime::IsAlive(group)) continue;
+            bool moves = false;
+            if (auto const tracks = gGroupInstTracks.ElementsOf(group, 64); tracks && tracks->stride == static_cast<std::int32_t>(sizeof(void*))) {
+                for (std::int32_t k = 0; k < tracks->count && !moves; ++k) {
+                    ue3::Object* const track = *static_cast<ue3::Object**>(tracks->At(k));
+                    moves = track != nullptr && ue3::runtime::IsAlive(track) && ue3::IsA(track, gTrackInstMoveClass);
+                }
+            }
+            ue3::Object* const actor = gGroupInstActor.Read<ue3::Object*>(group).value_or(nullptr);
+            if (actor == nullptr || actor == pawn || !ue3::runtime::IsAlive(actor) || !IsPerson(actor)) continue;
+#if defined(MEVR_GAME_LE2)
+            if (!line) {
+                if (ue3::Object* const mesh = PersonMesh(actor); mesh != nullptr && gFaceFxPlaying.Get() != nullptr) {
+                    ue3::Params p(ue3::runtime::Get(), gFaceFxPlaying.Get());
+                    if (p.Valid() && ue3::runtime::Call(mesh, gFaceFxPlaying.Get(), p)) line = p.ReturnBool().value_or(false);
+                }
+            }
+#endif
+            auto const place = player::Location(actor);
+            if (moves && place && std::hypot(place->x - at->x, place->y - at->y) <= 500.0) {
+                ++companions;
+                beside += (beside.empty() ? "" : ", ") + ShortName(actor);
+            }
+        }
+    }
+    if (!gInterpIsPlaying.ReadBool(seq).value_or(false) && !gWalkAlong.pausedByUs) companions = 0;  // the matinee is over
+    // Shepard's pawn far from the view is no walk the player follows: ME2's ANIMCUTSCENEs park it at the world's origin, and the
+    // matinee's groups read six people within 5 m of it in Tali's reintroduction (180 m from the player's place, 2026-11-20: "a line
+    // is playing: the walk pauses at its end"); past 30 m it never pauses (ME1's walks keep within a room).
+    ik::Vec3 const viewEyes = gDrawnEyes.value_or(V(gM.held));
+    if (std::hypot(viewEyes.x - at->x, viewEyes.y - at->y) > 3000.0 && !gWalkAlong.pausedByUs) companions = 0;
+    if (companions != 0 && !gWalkAlong.logged) {
+        gWalkAlong.logged = true;
+        log::Info("conversation world: moment {}: walk along: {} walk{} beside Shepard: the walk waits for a player {:.1f} m behind", gM.serial,
+            beside, companions == 1 ? "s" : "", gSettings.walkAlongSettings.pauseUnits / 100.0);
+    }
+    ik::Vec3 const eyes = gDrawnEyes.value_or(V(gM.held));
+    double const gap = std::hypot(eyes.x - at->x, eyes.y - at->y);
+    gWalkAlong.companions = companions;
+    gWalkAlong.gapUnits = gap;
+    switch (cw::StepWalkAlong(gWalkAlong.state, gap, companions, line, std::clamp(dt, 0.0, 0.25), gSettings.walkAlongSettings)) {
+    case cw::WalkAlongStep::Pause:
+        PauseWalk(true, std::format("the player is {:.1f} m behind Shepard, {} beside him", gap / 100.0, companions));
+        break;
+    case cw::WalkAlongStep::Resume:
+        PauseWalk(false, gWalkAlong.state.gaveUp ? std::format("{:.0f} s paused: worldWalkAlongMaxS", gWalkAlong.state.pausedS)
+                         : companions == 0 ? std::string("nobody walks beside Shepard any more")
+                                           : std::format("the player caught up, {:.1f} m from Shepard", gap / 100.0));
+        break;
+    case cw::WalkAlongStep::WaitLine:
+        log::Info("conversation world: moment {}: walk along: the player is {:.1f} m behind; a line is playing: the walk pauses at its end",
+            gM.serial, gap / 100.0);
+        break;
+    case cw::WalkAlongStep::Nothing:
+        break;
+    }
+}
+
 void EndMoment(conversation_world::Link const& link, char const* why, bool publishOff) {
     if (!gM.on) return;
+    ReleaseWalkAlong(why);
+    if (!gM.provisional) {
+        if (StancesOn()) log::Info("conversation world: {}", WriteStance("moment-end", true));
+        ue3::Object* const controller = player::Controller();
+        EyesEnd(controller, NearPawns(controller, gDrawnEyes.value_or(V(gM.held)), 2000.0, 24), "moment", gM.serial);
+    }
+    ShowTestHidden();
+    gDrawnEyes.reset();
     std::uint64_t const now = GetTickCount64();
     ue3::Object* const pawn = gShepardPawn;
     auto const at = pawn != nullptr && ue3::runtime::IsAlive(pawn) ? player::Location(pawn) : std::nullopt;
@@ -1035,6 +2009,7 @@ bool TickMoment(conversation_world::Link const& link, ue3::Object* controller, s
         gM.on = true;
         gM.provisional = true;
         gM.serial = ++gSerial;
+        gStances = {};
         gM.startMs = now;
         gM.stepMs = now;
         gM.feet = gFoot.pawn;
@@ -1167,6 +2142,20 @@ bool TickMoment(conversation_world::Link const& link, ue3::Object* controller, s
     }
     PublishHeld(link, controller, gM.serial, gCutSerial, gM.held, gM.facing, gM.fov, marker);
     if (frame) view_anchor::Hold(*frame, view);
+    if (!gM.provisional) StepWalkAlong(pawn, at, dt);  // a matinee with someone beside Shepard waits for the player (ME1's)
+    if (!gM.provisional) {
+        // The looks at the player's drawn eyes (ME1's StepEyes in a moment: everyone shown within 20 m), the records from above.
+        gDrawnEyes = frame ? std::optional<ik::Vec3>{ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z}} : std::nullopt;
+        EyesStep(controller, NearPawns(controller, gDrawnEyes.value_or(V(gM.held)), 2000.0, 24), gDrawnEyes, "moment", gM.serial);
+        if (StancesOn()) {
+            double const s = static_cast<double>(now - gM.startMs) / 1000.0;
+            if (gStances.written == 0) {
+                log::Info("conversation world: {}", WriteStance("moment-begin", true));
+            } else if (s - gStances.lastS >= 1.5) {
+                log::Info("conversation world: {}", WriteStance("moment", true));
+            }
+        }
+    }
     return true;
 }
 
@@ -1203,10 +2192,33 @@ void Tick(conversation_world::Link const& link) {
         ue3::Object* const camera = player::Camera(controller);
         auto const pov = camera != nullptr ? player::CameraPov(camera) : std::nullopt;
         if (pov && pov->location != nullptr && pov->rotation != nullptr && pov->fov != nullptr) {
-            gFootPov = {true, *pov->location, *pov->rotation, *pov->fov};
+            // The eyes on foot where the renderer draws them, at the recenter point (the held view's frame origin: the drawn
+            // eye midpoint without the player's own lean), else the game's camera. ME3's renderer draws the first-person eyes
+            // about 28 units above the game's camera on foot and nothing above a held view (2026-11-20: a conversation held
+            // from the camera drew the eyes 0.32 m low), so a held place taken from the camera starts low; from the drawn eyes it
+            // is the view on foot. ME2's drawn eyes are its camera (FPC3's runs), so nothing changes there.
+            ue3::Vector eyes = *pov->location;
+            if (auto const frame = view_anchor::Current(); frame && vr::host_view::Latest().valid) {
+                engine::UnrealVector const origin = engine::OriginWorld(*frame);
+                ue3::Vector const drawn{static_cast<float>(origin.x), static_cast<float>(origin.y), static_cast<float>(origin.z)};
+                double const apart = Distance(drawn, *pov->location);
+                if (apart < 80.0) {
+                    eyes = drawn;
+                    static double s_loggedApart = -1.0;
+                    if (std::abs(apart - s_loggedApart) > 5.0) {
+                        s_loggedApart = apart;
+                        log::Info("conversation world: on foot the eyes are drawn {:.0f} units from the game's camera ({:+.0f}, {:+.0f}, {:+.0f}): "
+                                  "a scene held from the view on foot keeps the drawn eyes", apart, drawn.x - pov->location->x,
+                            drawn.y - pov->location->y, drawn.z - pov->location->z);
+                    }
+                }
+            }
+            gFootPov = {true, eyes, *pov->rotation, *pov->fov};
             if (WorldWanted()) {
                 ue3::Object* const pawn = player::Pawn(controller);
-                LearnEyeFromHead(pawn, *pov->location, *pov->rotation, HeadOf(pawn));
+                std::optional<ik::Vec3> const animated = ShepardSceneHead(pawn);
+                LearnEyeFromHead(pawn, eyes, *pov->rotation,
+                    animated ? std::optional<engine::UnrealVector>(engine::UnrealVector{animated->x, animated->y, animated->z}) : std::nullopt);
             }
         }
     } else {
@@ -1246,6 +2258,7 @@ void Tick(conversation_world::Link const& link) {
         gC.serial = ++gSerial;
         gC.controller = conversation;
         gC.startMs = now;
+        gStances = {};
         gC.why = "the opening settling";
         gC.skipped = !gFootSettledAtStart;
         // No place for the player in it (the generated presence table, cw::NoPlaceForPlayer): the 3D screen, by rule.
@@ -1263,7 +2276,10 @@ void Tick(conversation_world::Link const& link) {
     }
     if (gC.skipped) return;
     ue3::Object* const pawn = player::Pawn(controller);
-    auto const head = HeadOf(pawn);
+    // His head as the scene animates it (arm IK's animated head when fresh, else the bone: before our writes, the same), the
+    // measure the eyes from it were learned against.
+    std::optional<ik::Vec3> const sceneHead = ShepardSceneHead(pawn);
+    auto const head = sceneHead ? std::optional<engine::UnrealVector>(engine::UnrealVector{sceneHead->x, sceneHead->y, sceneHead->z}) : HeadOf(pawn);
     auto const rotation = pawn != nullptr ? player::Rotation(pawn) : std::nullopt;
     if (!gC.placed) {
         if (static_cast<double>(now - gC.startMs) < gSettings.settleS * 1000.0) {
@@ -1340,7 +2356,7 @@ void Tick(conversation_world::Link const& link) {
         auto const frame = HeldFrame();
         bool const wheelUp = WheelUp(controller);
         double const magnitude = pads.active ? std::hypot(pads.left.stickX, pads.left.stickY) : 0.0;
-        bool const walks = cw::StickWalks(gC.latch, wheelUp, magnitude);
+        bool const walks = cw::StickWalks(gC.latch, wheelUp, magnitude) && !gC.seat.on;
         if (!walks) ++gC.wheelHeld;
         // ME1's turn: the right stick turns the held facing about the drawn eyes ([Comfort] turn: smooth or snap).
         if (pads.active && frame && view.valid && dt > 0.0) {
@@ -1371,21 +2387,60 @@ void Tick(conversation_world::Link const& link) {
         gC.stepMs = now;
     }
     if (gC.placed) RideBase(pawn);  // what Shepard stands on carries the place (ME1's RideBase)
+    if (gC.placed) StepSeatTick(pawn, now);  // the view sits with him (ME1's StepSeat)
     if (gC.placed) StepBlackMove(now);  // the game's fade to black moves the player with Shepard (ME1's worldBlackMoves)
-    if (gC.placed && now > gC.placedMs) {
-        // The eyes at the player's own height over the floor under Shepard (ME1's StepEyeHeight).
+    if (gC.placed && now > gC.placedMs && !gC.seat.following) {
+        // The eyes at the player's own height over the floor under Shepard (ME1's StepEyeHeight; not while seated, ME1's).
         double const dt = gC.eyeMs != 0 ? std::clamp(static_cast<double>(now - gC.eyeMs) / 1000.0, 0.0, 0.1) : 0.0;
         StepEyeHeight(pawn, now, dt);
     }
     gC.eyeMs = now;
     gC.held = {gC.pin.x + gC.eyeOffset.x, gC.pin.y + gC.eyeOffset.y, gC.pin.z + gC.eyeOffset.z};
-    Publish(link, controller);
+    MarkerOut marker;
+    if (gC.placed) {
+        // The floor marker (cw::StepMarker): the black-move source above; the player's feet are the pin's floor.
+        ue3::Object* const cylinder = gPawnCylinder.Read<ue3::Object*>(pawn).value_or(nullptr);
+        auto const half = cylinder != nullptr ? gCylinderHeight.Read<float>(cylinder) : std::nullopt;
+        double const h = half && *half > 0.0f && *half < 300.0f ? *half : 90.0;
+        cw::MarkerFacts facts;
+        facts.scene = true;
+        if (gC.blackMarker) facts.blackMove = cw::Vec3{gC.blackMarker->x, gC.blackMarker->y, gC.blackMarker->z - h};
+        facts.player = cw::Vec3{gC.pin.x, gC.pin.y, gC.pin.z - h};
+        double const dt = gC.markerMs != 0 ? std::clamp(static_cast<double>(now - gC.markerMs) / 1000.0, 0.0, 0.1) : 0.0;
+        gC.markerMs = now;
+        cw::Marker const m = cw::StepMarker(gC.marker, facts, dt);
+        if (m.changed) {
+            ++gC.markers;
+            log::Info("convo: marker: conversation {}: {} ({:.0f}, {:.0f}, {:.0f}), {:.2f} m from the player", gC.serial, cw::Name(m.need),
+                m.at.x, m.at.y, m.at.z, std::hypot(m.at.x - facts.player.x, m.at.y - facts.player.y) / 100.0);
+        }
+        if (gC.marker.stoodIn && gC.blackMarker) gC.blackMarker.reset();  // reached: the need passes (it fades out)
+        if (m.alpha > 0.0) {
+            if (auto const markerFrame = HeldFrame()) {
+                marker.on = true;
+                marker.need = m.need;
+                marker.at = engine::ToTracking(*markerFrame, engine::UnrealVector{m.at.x, m.at.y, m.at.z});
+                marker.alpha = static_cast<float>(m.alpha);
+            }
+        }
+    }
+    Publish(link, controller, marker);
     // Arm IK in the held frame once the host's view is the held one (a head-tracked view; nothing while it is still cinematic).
-    if (auto const frame = HeldFrame()) view_anchor::Hold(frame, vr::host_view::Latest());
+    auto const frame = HeldFrame();
+    if (frame) view_anchor::Hold(frame, vr::host_view::Latest());
+    gDrawnEyes = frame ? std::optional<ik::Vec3>{ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z}} : std::nullopt;
+    if (gC.placed) {
+        // The looks at the player's drawn eyes (ME1's worldLookEyes), the broken runs' hides, the records from above.
+        std::vector<ue3::Object*> const people = Speakers(gC.controller, ConversationPlayer(gC.controller));
+        EyesStep(controller, people, gDrawnEyes, "conversation", gC.serial);
+        ApplyTestHides(controller, gOwner.Read<ue3::Object*>(gC.controller).value_or(nullptr));
+        StanceStep(people);
+    }
 }
 
 void Shutdown(conversation_world::Link const& link) {
     End(link, "the mod is shutting down");
+    ReleaseWalkAlong("the mod is shutting down");
     engine::conversation_hooks::SetKeepProvider(nullptr);
     engine::conversation_hooks::SetMoveTrackProvider(nullptr);
     gShepardPawn = nullptr;
@@ -1420,7 +2475,7 @@ conversation_world::BodyAwayState BodyAway() {
     }
     vr::controllers::State const pads = vr::controllers::Latest();
     bool const walking = pads.active && std::hypot(pads.left.stickX, pads.left.stickY) > 0.2;
-    away.legsStand = walking ? 0.0 : 1.0;
+    away.legsStand = walking || (gC.on && gC.seat.on) ? 0.0 : 1.0;  // seated: the legs keep the seat's animation (ME1's)
     return away;
 }
 
@@ -1466,6 +2521,118 @@ std::string Console(std::string_view args) {
             SlotOf("the world info's interruption", world, 0x8D0) + "; the move track hook " +
             (engine::conversation_hooks::MoveTrackInstalled() ? "in" : "not in") + ", the placement hook " +
             (engine::conversation_hooks::Installed() ? "in" : "not in");
+    }
+    // The records from above and the tests' switches (ME1's console words; research/69 "Stances from above", "Broken runs").
+    if (a.rfind("stances", 0) == 0) {
+        std::string v = a.substr(7);
+        v.erase(0, v.find_first_not_of(' '));
+        if (v == "on" || v == "off") gStancesOverride = v == "on";
+        if (v == "auto") gStancesOverride.reset();
+        RefreshSettings();
+        return std::format("conversation world: stances {} ({}); {} written this scene", StancesOn() ? "on" : "off",
+            gStancesOverride ? "mevr convo stances" : "[Cinematics] worldStances", gStances.written);
+    }
+    if (a.rfind("stance", 0) == 0) {
+        std::string tag = a.size() > 6 ? a.substr(6) : std::string();
+        tag.erase(0, tag.find_first_not_of(' '));
+        bool const moment = !gC.on && gM.on && !gM.provisional;
+        return WriteStance(tag.empty() ? "asked" : tag, moment);
+    }
+    if (a.rfind("endfacing", 0) == 0) {
+        std::string v = a.substr(9);
+        v.erase(0, v.find_first_not_of(' '));
+        if (v == "on" || v == "off") gEndFacing = v == "on";
+        return std::format("conversation world: at a held conversation's end the controller and the pawn {} turned to the held facing",
+            gEndFacing ? "are" : "are not");
+    }
+    if (a.rfind("camera", 0) == 0) {
+        std::string v = a.substr(6);
+        v.erase(0, v.find_first_not_of(' '));
+        if (v == "on" || v == "off") gCameraOverride = v == "on";
+        if (v == "auto") gCameraOverride.reset();
+        RefreshSettings();
+        return std::format("conversation world: the game's camera {} at the player's place ({}); {} writes", CameraHeld() ? "held" : "not held",
+            gCameraOverride ? "mevr convo camera" : "[Cinematics] worldCamera", gCameraHoldWrites);
+    }
+    if (a.rfind("eyes", 0) == 0) {
+        std::string v = a.size() > 4 ? a.substr(4) : std::string();
+        v.erase(0, v.find_first_not_of(' '));
+        if (v == "on" || v == "off") gEyesOverride = v == "on";
+        if (v == "auto") gEyesOverride.reset();
+        return std::format("conversation world: eyes stand-in {} ({}); now {} (Shepard's head {:.2f} m from the drawn eyes); {} looks moved, "
+                           "{} kept by the game", gEyesOverride.value_or(gSettings.lookEyes) ? "on" : "off",
+            gEyesOverride ? "mevr convo eyes" : "[Cinematics] worldLookEyes", gEyesState.on ? "standing in for Shepard's body" : "not needed",
+            gEyesState.gapUnits / 100.0, gEyesState.swapped, gEyesState.refused);
+    }
+    if (a == "people") {
+        // What the reader and the world's pawn list give now (a diagnostic): the conversation's people, then every pawn within 20 m.
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const conversation = controller != nullptr ? LiveConversation(controller) : nullptr;
+        ue3::Object* const pawn = controller != nullptr ? player::Pawn(controller) : nullptr;
+        std::string out = std::format("conversation world: people: the conversation {}", conversation != nullptr ? ue3::runtime::FullName(conversation) : "none");
+        if (conversation != nullptr) {
+            for (auto const& [label, field] : {std::pair<char const*, ue3::FieldRef*>{"owner", &gOwner}, {"speaker", &gSpeakerNow}, {"listener", &gListenerNow}, {"player", &gPlayer}}) {
+                ue3::Object* const o = field->Read<ue3::Object*>(conversation).value_or(nullptr);
+                out += std::format("; {} {}{}", label, o != nullptr ? ue3::runtime::FullName(o) : "none", o != nullptr && IsPerson(o) ? " (a person)" : "");
+            }
+            for (ue3::Object* const o : Speakers(conversation, ConversationPlayer(conversation))) out += "; speaker list: " + ue3::runtime::FullName(o);
+        }
+        auto const at = pawn != nullptr ? player::Location(pawn) : std::nullopt;
+        int n = 0;
+        for (ue3::Object* const o : LivePeople(controller)) {
+            ++n;
+            auto const p = player::Location(o);
+            if (!at || !p || std::hypot(p->x - at->x, p->y - at->y) > 2000.0) continue;
+            static ue3::FieldRef hiddenGame{"Engine.PrimitiveComponent", "HiddenGame", ue3::kEveryGame};
+            static ue3::FieldRef ownerNoSee{"Engine.PrimitiveComponent", "bOwnerNoSee", ue3::kEveryGame};
+            static ue3::FieldRef onlyOwnerSee{"Engine.PrimitiveComponent", "bOnlyOwnerSee", ue3::kEveryGame};
+            ue3::Object* const mesh = PersonMesh(o);
+            auto const drawn = DrawnAgoS(controller, mesh);
+            auto const flag = [&](ue3::FieldRef& f) { auto const v = mesh != nullptr ? f.ReadBool(mesh) : std::nullopt; return v ? (*v ? 1 : 0) : -1; };
+            out += std::format("\n  {} person={} hidden={} {:.1f} m; mesh {} drawn {} s ago, HiddenGame={} bOwnerNoSee={} bOnlyOwnerSee={}",
+                ue3::runtime::FullName(o), IsPerson(o) ? 1 : 0,
+                gActorHiddenRead.ReadBool(o).has_value() ? (gActorHiddenRead.ReadBool(o).value() ? 1 : 0) : -1, std::hypot(p->x - at->x, p->y - at->y) / 100.0,
+                mesh != nullptr ? ShortName(mesh) : std::string("none"), drawn ? std::format("{:.1f}", *drawn) : std::string("?"), flag(hiddenGame),
+                flag(ownerNoSee), flag(onlyOwnerSee));
+        }
+        return out + std::format("\n  {} people in the world (pawns, ME3's stunt actors)", n);
+    }
+    if (a.rfind("pick", 0) == 0) {
+        // A test aid (ME1's `mevr convo pick`): the reply at a position taken as the stick and A take it, the wheel's own
+        // SelectConversationEntry on the location that holds it (m_nSlotsUsed[location] == position); only with the wheel up.
+        // ME3's spoken-reply commands wait for the host's input lease, which the fake headset never gives (no input focus).
+        static ue3::FieldRef slotsUsed{"SFXGame.BioSFHandler_Conversation", "m_nSlotsUsed", ue3::kEveryGame};
+        static ue3::FunctionRef select{"SFXGame.BioSFHandler_Conversation.SelectConversationEntry", ue3::kEveryGame};
+        int position = -1;
+        std::istringstream(a.substr(4)) >> position;
+        ue3::Object* const controller = player::Controller();
+        ue3::Object* const handler = WheelHandler(controller);
+        if (handler == nullptr || !gDisplayingWheel.ReadBool(handler).value_or(false) || select.Get() == nullptr) {
+            return "conversation world: no wheel up (mevr convo pick <position> picks only on a wheel)";
+        }
+        std::string slots;
+        for (int location = 0; location < 6; ++location) {
+            std::int32_t const* const slot = slotsUsed.At<std::int32_t>(handler, location);
+            slots += std::format(" {}", slot != nullptr ? *slot : -9);
+            if (slot != nullptr && *slot == position && position >= 0) {
+                ue3::Params p(ue3::runtime::Get(), select.Get());
+                bool const called = p.Valid() && p.Set("nWheelLocation", static_cast<std::uint8_t>(location)) &&
+                    ue3::runtime::Call(handler, select.Get(), p);
+                log::Info("conversation world: mevr convo pick {}: SelectConversationEntry({}) called {} (a test's pick)", position, location, called);
+                return std::format("conversation world: picked position {} at wheel location {}: {}", position, location, called ? "called" : "not called");
+            }
+        }
+        return std::format("conversation world: no wheel location holds position {} (the locations hold:{})", position, slots);
+    }
+    if (a.rfind("hide", 0) == 0) {
+        std::istringstream words(a.substr(4));
+        std::string what, v;
+        words >> what >> v;
+        bool* const flag = what == "body" ? &gHideBodyTest : what == "person" ? &gHidePersonTest : nullptr;
+        if (flag == nullptr || (v != "on" && v != "off")) return "conversation world: mevr convo hide body|person on|off (a broken run)";
+        *flag = v == "on";
+        return std::format("conversation world: {} {} hidden in a scene held in the world (a broken run: the audit's "
+                           "body-not-drawn / person-not-drawn must catch it)", what == "body" ? "the player's body" : "the owner", *flag ? "is" : "is no longer");
     }
     if (a == "on" || a == "off") {
         gOverride = a == "on" ? 1 : 0;

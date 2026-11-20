@@ -23,6 +23,7 @@ $script:SteerRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $script:SteerOut = $null
 $script:SteerHold = ''
 $script:SteerPitch = 0.0
+$script:SteerHands = 'view'      # make-walk-recording.py's --hands: view (held up in view) or chest (out of the eyes' snapshots)
 $script:SteerYaw = 0.0            # the head turned this far right in the room for every replayed plan (Steer-Init -Yaw)
 $script:SteerHeading = $null     # the view yaw the last pushes showed (degrees, UE: 0 along +X, 90 along +Y)
 $script:SteerCount = 0
@@ -30,8 +31,10 @@ $script:SteerSpeed = 380.0       # units per second at the replay's stick (0.9: 
 $script:SteerController = $null  # the player controller's class name for `set`
 $script:SteerLocked = $false     # the view yaw is known (Steer-Face set and checked it): pushes deflected by walls don't relearn it
 
-function Steer-Init([Parameter(Mandatory)][string]$Out, [string]$Hold = '', [double]$Pitch = 0.0, [double]$Yaw = 0.0) {
+function Steer-Init([Parameter(Mandatory)][string]$Out, [string]$Hold = '', [double]$Pitch = 0.0, [double]$Yaw = 0.0,
+    [ValidateSet('view', 'chest')][string]$Hands = 'view') {
     New-Item -ItemType Directory -Force $Out | Out-Null
+    $script:SteerHands = $Hands
     $script:SteerOut = $Out
     $script:SteerHold = (($Hold -split '\+') | Where-Object { $_ }) -join '+'
     $script:SteerPitch = $Pitch
@@ -93,7 +96,7 @@ function Steer-Play([Parameter(Mandatory)][string]$Plan, [switch]$NoTail) {
     if (-not $NoTail) { $parts += $(if ($script:SteerHold) { "stand+$($script:SteerHold):600" } else { 'stand:600' }) }
     $script:SteerCount++
     $file = Join-Path $script:SteerOut ('steer-{0:D3}.mevrrec' -f $script:SteerCount)
-    $made = & python (Join-Path $script:SteerRoot 'tools\make-walk-recording.py') $file --plan ($parts -join ',') --hands view --pitch $script:SteerPitch --yaw $script:SteerYaw
+    $made = & python (Join-Path $script:SteerRoot 'tools\make-walk-recording.py') $file --plan ($parts -join ',') --hands $script:SteerHands --pitch $script:SteerPitch --yaw $script:SteerYaw
     if ($LASTEXITCODE -ne 0) { throw "make-walk-recording.py failed: $made" }
     $request = Write-MevrRequest 'replay.request' ((Resolve-Path -LiteralPath $file).Path + ' inputs=1')
     $deadline = (Get-Date).AddSeconds(5)

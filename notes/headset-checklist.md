@@ -904,6 +904,16 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
 - [ ] A floor marker (a thin pale ring on the floor) where a scripted walk you follow ends: small and quiet enough? On ME1's
       walk with Anderson to the council it shows where his walk ends and fades once you stand in it.
 - [ ] ME3: a conversation the presence table sends to the 3D screen (the docking officer at the Citadel's arrival) does go there.
+- [ ] ME2 and ME3 (lane FPC4, section 9): step or lean half a metre away from where you stood in a first-person conversation:
+      the person speaking keeps looking at your eyes, not at the spot your body left (the eyes stand-in).
+- [ ] ME3, a first-person conversation opened where you stand (Khalisah at the embassies): your eyes at once where they were
+      on foot (no rise of 30 cm after the opening), the body under you.
+- [ ] ME2 or ME3, a conversation that seats Shepard: your view sits down with him and comes up again when he stands; the stick
+      doesn't walk while seated (section 9.4).
+- [ ] ME3, a cutscene that walks Shepard with someone beside him: fall 3 m behind and the scene waits for you, then goes on
+      when you catch up (section 9.4; not seen in the game yet).
+- [ ] ME2 and ME3: at a first-person conversation's end you keep looking where you looked (no turn of the view to Shepard's
+      own facing; ME3's Prothean moment at the embassies is where it was seen, section 9.6).
 
 ### One settings file for the three games (lane SET, 2026-11-18; research/25 section 20)
 

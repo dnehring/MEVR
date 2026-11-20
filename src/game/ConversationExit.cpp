@@ -99,39 +99,6 @@ ue3::ClassRef gStuntClass{"SFXGame.SFXStuntActor", ue3::kEveryGame};
 ue3::FieldRef gStuntActive{"SFXGame.SFXStuntActor", "m_bActive", ue3::kEveryGame};
 ue3::FunctionRef gSkipNode{"SFXGame.BioConversationController.SkipNode", ue3::kEveryGame};  // `mevr convo exit skip` (a test aid)
 ue3::FunctionRef gQueueReply{"SFXGame.BioConversationController.QueueReply", ue3::kEveryGame};  // `mevr convo exit reply <n>`
-// The scene's people beyond the sequels' reader (its m_aSpeakerData lists only those who have spoken: the Prothean's moment had
-// its owner, Javik, and a bystander out of it): the owner, the speaker and listener now, every actor the start found for its
-// nodes, and its extra participants (lane EXIT3, the Citadel's embassies, 2026-11-20).
-constexpr char kLe3Controller[] = "SFXGame.BioConversationController";
-ue3::FieldRef gLe3Owner{kLe3Controller, "m_pOwner", ue3::kEveryGame};
-ue3::FieldRef gLe3Speaker{kLe3Controller, "m_pSpeaker", ue3::kEveryGame};
-ue3::FieldRef gLe3Listener{kLe3Controller, "m_pListener", ue3::kEveryGame};
-ue3::FieldRef gLe3Player{kLe3Controller, "m_pPlayer", ue3::kEveryGame};
-ue3::FieldRef gLe3Found{kLe3Controller, "m_aAllFoundActors", ue3::kEveryGame};
-ue3::FieldRef gLe3FoundActor{gLe3Found, "pSpeakerActor"};
-ue3::FieldRef gLe3Extras{kLe3Controller, "m_aExtraParticipants", ue3::kEveryGame};
-
-void AddLe3People(ue3::Object* conversation, std::vector<ue3::Object*>& people) {
-    ue3::Object* const player = gLe3Player.Read<ue3::Object*>(conversation).value_or(nullptr);
-    auto const add = [&](ue3::Object* actor) {
-        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && std::find(people.begin(), people.end(), actor) == people.end()) {
-            people.push_back(actor);
-        }
-    };
-    for (ue3::FieldRef* f : {&gLe3Owner, &gLe3Speaker, &gLe3Listener}) {
-        add(f->Read<ue3::Object*>(conversation).value_or(nullptr));
-    }
-    if (auto const found = gLe3Found.ElementsOf(conversation, 32)) {
-        for (std::int32_t i = 0; i < found->count; ++i) {
-            add(gLe3FoundActor.Read<ue3::Object*>(found->At(i)).value_or(nullptr));
-        }
-    }
-    if (auto const extras = gLe3Extras.ElementsOf(conversation, 32)) {
-        for (std::int32_t i = 0; i < extras->count; ++i) {
-            add(*static_cast<ue3::Object* const*>(extras->At(i)));
-        }
-    }
-}
 #endif
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::FieldRef gTag{"Engine.Actor", "Tag", ue3::kEveryGame};
@@ -1134,12 +1101,8 @@ void Tick(double /*deltaSeconds*/) {
     ue3::Object* const conv = conversation_world::LiveConversation();
 #else
     // In the conversation mode only, as ME1's reader (ME2's m_oCurrentConversation can outlive its end; ME3's reader asks).
+    // (ME3's reading of the scene's people, beyond its speaker data, is the sequels' module's own since lane FPC4: one reading.)
     ue3::Object* const conv = IsMode(mode, engine::adapter::Mode::Conversation) ? sequel_conversation_world::ScenePeople(gScenePeople) : nullptr;
-#if defined(MEVR_GAME_LE3)
-    if (conv != nullptr) {
-        AddLe3People(conv, gScenePeople);
-    }
-#endif
 #endif
     bool const inWorld = conversation_world::InWorld() || conversation_world::MomentViewOn();
     gSceneShown = inWorld;

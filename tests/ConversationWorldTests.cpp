@@ -1170,6 +1170,31 @@ void TestEyes() {
     CHECK(cw::NoteEyeFromHead(e, {34.0, -1.0, 23.0}, 0.0));                  // later ones smoothed
     CHECK(std::abs(e.eye.x - 24.5) < 1e-9 && std::abs(e.eye.z - 13.5) < 1e-9);
     CHECK(cw::EyeFromHeadOr(e, {8.9, 1.7, 29.3}).x == e.eye.x);
+
+    // The eyes stand-in (ME1's 50 units on, 35 off): his body under the player (0.07-0.17 m) never; a walk or lean away does.
+    CHECK(!cw::EyesStandIn(false, 17.0));
+    CHECK(!cw::EyesStandIn(false, 50.0));
+    CHECK(cw::EyesStandIn(false, 51.0));
+    CHECK(cw::EyesStandIn(true, 40.0));   // hysteresis: still away
+    CHECK(!cw::EyesStandIn(true, 35.0));  // with him again
+    CHECK(!cw::EyesStandIn(true, std::nan("")));
+
+    // The view sits with him (ME1's StepSeat numbers): standing learns 75 units; 15 under it he sits and the view follows his
+    // head down at 1 m/s outside 4 units; 8 under standing he is up again and the view comes up; crouched never sits.
+    cw::SeatState seat;
+    cw::SeatStep st = cw::StepSeat(seat, {0, 0, 175}, 75.0, false, 0.05);
+    CHECK(!st.sat && seat.haveStand && seat.standUnits == 75.0 && st.move.z == 0.0);
+    st = cw::StepSeat(seat, {0, 0, 140}, 40.0, true, 0.05);  // a crouch is no seat
+    CHECK(!st.sat && !seat.on);
+    st = cw::StepSeat(seat, {0, 10, 140}, 40.0, false, 0.05);
+    CHECK(st.sat && seat.on && std::abs(st.move.z - -4.81) < 0.05);  // 5 units in 0.05 s toward his head
+    double down = st.move.z;
+    for (int i = 0; i < 40; ++i) down += cw::StepSeat(seat, {0, 10, 140}, 40.0, false, 0.05).move.z;
+    CHECK(std::abs(down - (140.0 - 175.0)) < 4.5 && seat.on);  // there (within the deadband): it rests on his head
+    st = cw::StepSeat(seat, {0, 0, 172}, 72.0, false, 0.05);
+    CHECK(st.stood && !seat.on && st.move.z > 0.0);  // up again: the view comes up with him
+    cw::SeatState fresh;  // no standing sample: under 62 sits
+    CHECK(cw::StepSeat(fresh, {0, 0, 150}, 55.0, false, 0.05).sat);
 }
 
 int RunConversationWorldTests() {

@@ -172,7 +172,8 @@ $firstStart = if ($FirstVrStart) { '' } else { "[Display]`r`neyeSizeSet = 1`r`n"
 # -CalibrationKey: [Debug] calibrationKey stands in for the controller type the null driver doesn't name (read at the host's
 # first frame), so the run applies that calibration from calibration.ini (read only; the posture checks use the owner's).
 $calibrationLine = if ($CalibrationKey) { "calibrationKey = $CalibrationKey`r`n" } else { '' }
-[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nshared = 0`r`nopenxrRuntime = $steamvr`r`n$calibrationLine$firstStart")
+# [Menu] controlsShown = 1: our menu's first-run controller guide never opens by itself in a run (it would hold the input).
+[IO.File]::WriteAllText("$b\ASI\${Game}MEVR.ini", "[Debug]`r`nshared = 0`r`nopenxrRuntime = $steamvr`r`n$calibrationLine$firstStart[Menu]`r`ncontrolsShown = 1`r`n")
 $ini = Join-Path $b 'MELE2VR.ini'
 if ($Diagnostics -and (Test-Path -LiteralPath $ini)) {
     $t = [IO.File]::ReadAllText($ini) -replace '(?m)^Diagnostics=0', 'Diagnostics=1'

@@ -113,13 +113,14 @@ def stamp_of(path):
 
 
 def group(stances):
-    """Records (each with '_file') into scenes: by day, number and conversation (a moment by its number alone: its first record
-    may come before its matinee is named), records more than two minutes apart split (the numbers start again each game).
-    Returns {(day, number, name, part): [records by time]}, name the last record's conversation."""
+    """Records (each with '_file') into scenes: by day, game, number and conversation (a moment by its number alone: its first
+    record may come before its matinee is named), records more than two minutes apart split (the numbers start again each game).
+    The sequels' records say their game (`game`: LE2, LE3; game/SequelConversationWorld writes ME1's records, lane FPC4); ME1's
+    say none. Returns {(day, number, name, part): [records by time]}, name the last record's conversation."""
     groups = {}
     for st in stances:
         name = 'moment' if st.get('opening') == 'moment' else st['conversation']
-        groups.setdefault((os.path.basename(st['_file'])[:10], st['number'], name), []).append(st)
+        groups.setdefault((os.path.basename(st['_file'])[:10], st.get('game', 'LE1'), st['number'], name), []).append(st)
     split = {}
     for key, records in groups.items():
         records.sort(key=lambda s: s['_file'])
@@ -130,13 +131,16 @@ def group(stances):
                 part += 1
             last = stamp
             split.setdefault(key + (part,), []).append(st)
-    return {(k[0], k[1], records[-1]['conversation'], k[3]): records for k, records in split.items()}
+    # (The part names a sequel's game too, so an ME2 and an ME3 scene of the same number stay apart; callers ignore it.)
+    return {(k[0], k[2], records[-1]['conversation'], k[4] if k[1] == 'LE1' else f'{k[1]}-{k[4]}'): records for k, records in split.items()}
 
 
 def scene_key(records):
-    """A scene's name across runs: the conversation's last part; a moment by its matinee."""
+    """A scene's name across runs: the conversation's last part; a moment by its matinee; a sequel's with its game first."""
     name = records[-1]['conversation']
-    return name.split('.')[-1] if records[-1].get('opening') != 'moment' else name
+    key = name.split('.')[-1] if records[-1].get('opening') != 'moment' else name
+    game = records[-1].get('game')
+    return f"{game}:{key}" if game and game != 'LE1' else key
 
 
 def meant_for_you(p):
