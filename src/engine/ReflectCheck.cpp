@@ -4529,6 +4529,15 @@ void CheckSequelConversationExit() {
     PARAM(APawn_execSetDesiredSpeed_Parms, "Engine.Pawn.SetDesiredSpeed", fSpeedScaling);  // game/AiWalk's ME2 speed
 #else
     CheckField("SFXGame.BioPawn", "bActive", SDK_BOOL(ABioPawn, bActive));
+    CheckClass<ASFXStuntActor>("SFXGame.SFXStuntActor");  // ME3's hub people: held as pawns are, never walked
+    CheckField("SFXGame.SFXStuntActor", "m_bActive", SDK_BOOL(ASFXStuntActor, m_bActive));
+    CheckFunction("SFXGame.BioConversationController.SkipNode");  // `mevr convo exit skip` (a test aid)
+    // ... and the scene's people beyond the speakers who have spoken: the owner, speaker, listener, found actors, extras.
+    CheckField("SFXGame.BioConversationController", "m_pOwner", SDK_FIELD(UBioConversationController, m_pOwner));
+    CheckField("SFXGame.BioConversationController", "m_pListener", SDK_FIELD(UBioConversationController, m_pListener));
+    CheckField("SFXGame.BioConversationController", "m_aAllFoundActors", SDK_FIELD(UBioConversationController, m_aAllFoundActors));
+    CheckPath("SFXGame.BioConversationController", {"m_aAllFoundActors", "pSpeakerActor"}, SDK_AT(offsetof(FBioSpeakerData, pSpeakerActor), 8));
+    CheckField("SFXGame.BioConversationController", "m_aExtraParticipants", SDK_FIELD(UBioConversationController, m_aExtraParticipants));
     CheckFunction("SFXGame.BioSeqAct_SetActive.Activated");
     CheckField("SFXGame.BioSeqAct_SetActive", "bSetActive", SDK_BOOL(UBioSeqAct_SetActive, bSetActive));
 #endif

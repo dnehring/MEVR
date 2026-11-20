@@ -93,6 +93,45 @@ ue3::FieldRef gBioComponent{"Engine.Actor", "oBioComponent", ue3::kEveryGame};
 ue3::FieldRef gPawnActive{"SFXGame.BioPawn", "bActive", ue3::kEveryGame};
 ue3::FunctionRef gScriptSetActive{"SFXGame.BioSeqAct_SetActive.Activated", ue3::kEveryGame};
 ue3::FieldRef gOpSetActive{"SFXGame.BioSeqAct_SetActive", "bSetActive", ue3::kEveryGame};
+// ME3's hub people are mostly stunt actors (SFXStuntActor: an actor with a body and no AI; the spectre at the hanar plot), switched
+// off by the same Actor.SetActive: one of the scene's people as a pawn is, held the same way, never walked (the look-away).
+ue3::ClassRef gStuntClass{"SFXGame.SFXStuntActor", ue3::kEveryGame};
+ue3::FieldRef gStuntActive{"SFXGame.SFXStuntActor", "m_bActive", ue3::kEveryGame};
+ue3::FunctionRef gSkipNode{"SFXGame.BioConversationController.SkipNode", ue3::kEveryGame};  // `mevr convo exit skip` (a test aid)
+ue3::FunctionRef gQueueReply{"SFXGame.BioConversationController.QueueReply", ue3::kEveryGame};  // `mevr convo exit reply <n>`
+// The scene's people beyond the sequels' reader (its m_aSpeakerData lists only those who have spoken: the Prothean's moment had
+// its owner, Javik, and a bystander out of it): the owner, the speaker and listener now, every actor the start found for its
+// nodes, and its extra participants (lane EXIT3, the Citadel's embassies, 2026-11-20).
+constexpr char kLe3Controller[] = "SFXGame.BioConversationController";
+ue3::FieldRef gLe3Owner{kLe3Controller, "m_pOwner", ue3::kEveryGame};
+ue3::FieldRef gLe3Speaker{kLe3Controller, "m_pSpeaker", ue3::kEveryGame};
+ue3::FieldRef gLe3Listener{kLe3Controller, "m_pListener", ue3::kEveryGame};
+ue3::FieldRef gLe3Player{kLe3Controller, "m_pPlayer", ue3::kEveryGame};
+ue3::FieldRef gLe3Found{kLe3Controller, "m_aAllFoundActors", ue3::kEveryGame};
+ue3::FieldRef gLe3FoundActor{gLe3Found, "pSpeakerActor"};
+ue3::FieldRef gLe3Extras{kLe3Controller, "m_aExtraParticipants", ue3::kEveryGame};
+
+void AddLe3People(ue3::Object* conversation, std::vector<ue3::Object*>& people) {
+    ue3::Object* const player = gLe3Player.Read<ue3::Object*>(conversation).value_or(nullptr);
+    auto const add = [&](ue3::Object* actor) {
+        if (actor != nullptr && actor != player && ue3::runtime::IsAlive(actor) && std::find(people.begin(), people.end(), actor) == people.end()) {
+            people.push_back(actor);
+        }
+    };
+    for (ue3::FieldRef* f : {&gLe3Owner, &gLe3Speaker, &gLe3Listener}) {
+        add(f->Read<ue3::Object*>(conversation).value_or(nullptr));
+    }
+    if (auto const found = gLe3Found.ElementsOf(conversation, 32)) {
+        for (std::int32_t i = 0; i < found->count; ++i) {
+            add(gLe3FoundActor.Read<ue3::Object*>(found->At(i)).value_or(nullptr));
+        }
+    }
+    if (auto const extras = gLe3Extras.ElementsOf(conversation, 32)) {
+        for (std::int32_t i = 0; i < extras->count; ++i) {
+            add(*static_cast<ue3::Object* const*>(extras->At(i)));
+        }
+    }
+}
 #endif
 ue3::FieldRef gHidden{"Engine.Actor", "bHidden", ue3::kEveryGame};
 ue3::FieldRef gTag{"Engine.Actor", "Tag", ue3::kEveryGame};
@@ -299,6 +338,9 @@ bool Present(ue3::Object* pawn) {
         return false;
     }
 #if defined(MEVR_GAME_LE3)
+    if (ue3::IsA(pawn, gStuntClass)) {
+        return gStuntActive.ReadBool(pawn).value_or(true);
+    }
     return !player::IsBioPawn(pawn) || gPawnActive.ReadBool(pawn).value_or(true);
 #else
     ue3::Object* const behavior = gBioComponent.Read<ue3::Object*>(pawn).value_or(nullptr);
@@ -356,9 +398,16 @@ Person* FindPersonPawn(ue3::Object const* pawn) {
 }
 
 void NotePerson(ue3::Object* actor, double now) {
+#if defined(MEVR_GAME_LE3)
+    bool const body = actor != nullptr && ue3::runtime::IsAlive(actor) && (player::IsBioPawn(actor) || ue3::IsA(actor, gStuntClass));
+    if (!body || actor == player::Pawn(player::Controller())) {
+        return;  // (a pawn or a stunt actor; never the player's own pawn)
+    }
+#else
     if (actor == nullptr || !ue3::runtime::IsAlive(actor) || !player::IsBioPawn(actor) || actor == player::Pawn(player::Controller())) {
         return;  // (the player's own pawn is never one of "the people": the hearing's end deactivates it twice)
     }
+#endif
     Person* p = FindPersonPawn(actor);
     if (p == nullptr) {
         gPeople.push_back({});
@@ -642,6 +691,14 @@ void StartWalk(HeldChange& h) {
         h.walkWhy = "the pawn is gone";
         return;
     }
+#if defined(MEVR_GAME_LE3)
+    if (ue3::IsA(pawn, gStuntClass)) {
+        h.walkWhy = "a stunt actor (no AI walks it)";
+        ++gTotals.walkRefused;
+        log::Info("convo exit: {} can't walk away: a stunt actor, no AI walks it; the change waits for the player to look away", h.name);
+        return;
+    }
+#endif
     std::string why;
     bool hidden = false;
     auto const to = Destination(pawn, h.at, why, hidden, h.refused);
@@ -804,7 +861,13 @@ bool OnSetActive(void const* behavior, void const* parms) {
         return false;
     }
     s.person = now - person->lastInSceneS <= gLimits.windowS || person->conversation == gConversationNumber;
+#if defined(MEVR_GAME_LE3)
+    // ME3's hubs have no party: a squadmate there is the crew's own stunt actor (BioH_<name>_00_NC), tagged hench_<name> (James
+    // hench_marine, Javik hench_prothean), never in the live party ME1's and ME2's rule asks.
+    s.squad = IsSquad(pawn) || person->tag.rfind("hench_", 0) == 0;
+#else
     s.squad = IsSquad(pawn);
+#endif
     s.player = pawn == player::Pawn(player::Controller());
     s.seen = person->seen;
     cx::Verdict const v = cx::Classify(cx::Kind::Deactivate, s, ContextNow(), gLimits);
@@ -944,6 +1007,11 @@ void Tick(double /*deltaSeconds*/) {
 #else
     // In the conversation mode only, as ME1's reader (ME2's m_oCurrentConversation can outlive its end; ME3's reader asks).
     ue3::Object* const conv = IsMode(mode, engine::adapter::Mode::Conversation) ? sequel_conversation_world::ScenePeople(gScenePeople) : nullptr;
+#if defined(MEVR_GAME_LE3)
+    if (conv != nullptr) {
+        AddLe3People(conv, gScenePeople);
+    }
+#endif
 #endif
     bool const inWorld = conversation_world::InWorld() || conversation_world::MomentViewOn();
     gSceneShown = inWorld;
@@ -1148,10 +1216,60 @@ std::string Command(std::string const& rest) {
         log::Info("convo exit: mevr convo exit end: BioWorldInfo.EndCurrentConversation called {}", called);
         return std::format("convo exit: BioWorldInfo.EndCurrentConversation called {}", called);
 #endif
+#if defined(MEVR_GAME_LE3)
+    } else if (w == "skip") {
+        // A test aid (ME3 has no BioWorldInfo.EndCurrentConversation): the player's skip of the current line
+        // (BioConversationController.SkipNode), so a script reaches the conversation's end, and its start's outputs, sooner.
+        std::vector<ue3::Object*> people;
+        ue3::Object* const conversation = sequel_conversation_world::ScenePeople(people);
+        if (conversation == nullptr || gSkipNode.Get() == nullptr) {
+            return "convo exit: skip: no live conversation, or no BioConversationController.SkipNode";
+        }
+        ue3::Params p(ue3::runtime::Get(), gSkipNode.Get());
+        bool const called = p.Valid() && ue3::runtime::Call(conversation, gSkipNode.Get(), p);
+        return std::format("convo exit: SkipNode called {}, returned {}", called, p.ReturnBool().value_or(false));
+    } else if (w.rfind("reply", 0) == 0) {
+        // ... and the wheel's reply at a position queued (BioConversationController.QueueReply, what the movie's pick ends in;
+        // game/Thespian's own pick waits for a focused session, which the fake headset never has).
+        int const position = static_cast<int>(ini::Number(ini::Trim(w.substr(5))).value_or(-1.0));
+        std::vector<ue3::Object*> people;
+        ue3::Object* const conversation = sequel_conversation_world::ScenePeople(people);
+        if (conversation == nullptr || gQueueReply.Get() == nullptr || position < 0) {
+            return "convo exit: reply <position>: no live conversation, no BioConversationController.QueueReply, or no position";
+        }
+        ue3::Params p(ue3::runtime::Get(), gQueueReply.Get());
+        bool const called = p.Valid() && p.Set("nReply", static_cast<std::int32_t>(position)) &&
+            ue3::runtime::Call(conversation, gQueueReply.Get(), p);
+        return std::format("convo exit: QueueReply({}) called {}, returned {}", position, called, p.ReturnBool().value_or(false));
+#endif
+#if !defined(MEVR_GAME_LE1)
+    } else if (w == "people") {
+        // A test aid: each person noted, where it stands from the drawn eyes (bearing right of the view, elevation, metres),
+        // whether present, in view and seen (the sequels' fixtures aim the replayed head by it).
+        std::string out = std::format("convo exit: {} people, eyes {}", gPeople.size(), gEyes ? "known" : "unknown");
+        for (Person const& p : gPeople) {
+            double bearing = 0.0, elevation = 0.0;
+            if (gEyes) {
+                XrVector3f const t = engine::ToTracking(gEyes->frame, engine::UnrealVector{p.at.x, p.at.y, p.at.z});
+                XrPosef const& head = gEyes->frame.head;
+                ik::Quat const toHead = ik::Conjugate({head.orientation.x, head.orientation.y, head.orientation.z, head.orientation.w});
+                ik::Vec3 const v = ik::Rotate(toHead, {t.x - head.position.x, t.y - head.position.y, t.z - head.position.z});
+                bearing = std::atan2(v.x, -v.z) * 180.0 / 3.14159265358979;
+                elevation = std::atan2(v.y, std::hypot(v.x, v.z)) * 180.0 / 3.14159265358979;
+            }
+            out += std::format("\n  {}: {:.1f} m, {:.0f} deg right, {:.0f} deg up; present {}, in view {}, seen {}", p.name,
+                gEyes ? Dist(gEyes->at, p.at) / kUnitsPerMeter : -1.0, bearing, elevation, p.present, InView(p.at), p.seen);
+        }
+        return out;
+#endif
     } else if (w.rfind("test", 0) == 0) {
         return TestWalk(ini::Trim(w.substr(4)));
     } else if (!w.empty() && w != "status") {
+#if defined(MEVR_GAME_LE3)
+        return "mevr convo exit [on | walk | hold | off | auto | status | shots on|off | trace on|off | test <tag> | skip | reply <n>]";
+#else
         return "mevr convo exit [on | walk | hold | off | auto | status | shots on|off | trace on|off | test <tag>]";
+#endif
     }
     if (!w.empty() && w != "status") {
         log::Info("convo exit: worldExit {} from the console (mevr convo exit {})", cx::Name(CurrentMode()), w);
@@ -1172,15 +1290,25 @@ std::string StatusJson() {
     }
     held += "]";
     engine::exit_hooks::Stats const hook = engine::exit_hooks::Totals();
+#if defined(MEVR_GAME_LE3)
+    // ME3's calls from BioSeqAct_SetActive's own script frame, apart from ProcessEvent's (`fromEvent`): the hook's script path.
+#define MEVR_EXIT_FROM_SCRIPT "\"fromScript\": {}, "
+#define MEVR_EXIT_FROM_SCRIPT_ARG , engine::exit_hooks::FromScript()
+#else
+#define MEVR_EXIT_FROM_SCRIPT ""
+#define MEVR_EXIT_FROM_SCRIPT_ARG
+#endif
     return std::format("{{\"mode\": \"{}\", \"world\": {}, \"hooked\": {}, \"held\": {}, \"people\": {}, \"totals\": {{\"held\": {}, "
                        "\"outOfSight\": {}, \"underDip\": {}, \"atOnce\": {}, \"walks\": {}, \"walkRefused\": {}, \"swaps\": {}, \"shownAgain\": {}, "
-                       "\"passed\": {}, \"passedSeen\": {}, \"vanished\": {}, \"vanishedOther\": {}, \"elsewhere\": {}, \"heldAgain\": {}}}, \"hook\": {{\"calls\": {}, \"fromEvent\": {}, \"withheld\": {}}}, "
+                       "\"passed\": {}, \"passedSeen\": {}, \"vanished\": {}, \"vanishedOther\": {}, \"elsewhere\": {}, \"heldAgain\": {}}}, \"hook\": {{\"calls\": {}, \"fromEvent\": {}, " MEVR_EXIT_FROM_SCRIPT "\"withheld\": {}}}, "
                        "\"lastPass\": {}, \"aiWalk\": {}}}",
         cx::Name(CurrentMode()), gSettings.world ? "true" : "false", engine::exit_hooks::Installed() ? "true" : "false", held,
         gPeople.size(), gTotals.held, gTotals.outOfSight, gTotals.underDip, gTotals.atOnce, gTotals.walks, gTotals.walkRefused,
-        gTotals.swaps, gTotals.again, gTotals.passed, gTotals.passedSeen, gTotals.vanished, gTotals.vanishedOther, gTotals.elsewhere, gTotals.again2, hook.calls, hook.fromEvent, hook.withheld,
+        gTotals.swaps, gTotals.again, gTotals.passed, gTotals.passedSeen, gTotals.vanished, gTotals.vanishedOther, gTotals.elsewhere, gTotals.again2, hook.calls, hook.fromEvent MEVR_EXIT_FROM_SCRIPT_ARG, hook.withheld,
         vr::test_request::JsonString(gLastPass), walk::StatusJson());
 }
+#undef MEVR_EXIT_FROM_SCRIPT
+#undef MEVR_EXIT_FROM_SCRIPT_ARG
 
 void LogStats() {
     // The heartbeat's line only when something changed since the last one (it comes every 5 s in development builds).
