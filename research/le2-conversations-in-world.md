@@ -323,6 +323,26 @@ sequels; a canary per new rule.
 The brief's items 0 to 6 on both sequels; what was built, how to check it, what the game showed. Numbers only from the code and
 the logs.
 
+### 7.0 ME1's regression set with the floor marker (item 0)
+
+FPC2's ME1 commit (1553434b, on this branch c453e66e: the floor marker where a scripted walk of Shepard ends) with ME1's set
+(`tools/conversation-audit.ps1`, session `2026-11-20_02-08-40-audit`, the players' build `0.3.2+c453e66eb4`, before lane EXIT
+landed): 16 scenes played from their saves (Kirrahe's from `squad-saves\John02_70` not played: the save is missing), every scene's
+body measured where a wrist was in view, 2 findings (`face-off-you`: Benezia 89 degrees at line 53, Udina 77 at the ceremony's
+opening: both known, research/69 item 38), 1 regression against the baseline (`lav70_asariscientist_dlg`: faces off the eyes, median
+13 to 23 degrees; lane EXIT's long run showed the same Liara verdict from a baseline written from short runs, with the exits off
+too: not the marker's). **The marker in the game:** `convo: marker: moment: Shepard's walk ends there ..., 8.40 m from the player`
+in the walk with Anderson to the council (`SarenCouncil.SeqAct_Interp_0`), and 24.04 m in the Spectre ceremony's walk
+(`PlayerBecomesSpectre.SeqAct_Interp_2`), one marker each; the snapshot `2026-11-20_02-18-06-160-left.png` shows the thin pale ring
+on the walkway ahead of the player, Anderson beyond it; at 02-18-15 (the player at the walkway's end beside Anderson) no ring.
+The host drew it in squad placement's layer (`squad place: last 10 s: 191 frames drawn`). The snapshots' JSON carries no
+`squadPlace` block (no host feeds `squad_place_draw::StatusJson` to the test loop: section 6.4's "snapshot
+"squadPlace"."floorMarker"" isn't wired). **The canaries** (`conversation-audit.ps1 -Canaries`, after lane EXIT landed: main
+9e93a920 merged, the players' build `0.3.2+bd33ccc2a1`, sessions `2026-11-20_02-31-02-canary-*` to `02-56-19-canary-popped-out`):
+all 11 broken runs caught, each by its own rule (body left at the mark; the empty chamber by `expect`; no hands; the five of
+Opold's game; the view scaled about the pivot by `eye-height`/`opening-off-mark`; the matinee's fade by `dark-view`/`eye-flat`;
+EXIT's popped-out by `vanished-in-view`); exit 0.
+
 ### 7.1 The eyes (item 1)
 
 **The cause of 6.6.** The slice held the view at `PlaceFromHead`: Shepard's head bone (the pawn's mesh, bone `Head`) plus 8 units
@@ -383,6 +403,35 @@ conversation shown in the world ends). Host only; not seen in the game (a conver
 
 `mevr instances <Package.Class> [text]`, `mevr activate <n> [input]` and `mevr setloc <n> X Y Z` (ME2's lines) on ME3 too, so
 `tools/le2-halcyon-run/conversation-world.ps1 -Game LE3 -Start fire:SFXGame.SFXSeqAct_StartConversation:<text>` works there.
+
+### 7.6 What the code says about the rest (items 3 to 5), for the next lane
+
+1. **Looks at the player's eyes** (ME1's `StepEyes`, `worldLookEyes`): ME1 moves a look at Shepard to a `BioLookAtTarget` at
+   the drawn eyes only while his body stands away from them (his head bone more than 0.5 m from the drawn eyes, flat: a walk-in
+   by the view, a moment). On the sequels Shepard is kept on the pin, under the player's eyes, in every conversation (no walk-in
+   by the view exists there): the stand-in would never switch on in a conversation. It matters only in moments, and ME2's
+   ANIMCUTSCENEs park his pawn at the world origin and play a stand-in actor whose faces are the matinee's (ME1 found the same in
+   its six moments: "nobody had a look-at target"). Port it with moments' walk-along, not before; ME2's names are ME1's
+   (`BioPawn.m_oLookAtData`, `SetLookAtTarget`), ME3's `SFXModule_LookAt.ChangeTarget` (research/le3-conversations-in-world.md 2.4).
+2. **Seats** (ME1's `StepSeat`): the pin is the obstacle. A Stay opening puts Shepard back where the player stood, so a stage
+   placement onto a chair is withheld and the sit plays on the spot. The rule that fits ME1's: "the scene seats Shepard" makes the
+   opening a Cut (his place is his seat), from a generated table (research/le3-conversations-in-world.md 5.3: the scan must record
+   the gesture pose names per group; ME3 37 conversations seat Shepard); then `StepSeat` (the view follows his head down and up,
+   no walking) on his skeleton's thresholds, which must be measured on ME2 and ME3 first (ME1's: standing head 0.70-0.82 m over his
+   pawn's place, seated under 0.62).
+3. **The game's black moving the player** (ME1's `worldBlackMoves`): in a held conversation the source hook already records where
+   the stage wanted Shepard (`gC.sceneWants`); the rule would teleport the pin there under a dip (`++gCutSerial`) when that is more
+   than 1.5 m away and the game's black is up. What is missing is "the game's black" on the sequels: ME2's `BioSeqAct_BlackScreen`
+   (ME1's route, game/AuthoredMoment) and the camera fade (`Engine.Camera.FadeAmount`), ME3's three routes ending in
+   `BioSFHandler_BlackScreen` (research/le3-conversations-in-world.md 5.4). Then the floor marker's "black move" source is where
+   the black would take the player in a curated walk (the only place the player isn't moved).
+4. **Walk-along** (ME1's `StepWalkAlong`): applies when the player follows the script's Shepard with companions; under the owner's
+   current answer (a) for ME2's stand-in cutscenes the view stays where the player stood, so there is nothing to walk along with on
+   ME2; ME3's moments that walk Shepard's real pawn are where it applies (research/le3-conversations-in-world.md 5.5's open
+   point: pausing a conversation line's matinee may desync the line).
+5. **The circle and the squad's formation** with `game/AiWalk` (ME2 `PrecisionMoveTo`, ME3 `MoveToSlot`): not started here.
+6. **The floor marker's "waits" source**: the scene waits for the player at a trigger or volume; needs the level's script read (the
+   scan's `waits` for each start) on all three games. Not started.
 
 ## 5. How to check ME1 is unchanged
 
