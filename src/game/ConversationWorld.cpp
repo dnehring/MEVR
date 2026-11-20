@@ -722,7 +722,10 @@ struct TestStick {
 TestStick gTestStick;
 bool gStickLatchOff = false;
 bool gStickTurnOff = false;
-bool gMatineeFadeShown = false;  // `mevr convo matineefade off`: a broken run: a moment's camera fade drawn (the dark Spectre walk)
+bool gMatineeFadeShown = false;
+// `mevr convo endfacing off`: a broken run: the controller and the pawn left as the game has them at a held conversation's end (the
+// view turned in one frame from the held facing to theirs: lane FPC5, the sequels' finding of lane FPC4). Never set otherwise.
+bool gEndFacingOff = false;  // `mevr convo matineefade off`: a broken run: a moment's camera fade drawn (the dark Spectre walk)
 // `mevr convo stall <ms> [afterS]`: the game thread sleeps once inside the engine's tick (the player camera's update, before the
 // frame is drawn), afterS from the command, while a conversation is shown in the world: the host must keep the world through it
 // (research/69 item 40, the flash of the 3D screen after a 1.6 s stall on Virmire). A test only.
@@ -5560,6 +5563,27 @@ void End(char const* why) {
             gFoot.have = true;
             gFoot.ms = GetTickCount64();
         }
+        // The view goes on from the held facing (cw::FacingOnFoot; lane FPC5): on foot the game's camera takes the controller's
+        // yaw, which a cut's facing toward the owner and the right stick's turns left behind, so the first frame on foot turned
+        // the view in one frame. The controller and the pawn are turned to the held yaw as the hold lets go.
+        ue3::Object* const controller = player::Controller();
+        auto const controllerRot = controller != nullptr ? player::Rotation(controller) : std::nullopt;
+        auto const pawnRot = ue3::runtime::IsAlive(gC.playerPawn) ? player::Rotation(gC.playerPawn) : std::nullopt;
+        double const held = YawDeg(gC.holdRotation);
+        log::Info("convo: conversation {} ends: the held facing {:.1f} deg, the controller's {}, the pawn's {}{}", gC.number,
+            std::remainder(held, 360.0), controllerRot ? std::format("{:.1f}", std::remainder(YawDeg(*controllerRot), 360.0)) : std::string("?"),
+            pawnRot ? std::format("{:.1f}", std::remainder(YawDeg(*pawnRot), 360.0)) : std::string("?"),
+            gEndFacingOff ? " (left as the game has them: endfacing off)" : "");
+        if (!gEndFacingOff && gSetRotation.Get() != nullptr) {
+            for (auto const& [actor, rot] : {std::pair{controller, controllerRot}, std::pair{gC.playerPawn, pawnRot}}) {
+                auto const turn = rot ? cw::FacingOnFoot(held, YawDeg(*rot)) : std::nullopt;
+                if (actor == nullptr || !turn || !ue3::runtime::IsAlive(actor)) continue;
+                ue3::Rotator turned = *rot;
+                turned.yaw = ToUnits(*turn);
+                ue3::Params p(ue3::runtime::Get(), gSetRotation.Get());
+                if (p.Valid() && p.Set("NewRotation", turned)) ue3::runtime::Call(actor, gSetRotation.Get(), p);
+            }
+        }
     }
     std::string moves;
     for (Tracked const& t : gC.actors) {
@@ -8278,6 +8302,13 @@ std::string Command(std::string const& rest) {
             log::Info("convo: markhead {} ({})", w, gMarkHeadOld ? "a fixed bug brought back for a broken run" : "as built");
         }
         return std::format("convo: Shepard's head for the player's place: {}", gMarkHeadOld ? "old (scaled about the view: a broken run)" : "new");
+    }
+    if (verb == "endfacing") {
+        std::string w;
+        words >> w;
+        if (w == "on" || w == "off") gEndFacingOff = w == "off";
+        return std::format("convo: at a held conversation's end the controller and the pawn {} turned to the held facing",
+            gEndFacingOff ? "are not (a broken run)" : "are");
     }
     if (verb == "sticklatch" || verb == "stickturn" || verb == "matineefade") {
         // Broken runs: `sticklatch off` walks the stick that picked a reply at once; `stickturn off` turns nobody with the right
