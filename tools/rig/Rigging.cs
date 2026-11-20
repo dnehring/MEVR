@@ -44,6 +44,8 @@ internal sealed class Plan
 {
     public string Out { get; set; }
     public List<StepPlan> Steps { get; set; } = new();
+    // A generated plan (every female body of a game): a step that fails is reported and left out, the rest are built.
+    public bool ContinueOnError { get; set; }
 }
 
 // One mesh of a plan: copied from `source` into the plan's package as `name`, its bones added, its soft regions or hair
@@ -67,6 +69,9 @@ internal sealed class StepPlan
     // "auto": the breast and glute bones and their regions placed from the mesh's own surface (Placement), added to any
     // bones and regions the step lists.
     public string Place { get; set; }
+    // The game objects (full paths in the game's memory) this rig stands in for, written to the package's index (<out>.json);
+    // empty: the source mesh's own path.
+    public List<string> StandsFor { get; set; } = new();
 }
 
 internal static class Rigging
@@ -90,12 +95,79 @@ internal static class Rigging
         File.Delete(outPath);
         using IMEPackage pcc = MEPackageHandler.CreateAndOpenPackage(outPath, Lex.Game, forceLoadFromDisk: true);
         var done = new Dictionary<string, StepPlan>(StringComparer.OrdinalIgnoreCase);
+        var index = new List<(string path, string name)>();
+        int built = 0, skipped = 0, failed = 0;
+        var started = System.Diagnostics.Stopwatch.StartNew();
         foreach (var step in plan.Steps)
         {
             using var source = MEPackageHandler.OpenMEPackage(Resolve(step.Source), forceLoadFromDisk: true);
             var sourceMesh = Lex.FindMesh(source, step.Mesh);
             var report = new Report();
-            var export = Port.Mesh(sourceMesh, pcc, step.Name, report);
+            Placement.Result placed = null;
+            if (string.Equals(step.Place, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                placed = Placement.Auto(ObjectBinary.From<SkeletalMesh>(sourceMesh));
+                foreach (string n in placed.Notes) report.Line("place: " + n);
+                if (placed.Bones.Count == 0 && step.Bones.Count == 0 && step.Hair == null)
+                {
+                    // Nothing of ours to add (a sleeve, a shoulder piece): the game's own mesh stays.
+                    Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{step.Name}: skipped, no soft tissue");
+                    report.Print();
+                    ++skipped;
+                    continue;
+                }
+            }
+            ExportEntry export = null;
+            try
+            {
+                export = Port.Mesh(sourceMesh, pcc, step.Name, report);
+                RigStep(pcc, step, sourceMesh, export, placed, done, outPath, report);
+            }
+            catch (Exception e) when (plan.ContinueOnError)
+            {
+                // A generated plan (every female body of a game) keeps going: the failed mesh is taken out again.
+                if (export != null)
+                {
+                    EntryPruner.TrashEntryAndDescendants(export);
+                }
+                Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{step.Name}: FAILED, {e.GetType().Name}: {e.Message}");
+                report.Print();
+                ++failed;
+                continue;
+            }
+            ++built;
+            foreach (string p in step.StandsFor.Count > 0 ? step.StandsFor : new List<string> { sourceMesh.InstancedFullPath })
+            {
+                index.Add((p, step.Name));
+            }
+        }
+        pcc.Save();
+        string indexPath = Path.ChangeExtension(outPath, ".json");
+        WriteIndex(indexPath, Path.GetFileNameWithoutExtension(outPath), index);
+        Console.WriteLine($"{Path.GetFileName(outPath)}: {built} built, {skipped} skipped (no soft tissue), {failed} failed, " +
+            $"{new FileInfo(outPath).Length / 1024} KB, {started.Elapsed.TotalSeconds:F0} s; index {indexPath}");
+        return failed > 0 ? 1 : 0;
+    }
+
+    // <package>.json beside the package (mevr-rig-index, version 1): each game object path the plan's rigs stand in for, and the
+    // rig's name in the package (game/Hair's stand-ins by path: docs/trilogy-hair-plan.md section 12, step 3).
+    static void WriteIndex(string path, string package, List<(string path, string name)> index)
+    {
+        var o = new System.Text.StringBuilder();
+        o.Append("{\n  \"format\": \"mevr-rig-index\",\n  \"version\": 1,\n  \"package\": ").Append(JsonSerializer.Serialize(package)).Append(",\n  \"meshes\": [\n");
+        for (int i = 0; i < index.Count; ++i)
+        {
+            o.Append("    { \"path\": ").Append(JsonSerializer.Serialize(index[i].path)).Append(", \"name\": ").Append(JsonSerializer.Serialize(index[i].name))
+             .Append(i + 1 < index.Count ? " },\n" : " }\n");
+        }
+        o.Append("  ]\n}\n");
+        File.WriteAllText(path, o.ToString());
+    }
+
+    static void RigStep(IMEPackage pcc, StepPlan step, ExportEntry sourceMesh, ExportEntry export, Placement.Result placed,
+        Dictionary<string, StepPlan> done, string outPath, Report report)
+    {
+        {
             var mesh = ObjectBinary.From<SkeletalMesh>(export);
             if (string.Equals(step.Materials, "copy", StringComparison.OrdinalIgnoreCase))
             {
@@ -109,10 +181,8 @@ internal static class Rigging
             Skeleton.Check(mesh, report);
             var bones = new List<BonePlan>(step.Bones);
             var regions = new List<RegionPlan>(step.Regions);
-            if (string.Equals(step.Place, "auto", StringComparison.OrdinalIgnoreCase))
+            if (placed != null)
             {
-                var placed = Placement.Auto(mesh);
-                foreach (string n in placed.Notes) report.Line("place: " + n);
                 bones.AddRange(placed.Bones);
                 regions.AddRange(placed.Regions);
             }
@@ -158,8 +228,6 @@ internal static class Rigging
                 done[step.Id] = step;
             }
         }
-        pcc.Save();
-        return 0;
     }
 
     public static Plan ReadPlan(string planPath) =>

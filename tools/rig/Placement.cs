@@ -6,7 +6,7 @@
 // The surface is a height field: LOD 0's triangles seen from the front (the furthest x per cell of y and z, 0.5 cm cells) for
 // the chest, from the back (the nearest) for the hips, averaged with its mirror image (a suit's zip or a seam on one side
 // moved Miranda's left apex 3 cm to the middle). Per mound, from that field:
-// - the apex: the furthest cell in the band (the chest: Chest2's height -22..+5.5 cm, 2..12 cm off the middle; the hips:
+// - the apex: the furthest cell in the band (the chest: Chest2's height -15..+5.5 cm, 2..12 cm off the middle; the hips:
 //   Pelvis's -17..+5), its depth the furthest point (x), its height (z) from the field smoothed over `ApexSigma`;
 // - its side (y): the middle of the run of cells across the apex's height that stand within `SpanDepth` of the apex, its
 //   inner end no nearer the middle than `InnerY` (breasts that touch would put it at the cleavage);
@@ -27,6 +27,8 @@ internal static class Placement
     const float Cell = 0.5f;
     const float RefChest2Z = 140.4f;  // Miranda's (ME3 HMF_ARM_MIRa) rest heights: the hand placements' skeleton
     const float RefPelvisZ = 101.2f;
+    const float MinCover = 0.8f;      // the share of the band's height the surface must cover at the apex's side
+    const float EdgeCm = 1.0f;        // an apex this near the band's edge is a rim, not a mound
 
     internal sealed class Mound
     {
@@ -44,7 +46,7 @@ internal static class Placement
     // The rule's numbers, fitted to the three hand placements (research/trilogy-hair.md "Automatic placement").
     public static readonly Mound Breasts = new()
     {
-        Name = "Breast", Parent = "Chest2", Front = true, ZLo = -22f, ZHi = 5.5f,
+        Name = "Breast", Parent = "Chest2", Front = true, ZLo = -15f, ZHi = 5.5f,
         BoneIn = 7.5f, RegionIn = 3.5f, ApexSigma = 0.75f, SpanDepth = 1.5f, InnerY = 4f, ZOffsetBone = -0.75f, ZOffsetRegion = -0.25f,
         Radius = new[] { 6.5f, 7.0f, 8.0f }, Weight = 0.9f, From = new[] { "Chest", "Chest1", "Chest2" }, Yaw = 0f,
     };
@@ -71,41 +73,58 @@ internal static class Placement
             int parent = Bone(mesh, m.Parent);
             if (parent < 0)
             {
-                throw new InvalidOperationException($"place: no {m.Parent} bone (not the human female skeleton?)");
+                notes.Add($"{m.Name.ToLowerInvariant()}: none (no {m.Parent} bone: not the human female skeleton)");
+                continue;
             }
             float pz = rest[parent].Position.Z;
             float s = pz / (m.Front ? RefChest2Z : RefPelvisZ);
             float zlo = pz + m.ZLo * s, zhi = pz + m.ZHi * s;
             var field = Field(pos, lod.IndexBuffer, zlo - 3f * s, zhi + 3f * s, 30f * s, m.Front);
             var sym = Mirror(field);
-            // The apex: the furthest cell 2..12 cm off the middle in the band.
+            // The apex: the furthest cell 2..12 cm off the middle inside the band that stands out along its column (at least as
+            // far out as the cells 1 cm above and below it): an armour's belly plate or belt, further out at the band's edge than
+            // the chest, isn't it (ME1's medium and light armour).
             (int y, int z) apex = default;
             float best = float.NegativeInfinity;
+            int step = (int)MathF.Round(1f / Cell);
             foreach (var (k, v) in sym)
             {
                 float y = k.y * Cell, z = k.z * Cell;
-                if (y >= 2f * s && y <= 12f * s && z >= zlo && z <= zhi && v > best)
-                {
-                    best = v;
-                    apex = k;
-                }
+                if (y < 2f * s || y > 12f * s || z < zlo + EdgeCm * s || z > zhi - EdgeCm * s || v <= best) continue;
+                if (!sym.TryGetValue((k.y, k.z - step), out float below) || !sym.TryGetValue((k.y, k.z + step), out float above)) continue;
+                if (v < below || v < above) continue;
+                best = v;
+                apex = k;
             }
             if (float.IsNegativeInfinity(best))
             {
-                throw new InvalidOperationException($"place: no {m.Name.ToLowerInvariant()} surface in z {zlo:F1}..{zhi:F1}");
+                notes.Add($"{m.Name.ToLowerInvariant()}: none (no surface {(m.Front ? "in front" : "behind")} standing out in z {zlo:F1}..{zhi:F1}: a part of an outfit without it)");
+                continue;
             }
-            // Its height from the smoothed field's apex near it (a single vertex's spike moves the raw one).
+            // A mound only where the mesh covers the whole band (ME3's armour comes in parts: a torso's lower rim isn't a glute).
+            int cells = 0, covered = 0;
+            for (int iz = (int)MathF.Ceiling(zlo / Cell); iz <= (int)MathF.Floor(zhi / Cell); ++iz, ++cells)
+            {
+                if (sym.ContainsKey((apex.y, iz))) ++covered;
+            }
+            float cover = cells > 0 ? (float)covered / cells : 0f;
+            if (cover < MinCover)
+            {
+                notes.Add($"{m.Name.ToLowerInvariant()}: none (the surface covers {cover:P0} of z {zlo:F1}..{zhi:F1} at y {apex.y * Cell:F1}: a part of an outfit without it)");
+                continue;
+            }
+            // Its height from the smoothed field's furthest cell near the apex (within 3 cm up or down, 2 cm sideways: a single
+            // vertex's spike moves the raw one).
             var smooth = Smooth(sym, m.ApexSigma);
             (int y, int z) high = apex;
             float bestSmooth = float.NegativeInfinity;
+            int near = (int)MathF.Round(3f * s / Cell), aside = (int)MathF.Round(2f * s / Cell);
             foreach (var (k, v) in smooth)
             {
-                float y = k.y * Cell, z = k.z * Cell;
-                if (y >= 2f * s && y <= 12f * s && z >= zlo && z <= zhi && v > bestSmooth)
-                {
-                    bestSmooth = v;
-                    high = k;
-                }
+                float y = k.y * Cell;
+                if (y < 2f * s || y > 12f * s || Math.Abs(k.z - apex.z) > near || Math.Abs(k.y - apex.y) > aside || v <= bestSmooth) continue;
+                bestSmooth = v;
+                high = k;
             }
             // Its side: the middle of the run across the apex's height within SpanDepth of it.
             float limit = best - m.SpanDepth * s;
