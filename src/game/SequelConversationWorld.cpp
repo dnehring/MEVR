@@ -85,6 +85,14 @@ struct Foot {
     std::uint64_t ms = 0;
 };
 Foot gFoot;
+// The engine's depth of field is switched through the console (`scale set`), never around a load: a switch as the docking
+// officer's conversation handed over to the Citadel's load (2026-11-19, 20:56) left that load spinning with no scene drawn,
+// as ME2's scale set during a load hung its rendering (gotchas/me2-scale-set-during-load). Off only after 3 s on foot before
+// the conversation; back only after 3 s on foot again.
+std::uint64_t gOnFootSinceMs = 0;  // 0: not on foot now
+std::uint64_t gLastFootRunMs = 0;  // how long the last stretch on foot lasted (kept when it ends)
+bool gFootSettledAtStart = false;
+bool gDofBackOwed = false;
 
 // The session's override from the console: -1 the file's, 0 off, 1 on.
 int gOverride = -1;
@@ -284,7 +292,7 @@ void End(conversation_world::Link const& link, char const* why) {
         gC.follows, gC.undoneTotal, gC.yieldedTotal, gC.refusedMoves);
     log::Info("conversation world: {}", gLast);
     if (gC.placed) view_anchor::Hold(std::nullopt);
-    if (gDof.IsOff()) gDof.Back("the conversation in the world ended");
+    if (gDof.IsOff()) gDofBackOwed = true;  // put back after 3 s on foot (Tick)
     PublishOff(link);
     gC = {};
 }
@@ -392,6 +400,14 @@ void Tick(conversation_world::Link const& link) {
     bool const conversationMode = mode && engine::adapter::IsConversationMode(*mode);
     if (mode && *mode == 0) {
         if (auto const at = player::Location(player::Pawn(controller))) gFoot = {true, *at, GetTickCount64()};
+        if (gOnFootSinceMs == 0) gOnFootSinceMs = GetTickCount64();
+        gLastFootRunMs = GetTickCount64() - gOnFootSinceMs;
+    } else {
+        gOnFootSinceMs = 0;
+    }
+    if (gDofBackOwed && gOnFootSinceMs != 0 && GetTickCount64() - gOnFootSinceMs >= 3000) {
+        gDofBackOwed = false;
+        gDof.Back("the conversation in the world ended (after 3 s on foot)");
     }
     if (!conversationMode || !WorldWanted() || link.publish == nullptr) {
         End(link, !conversationMode ? "the game left its conversation mode" : !WorldWanted() ? "the world mode is off" : "an older host");
@@ -405,6 +421,7 @@ void Tick(conversation_world::Link const& link) {
     std::uint64_t const now = GetTickCount64();
     if (!gC.on || conversation != gC.controller) {
         End(link, "another conversation began");
+        gFootSettledAtStart = gLastFootRunMs >= 3000;
         gC.on = true;
         gC.serial = ++gSerial;
         gC.controller = conversation;
@@ -441,7 +458,12 @@ void Tick(conversation_world::Link const& link) {
         gC.placed = true;
         gC.placedMs = now;
         gC.stepMs = now;
-        if (gSettings.dofOff) gDof.Off("a conversation held in the world (the director's depth of field blurs the room)");
+        // Only for a conversation begun after 3 s on foot (not one the game opens around a load, the docking officer's).
+        bool const settledOnFoot = gFoot.valid && now - gFoot.ms < 2000 && gFootSettledAtStart;
+        if (gSettings.dofOff && (settledOnFoot || gDof.IsOff())) {
+            gDofBackOwed = false;
+            gDof.Off("a conversation held in the world (the director's depth of field blurs the room)");
+        }
         log::Info("conversation world: conversation {}: opening {} (the stage put Shepard {:.0f} units from where the player stood, "
                   "{:+.0f} up{}): the player's place is {}, Shepard kept there; the left stick walks him within {:.0f} units",
             gC.serial, cw::Name(gC.opening), facts.markUnits, facts.riseUnits, facts.known ? "" : "; where he stood isn't known",
