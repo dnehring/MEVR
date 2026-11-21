@@ -1066,8 +1066,14 @@ These unblock the most: almost every other entry gets smaller once they land.
   wheel's positions, starts take input 0; Avina, the refugee leader, Oraka, Sommers held; Purgatory's drinks held as moments; the
   end facing seen on ME3); the first circle walk-up seen (ME2: Prazza walks 4 m into the circle), a walk the AI ends near its place
   now turns to the circle.
-- **Left:** a fix for a moment whose animation leans Shepard's head a metre off the player's eyes (Purgatory's bar: the player sees
-  his back; owner question), the presence table seen on ME2 (no reachable fixture in the two saves), the script's GUI black screen,
+- **Done since (lane FPC7, 2026-11-20, section 13 there; research/69 item 45):** the owner's "Your head drives him" on all three
+  games: in a held moment or conversation with the view with him, not seated and not under a dip, the player's head drives
+  Shepard's body as on foot (core `cw::StepHeadDrive`, the torso's bend 80 and tilt 30 degrees; arm IK in the sequels' moments,
+  first person whatever his animated head does), his body hidden where it can't reach (his drawn head over 0.6 m from the eyes
+  for 0.25 s). ME3's Purgatory drink: his drawn head 0.10-0.18 m from the eyes instead of 1.05 m, the glass in his hand at the
+  bar, 0 findings; the broken run (`mevr convo headdrive off`) caught by `eyes-off-body`. The arms: the sequels' moments keep the
+  animation's hands, ME1 and every conversation the controllers.
+- **Left:** the presence table seen on ME2 (no reachable fixture in the two saves), the script's GUI black screen,
   a scene that waits for the player (no fixture), seats and walk-along seen, Miranda's and Joker's ME3 scenes (not in Save_0090's
   plot), rides, the black move and the handover seen on ME3, a conversation begun on foot that ends into a cab ride. Each item on
   ME2 and ME3 alike.
@@ -1270,6 +1276,18 @@ about stutter or pacing in a real headset.
 ## Open owner questions
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
+
+**Asked 2026-11-20** (lane CEN1, the owner's idea "take the drink at Purgatory's bar ourselves"; research/74, the hands census,
+offline): of 120,000 scripted scenes in the three games, 720 have Shepard's hands doing one of six gestures (drink 74, press 313,
+take 168, give 20, salute 25, handshake 120; ME1 79, ME2 145, ME3 496), 89% of them conversation lines; 79 are level matinees,
+28 of those started by a use (Purgatory's drink, Kasumi's bar on ME2's Normandy, Tali's picture in ME3's cabin, ME3's elevator
+keypads). The proposal: pause the matinee at the gesture (`SeqAct_Interp.bPaused`, as walk-along does), give arm IK the arms,
+detect the gesture, resume to the end (the game's effects unchanged); fights, kisses and anything done to him stay authored.
+(a) Build it, and which kinds first? (b) Purgatory's drink as the prototype? (c) How strict a gesture (radius, hold, a timeout
+after which the authored animation plays)? (d) Level scenes from uses first, conversation lines later? Recommendation: yes;
+drink, then salute and handshake, then press, take and give last; Purgatory first (Kasumi's bar the alternative); lenient (a
+clear motion within ~12 cm held 0.4 s, an 8 s timeout and B play the authored animation); level scenes first. Today: nothing
+is built.
 
 **Answered 2026-11-19:** "Should crouching behind a low wall count as cover even when your real eyes stay above it?" (lane SMOKE's
 finding: the owner's natural crouch lowered his eyes to 1.52 m over walls about 1 m tall, 0 of 164 hits covered): "Yes I think so,

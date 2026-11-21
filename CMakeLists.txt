@@ -1540,6 +1540,7 @@ if (MEVR_BUILD_TESTS)
         tests/SquadPlaceTests.cpp
         tests/BodyScaleTests.cpp
         tests/EyesInBodyTests.cpp
+        tests/HeadDriveTests.cpp
         tests/CrouchAnchorTests.cpp
         tests/ReplayFloorTests.cpp
         tests/BodySlotsSeatedTests.cpp
@@ -1880,6 +1881,9 @@ if (MEVR_BUILD_TESTS)
         # The conversation sweep's predictions, work list and judge (tools/conversation-sweep.py, research/69), over a
         # synthetic scan.
         add_test(NAME mevr-conversation-sweep COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/ConversationSweepTests.py)
+        # The hands census's rule (tools/hands-census.py, research/74): which scripted scenes have Shepard's hands acting, over
+        # synthetic scenes.
+        add_test(NAME mevr-hands-census COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/HandsCensusTests.py)
         # The rules over first-person scenes' stance records (tools/scene_audit.py, research/69 "Auditing scenes by rule").
         add_test(NAME mevr-scene-audit COMMAND Python3::Interpreter -I ${CMAKE_CURRENT_SOURCE_DIR}/tests/SceneAuditTests.py)
         # The known bad signs in a play session's log (tools/session-judge.py, lane SMOKE), over synthetic lines in the mod's wording.

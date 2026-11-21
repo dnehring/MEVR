@@ -925,8 +925,12 @@ stay where they are (sections 2, 4, 5, 6, 7 and "The game's start"). Each needs 
       (no drift back toward where Shepard's body stood).
 - [ ] ME3 with the game's subtitles on (lane FPC6, section 12.1): a long line under the speaker is whole (no word left on the
       panel below), and a conversation that opens somewhere else puts you at Shepard's head there, not behind him (12.2).
-- [ ] ME3, Purgatory's bar (section 12.2): use the bar to drink: say whether seeing Shepard lean onto the bar in front of you is
-      acceptable, or whether the view should go with his head (or his body be hidden) while he drinks.
+- [ ] ME3, Purgatory's drink: your head drives Shepard's (lane FPC7, section 13; the owner's choice "Your head drives him"): use
+      the bar to drink; his body stays under you in first person with the glass in his hand at the bar (no back or head in front
+      of your eyes), leaning over the bar leans him with you, and nothing jumps or blinks. Say whether his arms reaching for the
+      animation's glass look right, and whether his body ever vanishes (the fallback, when it can't reach).
+- [ ] ME1, any first-person conversation or scripted walk (research/69 item 45): Shepard's body stays under you while the scene
+      animates him (no head or back in front of your eyes); a scene that bends him far shows no body rather than his back.
 - [ ] ME2 and ME3 (section 10.2): the speaker's line under their face (legible, not inside their body) and the dialogue wheel in
       front of you where it opens (reachable by eye without turning; the replies' whole text on it).
 - [ ] ME1 (section 10.4): after a conversation that faced you to the person you came to talk to (or that you turned in with the

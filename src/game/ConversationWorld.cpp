@@ -2304,6 +2304,116 @@ ik::Vec3 PlayerEyes() {
     return gDrawnEyes.value_or(gC.hold);  // (before the host shows the world: the held place)
 }
 
+// ---- The player's head drives Shepard (the owner's "Your head drives him", 2026-11-20; research/69 item 45, research/
+// le2-conversations-in-world.md section 13; core cw::StepHeadDrive, the sequels' rule): in a held moment or a conversation shown
+// in the world with the view with him (not detached: his pawn under the view), not seated and not under a dip, arm IK drives his
+// body by the player's head (BodyAway's headDrives: the view's frame whatever his animated head does, the torso's wider bend);
+// his arms stay on the controllers as before. Where the body can't reach (his drawn head more than 0.6 m flat from the drawn eyes
+// for 0.25 s) his pawn is hidden for the player, shown again within 0.4 m for 0.25 s; hidden, his mesh is posed each tick.
+// Before, a moment's view with him left the body to the animation once his animated head was 0.75 m from the view (arm IK's
+// third person), and only a pawn the view walked away from was hidden.
+struct HeadDriveMe1 {
+    cw::HeadDriveState state;
+    bool drive = false;
+    bool hid = false;          // his pawn hidden by this rule
+    std::uint32_t scene = 0;
+    char const* kind = "";
+    std::uint64_t ms = 0;
+    std::uint32_t cutSeen = 0;
+    std::uint64_t cutMs = 0;
+    double gapM = std::numeric_limits<double>::quiet_NaN();
+    double maxGapM = 0.0;
+    double drivenS = 0.0;
+    double hiddenS = 0.0;
+    unsigned hides = 0;
+    bool driveLogged = false;
+};
+HeadDriveMe1 gHd;
+std::optional<bool> gHeadDriveOverride;  // `mevr convo headdrive on|off` (a test's switch); none: the rule (on)
+
+void ShowForHeadDrive(ue3::Object* pawn) {
+    if (pawn == nullptr || !ue3::runtime::IsAlive(pawn) || gSetHidden.Get() == nullptr) return;
+    ue3::Params p(ue3::runtime::Get(), gSetHidden.Get());
+    if (p.Valid() && p.SetBool("bNewHidden", false)) ue3::runtime::Call(pawn, gSetHidden.Get(), p);
+}
+
+void ReleaseHeadDrive(ue3::Object* pawn, char const* why) {
+    if (gHd.hid) {
+        ShowForHeadDrive(pawn);
+        log::Info("convo: {} {}: Shepard's body shown again ({})", gHd.kind, gHd.scene, why);
+    }
+    if (gHd.scene != 0 && gHd.drivenS > 0.0) {
+        log::Info("convo: {} {}: the player's head drove Shepard's body for {:.1f} s (his drawn head at most {:.2f} m from the eyes), hidden "
+                  "{} times for {:.1f} s", gHd.kind, gHd.scene, gHd.drivenS, gHd.maxGapM, gHd.hides, gHd.hiddenS);
+    }
+    gHd = {};
+}
+
+void StepHeadDrive(char const* kind, std::uint32_t serial, ue3::Object* pawn, bool withHim, bool seated, std::uint32_t cutNow) {
+    std::uint64_t const now = GetTickCount64();
+    if (gHd.scene != serial) {
+        ReleaseHeadDrive(pawn, "another scene");
+        gHd.scene = serial;
+        gHd.kind = kind;
+        gHd.cutSeen = cutNow;
+    }
+    double const dt = gHd.ms != 0 ? std::clamp(static_cast<double>(now - gHd.ms) / 1000.0, 0.0, 0.25) : 0.0;
+    gHd.ms = now;
+    if (cutNow != gHd.cutSeen) {
+        gHd.cutSeen = cutNow;
+        gHd.cutMs = now;
+    }
+    cw::HeadDriveFacts facts;
+    facts.scene = gHeadDriveOverride.value_or(true) && pawn != nullptr && ue3::runtime::IsAlive(pawn);
+    facts.withHim = withHim;
+    facts.seated = seated;
+    facts.dip = gHd.cutMs != 0 && now - gHd.cutMs < 400;  // the host's dip (TransitionFade, 0.35 s) after a cut
+    std::optional<Head> const head = facts.scene ? HeadOf(pawn) : std::nullopt;
+    facts.headFromEyesM = head && gDrawnEyes ? std::hypot(head->at.x - gDrawnEyes->x, head->at.y - gDrawnEyes->y) / kUnitsPerMeter
+                                             : std::numeric_limits<double>::quiet_NaN();
+    facts.dtS = dt;
+    cw::HeadDriveStep const step = cw::StepHeadDrive(gHd.state, facts);
+    gHd.gapM = facts.headFromEyesM;
+    gHd.drive = step.drive;
+    if (step.drive) {
+        gHd.drivenS += dt;
+        if (std::isfinite(facts.headFromEyesM)) gHd.maxGapM = std::max(gHd.maxGapM, facts.headFromEyesM);
+        if (!gHd.driveLogged) {
+            gHd.driveLogged = true;
+            log::Info("convo: {} {}: the player's head drives Shepard's body (the view with him; his arms on the controllers){}", kind, serial,
+                std::isfinite(facts.headFromEyesM) ? std::format(", his drawn head {:.2f} m from the eyes", facts.headFromEyesM) : std::string());
+        }
+    }
+    if (gHd.hid) gHd.hiddenS += dt;
+    if (step.change == cw::HeadDriveChange::Hid) {
+        // Never over a hide of the scene's own (its bHidden).
+        if (gSetHidden.Get() != nullptr && !gActorHidden.ReadBool(pawn).value_or(true)) {
+            ue3::Params p(ue3::runtime::Get(), gSetHidden.Get());
+            if (p.Valid() && p.SetBool("bNewHidden", true) && ue3::runtime::Call(pawn, gSetHidden.Get(), p)) {
+                gHd.hid = true;
+                ++gHd.hides;
+                log::Info("convo: {} {}: Shepard's drawn head stays {:.2f} m from the player's eyes, past what his body can take: his body "
+                          "hidden for the player (the head drive's fallback)", kind, serial, facts.headFromEyesM);
+            }
+        }
+    } else if (step.change == cw::HeadDriveChange::Shown && gHd.hid) {
+        gHd.hid = false;
+        ShowForHeadDrive(pawn);
+        log::Info("convo: {} {}: Shepard's body shown again ({})", kind, serial,
+            !facts.scene ? "the scene ended" : seated ? "he sits: the seat keeps the view with his head"
+            : !withHim ? "the view left him" : std::format("his drawn head back within 0.4 m of the eyes, {:.2f} m", facts.headFromEyesM));
+    }
+    if (gHd.hid) {
+        // A hidden mesh isn't posed by itself: posed here, with the writer's drive, so his drawn head is measured where it is.
+        if (ue3::Function* const force = gForceSkelUpdate.Get()) {
+            if (ue3::Object* const mesh = player::Mesh(pawn)) {
+                ue3::Params parms(ue3::runtime::Get(), force);
+                ue3::runtime::Call(mesh, force, parms);
+            }
+        }
+    }
+}
+
 // The host's view offset (forward, right, up along the camera's axes) the last time it showed the world from a first-person
 // place: on foot, or a held conversation or moment. The view on screen as a scene opens can still be another's: at Benezia's
 // (Noveria, a cut as the save loaded) it read 0.39 m forward instead of 0.44 back, and the eyes landed 0.74 m behind Shepard's
@@ -3559,7 +3669,7 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
     auto const shepHead = shep != nullptr && ue3::runtime::IsAlive(shep) ? HeadOf(shep) : std::nullopt;
     double const gap = shepHead ? std::hypot(shepHead->at.x - eyes.x, shepHead->at.y - eyes.y) : 0.0;
     a.sampledS += dt;
-    if (shepHead && !gC.detached) {
+    if (shepHead && !gC.detached && !gHd.hid) {  // (a body the head drive hid is not seen: research/69 item 45)
         a.gapMaxM = std::max(a.gapMaxM, gap / kUnitsPerMeter);
         if (gap >= 30.0) {
             a.gapOverS += dt;
@@ -3599,7 +3709,7 @@ void StepAudit(ue3::Object* speaker, ue3::Object* listener) {
                 a.handsInViewS += dt;
             }
             // ... and drawn: a wrist inside the view puts the body's mesh in the picture, so a view must have drawn it.
-            if ((hands->inView[0] || hands->inView[1]) && !gC.detached) {
+            if ((hands->inView[0] || hands->inView[1]) && !gC.detached && !gHd.hid) {
                 if (auto const ago = DrawnAgoS(player::Mesh(player::BioPawn(player::Controller())))) {
                     a.bodyCheckedS += dt;
                     a.bodyUndrawnMaxS = std::max(a.bodyUndrawnMaxS, std::min(*ago, 600.0));
@@ -5493,6 +5603,7 @@ void End(char const* why) {
     if (!gC.on) {
         return;
     }
+    ReleaseHeadDrive(ShepardPawn(), "the conversation ended");
     if ((gSettings.stances || gStancesOverride.value_or(false)) && gC.world && Seconds() - gC.stanceAtS > 2.0) {
         log::Info("convo: {}", WriteStance("end"));
     }
@@ -6209,6 +6320,7 @@ void ForgetMomentMarker();  // the floor marker's (below, with MomentState)
 
 void EndMomentView(Link const& link, char const* why, bool stopWorld) {
     ForgetMomentMarker();
+    ReleaseHeadDrive(ShepardPawn(), "the moment ended");
     if (gMoment.provisional) {
         // Never a moment: the cinematic mode began and no track moved Shepard. No summary (nothing was shown as one).
         log::Info("moment: the cinematic mode began on foot but no track moved Shepard ({}): not a moment; the view was held {:.2f} s",
@@ -6910,6 +7022,10 @@ bool TickMoment(Link const& link, ue3::Object* pawn, std::optional<std::uint8_t>
     }
     gDrawnEyes = frame ? std::optional<ik::Vec3>{ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z}} : std::nullopt;
     if (!gMoment.provisional) {
+        // The player's head drives Shepard while the view is with him (cw::StepHeadDrive; research/69 item 45).
+        StepHeadDrive("moment", gMoment.number, pawn, frame.has_value() && !gC.detached, gSeat.on || gSeat.following, gCutBase + gC.cut);
+    }
+    if (!gMoment.provisional) {
         DofOff();  // the matinee's camera focuses for its own shot: from the player's place it blurred people at random
         // The track walks Shepard's pawn, hidden, while the view stays the player's: every look at him follows the pawn
         // (research/69 "Heads at the drawn eyes": the moments).
@@ -7285,7 +7401,7 @@ std::string WriteStance(std::string const& tag) {
     std::string const json = std::format(
         "{{\"conversation\": \"{}\", \"number\": {}, \"tag\": \"{}\", \"seconds\": {:.1f}, \"staged\": {}, \"opening\": \"{}\", "
         "\"entry\": {}, \"line\": \"{}\", \"unitsPerMeter\": {:.0f}, \"walkAlong\": {},\n"
-        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, \"turnedDeg\": {:.0f}, "
+        "\"player\": {{\"at\": {}, \"yaw\": {:.0f}, \"eyes\": {}, \"eyesDrawn\": {}, \"bodyFromEyesM\": {}, \"detached\": {}, \"bodyHiddenBy\": {}, \"headDrive\": {}, \"turnedDeg\": {:.0f}, "
         "\"boundary\": {}, \"boundaryM\": {:.2f}, \"floor\": {:.0f}, \"eyesTarget\": {}, \"sceneWants\": {}, \"steering\": {}, "
         "\"armIk\": \"{}\", \"hands\": {}, \"bodyDrawnAgoS\": {}, \"nearPlane\": {:.0f}}},\n"
         "\"people\": [{}],\n\"others\": [{}],\n\"circle\": {},\n\"walls\": {{\"from\": {}, \"floor\": {:.0f}, \"reach\": {:.0f}, \"scans\": [{}]}},\n"
@@ -7298,7 +7414,7 @@ std::string WriteStance(std::string const& tag) {
                : std::string("null"),
         P3(player), playerYaw, P3(eyes), gDrawnEyes ? "true" : "false",
         shepardHead ? std::format("{:.2f}", std::hypot(shepardHead->at.x - eyes.x, shepardHead->at.y - eyes.y) / kUnitsPerMeter) : std::string("null"),
-        gC.detached ? "true" : "false", gC.turnedDeg, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
+        gC.detached ? "true" : "false", gHd.hid ? "\"head-drive\"" : "null", gHd.drive ? "true" : "false", gC.turnedDeg, P3(boundary), gSettings.moveLeashM, floor, gEyesOn ? "true" : "false",
         gC.sceneWants ? P3(*gC.sceneWants) : std::string("null"), gC.steerTo ? "true" : "false",
         JsonText(arm_ik::Status().substr(0, 40)), arm_ik::HandsJson(),
         bodyDrawnAgo ? std::format("{:.2f}", std::min(*bodyDrawnAgo, 600.0)) : std::string("null"), moment ? -1.0f : gDrawnNear,
@@ -7504,6 +7620,8 @@ BodyAwayState BodyAway() {
     return sequel_conversation_world::BodyAway();  // the sequels' module is the one there (Mod.cpp): arm IK and the body follower
 #else
     BodyAwayState away;
+    // The player's head drives Shepard (cw::StepHeadDrive, this tick's answer of the scene's own step; research/69 item 45).
+    away.headDrives = gHd.drive && gHd.ms != 0 && GetTickCount64() - gHd.ms < 500;
     // The view held away from the pawn (a scripted walk, a walk-in by the view), and since 2026-11-13 every conversation shown
     // in the world: the body is the player's even where the view stands at Shepard's mark. Before, arm IK there kept to its
     // distance test against his animated head (first person within 0.45 m, third person past 0.75 m): the council hearing's
@@ -8019,6 +8137,8 @@ void Tick(double deltaSeconds, Link const& link) {
         view_anchor::Hold(frame, HeldFloorView(pawn));
         gHeld = true;
         gDrawnEyes = ik::Vec3{frame->headWorld.x, frame->headWorld.y, frame->headWorld.z};
+        // The player's head drives Shepard while the view is with him (cw::StepHeadDrive; research/69 item 45).
+        StepHeadDrive("conversation", gC.number, pawn, gInWorld && !gC.detached, gSeat.on || gSeat.following, gCutBase + gC.cut);
         if (gC.eyesMeant && GetTickCount64() >= gC.eyesMeantFromMs && GetTickCount64() < gC.eyesMeantUntilMs && view.valid && gInWorld) {
             // The opening placed the eyes with the offset of the last first-person view; if the view drawn now puts them more
             // than 15 cm from that place (no first-person view seen yet: a scene that starts as its save loads), the held
@@ -8379,6 +8499,24 @@ std::string Command(std::string const& rest) {
         }
         return verb == "hide" ? std::format("convo: hide {}: {}", what, flag ? "on (hidden while a scene plays in the world)" : "off")
                               : std::format("convo: the on-foot near plane kept from the eyes: {}", flag ? "off (the director's drawn)" : "on");
+    }
+    if (verb == "headdrive") {
+        // `mevr convo headdrive [on|off|auto]`: the player's head drives Shepard in a held scene (on by rule); off is the old rule's
+        // broken run (his body the animation's wherever it leans: eyes-off-body must catch it).
+        std::string w;
+        words >> w;
+        if (w == "on" || w == "off") {
+            gHeadDriveOverride = w == "on";
+        } else if (w == "auto") {
+            gHeadDriveOverride.reset();
+        } else if (!w.empty()) {
+            return "usage: mevr convo headdrive [on | off | auto]";
+        }
+        return std::format("convo: the player's head drives Shepard in held scenes: {}{}; now {} (his drawn head {} from the eyes, at most "
+                           "{:.2f} m this scene; hidden {} times, now {})", gHeadDriveOverride.value_or(true) ? "on" : "off",
+            gHeadDriveOverride ? " (mevr convo headdrive)" : " (the rule)", gHd.drive ? "driving" : "not driving",
+            std::isfinite(gHd.gapM) ? std::format("{:.2f} m", gHd.gapM) : std::string("unknown"), gHd.maxGapM, gHd.hides,
+            gHd.hid ? "hidden" : "shown");
     }
     if (verb == "eyes") {
         // Tests (A/B): the eyes stand-in off, or back to worldLookEyes.

@@ -4071,6 +4071,46 @@ Check on the fake headset: Chora's Den (`conversation-launch.ps1 sta60_strippers
 under the fade, `Shepard sits down`, a snapshot from the seat facing the dancer, the stick doesn't walk, `Shepard gets up` at the
 end.
 
+### The player's head drives Shepard (2026-11-20; item 45)
+
+**The owner, 2026-11-20 ("Your head drives him"), from ME3's Purgatory drink** (research/le2-conversations-in-world.md section 13):
+during a scripted animation that moves Shepard's head away from the player's eyes while his pawn stays under the view, his body
+is the player's as on foot (his spine, neck and head where the player's head is; leaning onto the bar the player leans him), and
+where his body can't reach his head stays more than 0.6 m from the eyes and his body is hidden. One rule for the three games
+(`cw::StepHeadDrive`, `ik::kHeadDriveBendDegrees` 80, `kHeadDriveTiltDegrees` 30 with `TorsoGoal::maxTiltDegrees`).
+
+1. **What ME1 did before:** a held moment with the view with him (`!gC.detached`) had `BodyAway().on` false (on only detached or in
+   a conversation), so arm IK kept to its distance test (`ik::FirstPersonAnchor`: first person within 45 units of his animated
+   head, third person past 75): an animation that took his head 0.75 m off left the body to the animation, his back in front of the
+   eyes; `HidePawn` does nothing with `worldBody = player`. In a conversation in the world the body was already the player's
+   (BodyAway on, the slide unlimited), the spine bending at most 35 degrees.
+2. **What ME1 does now** (`game/ConversationWorld` `StepHeadDrive`, called by `TickMoment` and the conversation tick after the view
+   is held): in a held moment or a conversation shown in the world, not detached, not seated (`gSeat`: StepSeat keeps a seat) and
+   not within 0.4 s of a cut (`gCutBase + gC.cut` changed: the host's dip), `BodyAway().headDrives`: arm IK keeps the view's frame
+   whatever his animated head does, the torso bends up to 80 degrees and leans at most 30 from upright where the slide (its on-foot
+   `bodyMoveMaxM` in a moment, unlimited in a conversation) leaves it short. His arms stay on the controllers (as before). His drawn
+   head (`HeadOf`, the posed bones) more than 0.6 m (flat) from the drawn eyes for 0.25 s: his pawn hidden (`Actor.SetHidden`,
+   never over a hide of the scene's), posed each tick while hidden (`ForceSkelUpdate`), shown again within 0.4 m for 0.25 s, or
+   when the scene ends, he sits or the view leaves him. Logs `convo: moment|conversation N: the player's head drives Shepard's body
+   ...`, `... his body hidden for the player (the head drive's fallback)`, `... shown again (...)`, and a summary. The live audit's
+   `eyes-off-body` and `body-not-drawn` leave a body the rule hid alone; records carry `player.headDrive` and `player.bodyHiddenBy`;
+   `tools/scene_audit.py` now judges a moment's `eyes-off-body` in records that carry `headDrive`. `mevr convo headdrive
+   [on|off|auto]`: off is the broken run.
+3. **Tests:** `tests/HeadDriveTests.cpp` on LE1's Shepard skeleton (a 1 m lean absorbed, 0.98 -> 0.08 m; a 2 m lean hidden after
+   0.25 s; seated untouched).
+4. **The regression set with the head drive** (`tools/conversation-audit.ps1`, session `2026-11-20_16-57-43-audit`, build-mono at
+   48bea40c): 16 scenes, all with tracked hands driven, `hands-off-controllers`, `body-not-drawn`, `eyes-off-body` never tripped.
+   The rule drove Shepard in every scene with the view with him: in the conversations his drawn head at most 0.10-0.11 m from the
+   eyes (Chorban, Opold, Avina, Wrex, Zabaleta), 0.43-0.64 m only at an opening's first ticks (Benezia, the induction); the Spectre
+   walk's moment 0.12 m; Liara's intro moment hid his body 0.6 s while the script's track carried him 4.7 m off before the view
+   detached (`the view left him`: shown again, then the moment's own walk). Against the baseline: `moment_CD_LAV70_06_Liara_Intro`
+   "Shepard's head from the eyes None -> 0.1 m" (a moment's gap is measured now: no regression), `sta20_zabaleta_dlg`'s new
+   `squad-behind` (Tali at 152 degrees after the wander; the squad's formation, not Shepard's bones: [verify] in a second run);
+   Kirrahe's scene was not played (its save path); the opold `flash` problem is the handover's (0.03 s), not this rule's. The
+   baseline was not rewritten.
+5. **Not found:** an ME1 moment where his animated head leaves the eyes by a metre with his pawn under the view (the set's moments
+   keep him within 0.12 m once driven); the old rule's broken run on ME1 (`mevr convo headdrive off`) was not run.
+
 ## To check in the game
 
 In this order, on the fake headset, when the game folder is free (saves backed up first, as always):

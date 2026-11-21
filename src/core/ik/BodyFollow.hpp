@@ -83,6 +83,15 @@ private:
     FollowState last_;
 };
 
+// The player's head drives Shepard in a held scene (the owner's "Your head drives him", 2026-11-20; core/vr/ConversationWorld's
+// StepHeadDrive): the spine may bend this far (TorsoGoal::maxBendDegrees, about its bottom joint, from the animated pose) to put
+// his head where the player's is. A scripted animation bends him far more than on foot (Purgatory's drink lays his head on the
+// bar), and the on-foot 35 degrees left his head half a metre in front of the eyes; the slide (bodyMoveMaxM) and the legs' room
+// are the on-foot ones. Where the slide leaves the body short of the player (capped), the spine leans toward the head at most
+// kHeadDriveTiltDegrees from upright (TorsoGoal::maxTiltDegrees): with the bend alone it lay back 35-80 degrees to reach.
+constexpr double kHeadDriveBendDegrees = 80.0;
+constexpr double kHeadDriveTiltDegrees = 30.0;
+
 // Which frame the controllers and the body follow (game/HandTargets; research/29 "The crouch that went third person",
 // 2026-11-18). First person (the view's own frame: the body slides under the view) while the view is within `enterUnits`
 // of Shepard's animated head bone (scaled as drawn), until it is past `leaveUnits`; else third person (tracking space hung

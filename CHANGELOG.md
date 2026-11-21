@@ -38,6 +38,10 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 - **Your squad moves only when you place it.** A squeeze of the left grip no longer sends the squad somewhere (it did on
   every game when nothing else took the squeeze, and on ME2 it kept happening in fights): place them with the right hand's
   B arc, or by voice.
+- **First-person scenes (experimental): your head drives Shepard's.** When a scene's animation moves Shepard's head away from
+  you while he stands where you are (a drink at Purgatory's bar leaned him a metre onto it, so you saw his back), his body stays
+  under you as on foot: his head where yours is, his body leaning with you, the glass still in his hand. Where his body can't
+  reach that far it is hidden until it can. On all three games.
 - **First-person conversations on Mass Effect 2 and 3 (experimental): whole subtitles, the right eyes after a cut.** A long
   line's subtitle under the speaker is whole on Mass Effect 3 (its first and last words stayed on the panel). A conversation that
   opens somewhere else puts your eyes at Shepard's head once his body has arrived there (on Mass Effect 3 they could open 4 m

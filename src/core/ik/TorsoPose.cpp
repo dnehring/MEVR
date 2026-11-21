@@ -413,7 +413,22 @@ TorsoResult PoseTorso(std::span<Transform> pose, std::span<int const> parents, T
     Vec3 const twisted = Rotate(twistTurn, oldMid - pivot);
     Vec3 const twistedReference = Rotate(twistTurn, reference - pivot);
     result.goalReference = aim;
-    Quat const fullSwing = FromTo(twistedReference, goal.lean ? aim - pivot : twistedReference);
+    Vec3 toAim = aim - pivot;
+    if (goal.lean && std::isfinite(goal.maxTiltDegrees) && goal.maxTiltDegrees < 180.0) {
+        // TorsoGoal::maxTiltDegrees: the aim's direction kept within the cone about the body's up (a body the slide left short
+        // of the goal leans toward it that far, not further).
+        double const tiltMax = std::max(0.0, goal.maxTiltDegrees) / kDegrees;
+        double const along = Dot(toAim, up);
+        Vec3 const across = toAim - up * along;
+        double const length = Length(toAim);
+        double const acrossLength = Length(across);
+        if (length > 1e-9 && std::atan2(acrossLength, along) > tiltMax) {
+            Vec3 const side = acrossLength > 1e-9 ? across * (1.0 / acrossLength) : Vec3{};
+            toAim = (up * std::cos(tiltMax) + side * std::sin(tiltMax)) * length;
+            result.limited = true;
+        }
+    }
+    Quat const fullSwing = FromTo(twistedReference, goal.lean ? toAim : twistedReference);
     result.wantedShoulders = pivot + Rotate(fullSwing, twisted);
     double const maxBend = std::max(0.0, goal.maxBendDegrees) / kDegrees;
     Quat swing = fullSwing;
