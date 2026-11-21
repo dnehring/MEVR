@@ -287,6 +287,10 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
 - [x] **[C] Binary metadata**: an icon and VERSIONINFO for MEVR-Setup.exe and the ASI; no absolute build paths in the PDBs
   (`/PDBALTPATH`); archive each release's PDBs so crash-report stacks can be symbolised.
   **Done 2026-11-04 (16fc28e):** version resources on the ASI, loader and setup, the setup's icon, PDBs referenced by name only, a separate symbols zip.
+  **From 0.4.0 (the owner, 2026-11-20) the symbols zip is not uploaded:** players never need it and its PDBs record the build
+  machine's paths (the Windows user's temp folder). `package-release.ps1 -Zip` still makes it, with its SHA-256 beside it;
+  keep each release's somewhere durable off this disk (a PDB fits only its exact build). The release page gets the zip,
+  `SHA256SUMS` and the notes. (0.1.0-0.3.2's symbols zips are still on their release pages.)
 - [x] **[C] Player docs**: a Controls section; supported headsets and the six controller profiles (README lists three);
   "LE1 only" stated in the release README and the setup; "What Install changes" missing the cockpit package and the TOC
   edit; Steam's "verify files" also drops the cockpit's TOC entry; the DRAFT marker in `docs/release-readme.md`.

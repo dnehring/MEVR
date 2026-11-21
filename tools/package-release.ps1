@@ -46,9 +46,12 @@
 #   dist\MEVR-<version>-symbols\
 #     *.pdb and the binaries they match (LE1MEVR.asi, bink2w64.dll, MEVR-Setup.exe, MEVR-Voice.dll), to symbolise the stacks in players'
 #     crash reports. Kept next to the players' folder, never inside it (the binaries name their PDB without a path:
-#     /PDBALTPATH, CMakeLists.txt).
-#   with -Zip: dist\MEVR-<version>.zip, dist\MEVR-<version>-symbols.zip, dist\MEVR-<version>-SHA256SUMS.txt and
-#     dist\MEVR-<version>-release-notes.md (.github/release-notes-template.md with this version's CHANGELOG.md entry).
+#     /PDBALTPATH, CMakeLists.txt). **For the owner's archive, never uploaded** (the owner, 2026-11-20, from 0.4.0): players
+#     never need them, and a PDB records the build machine's paths (the Windows user's temp folder among them). A PDB fits
+#     only the exact build it came from, so keep each release's symbols zip somewhere durable (dist\ is gitignored).
+#   with -Zip: dist\MEVR-<version>.zip, dist\MEVR-<version>-SHA256SUMS.txt and dist\MEVR-<version>-release-notes.md
+#     (.github/release-notes-template.md with this version's CHANGELOG.md entry): the three a GitHub release gets; and
+#     dist\MEVR-<version>-symbols.zip for the archive (its SHA-256 in dist\MEVR-<version>-symbols.sha256.txt).
 #
 #   tools\package-release.ps1 [-Version 0.1.0] [-Tag v0.1.0] [-NoBuild] [-Zip] [-AllowDirty] [-SkipTests]
 #                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit] [-NoVoice] [-NoRig] [-Games LE1,LE2,LE3]
@@ -490,10 +493,13 @@ if ($Zip) {
     $symbolsZip = "$symbols.zip"
     if (Test-Path $symbolsZip) { Remove-Item $symbolsZip }
     Compress-Archive -Path (Join-Path $symbols '*') -DestinationPath $symbolsZip
-    Write-Output ("Symbols zip: {0} ({1:N1} MB)" -f $symbolsZip, ((Get-Item $symbolsZip).Length / 1MB))
+    $symbolsHash = (Get-FileHash $symbolsZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    [IO.File]::WriteAllText("$symbols.sha256.txt", ('{0}  {1}' -f $symbolsHash, (Split-Path -Leaf $symbolsZip)) + "`n")
+    Write-Output ("Symbols zip: {0} ({1:N1} MB): for your archive, not for the release page (keep it somewhere durable)" -f
+        $symbolsZip, ((Get-Item $symbolsZip).Length / 1MB))
 
-    # Checksums, as sha256sum writes them (sha256sum -c MEVR-<version>-SHA256SUMS.txt checks them).
-    $sums = foreach ($file in $zipPath, $symbolsZip) {
+    # Checksums of what the release page gets, as sha256sum writes them (sha256sum -c MEVR-<version>-SHA256SUMS.txt).
+    $sums = foreach ($file in @($zipPath)) {
         '{0}  {1}' -f (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant(), (Split-Path -Leaf $file)
     }
     $sumsPath = Join-Path $repo "dist\MEVR-$Version-SHA256SUMS.txt"
@@ -525,8 +531,6 @@ if ($Zip) {
         '{{changes}}'        = $changes
         '{{zip}}'            = (Split-Path -Leaf $zipPath)
         '{{zip_sha256}}'     = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        '{{symbols_zip}}'    = (Split-Path -Leaf $symbolsZip)
-        '{{symbols_sha256}}' = (Get-FileHash $symbolsZip -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     foreach ($key in $values.Keys) { $notes = $notes.Replace($key, $values[$key]) }
     $notesPath = Join-Path $repo "dist\MEVR-$Version-release-notes.md"

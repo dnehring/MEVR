@@ -39,7 +39,6 @@ What comes next, and what in this release still needs testing in a headset:
 | File | What it is | SHA-256 |
 |------|------------|---------|
 | `{{zip}}` | The release: MEVR Setup and the mod | `{{zip_sha256}}` |
-| `{{symbols_zip}}` | Debug symbols for crash reports (not needed to play) | `{{symbols_sha256}}` |
 
 Built from commit `{{commit}}` (tag `v{{version}}`). Source code: https://github.com/dnehring/MEVR, GPL-3.0. Fan
 project, not affiliated with or endorsed by EA or BioWare.
