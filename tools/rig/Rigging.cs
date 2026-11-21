@@ -48,7 +48,21 @@ internal sealed class Plan
     public bool ContinueOnError { get; set; }
     // A bare body of the same game whose hips and thighs a skirt is fitted to (Fit; steps with "fit").
     public FitReference FitReference { get; set; }
+    // The rigs the clubs' women wear (Clubs.cs): a generated plan's list (females-plan.py, from the census on the dev machine),
+    // which `mevr-rig bodies` bakes a club copy of after `sizes`.
+    public List<string> Clubs { get; set; } = new();
 }
+
+// How Rigging.Build runs a plan: the game the package is for, the folders the plan's paths name, where the package goes.
+internal sealed class BuildOptions
+{
+    public MEGame Game { get; set; } = MEGame.LE3;
+    public string[] Args { get; set; } = Array.Empty<string>();  // --game-root
+    public string OutDir { get; set; }                           // the package and its index here instead of the plan's `out` folder
+    public Action<string> Progress { get; set; }                 // after each step: its name
+}
+
+internal sealed record BuildResult(string OutPath, int Built, int Skipped, int Failed, int Fitted, double Seconds);
 
 internal sealed class FitReference
 {
@@ -88,22 +102,36 @@ internal static class Rigging
 {
     public const int MaxChunkBones = 75;  // UE3's GPU skin limit per chunk
 
+    // `mevr-rig rig <plan.json> [--game LE3] [--out <folder>]`.
     public static int Run(string[] args)
     {
         string planPath = args.Length > 1 ? args[1] : throw new ArgumentException("rig <plan.json>");
-        var plan = ReadPlan(planPath);
-        string baseDir = Path.GetDirectoryName(Path.GetFullPath(planPath));
-        string Resolve(string p)
-        {
-            p = p.Replace("{MEVR}", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MEVR"))
-                 .Replace("{LE3}", GameFolder(args, "LE3")).Replace("{LE2}", GameFolder(args, "LE2")).Replace("{LE1}", GameFolder(args, "LE1"));
-            p = Environment.ExpandEnvironmentVariables(p);
-            return Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(baseDir, p));
-        }
+        var result = Build(ReadPlan(planPath), planPath, new BuildOptions { Game = Lex.Game, Args = args, OutDir = Program.Arg(args, "--out") });
+        return result.Failed > 0 ? 1 : 0;
+    }
+
+    // A plan's path with {MEVR}, {LE1}, {LE2}, {LE3} and environment variables filled in, relative to the plan's folder.
+    public static string Resolve(string p, string planPath, string[] args)
+    {
+        p = p.Replace("{MEVR}", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MEVR"))
+             .Replace("{LE3}", GameFolder(args, "LE3")).Replace("{LE2}", GameFolder(args, "LE2")).Replace("{LE1}", GameFolder(args, "LE1"));
+        p = Environment.ExpandEnvironmentVariables(p);
+        return Path.GetFullPath(Path.IsPathRooted(p) ? p : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(planPath)), p));
+    }
+
+    // Builds a plan's package and its index; a step that fails with continueOnError is reported and left out.
+    public static BuildResult Build(Plan plan, string planPath, BuildOptions options)
+    {
+        string[] args = options.Args;
+        string Resolve(string p) => Rigging.Resolve(p, planPath, args);
         string outPath = Resolve(plan.Out);
+        if (options.OutDir != null)
+        {
+            outPath = Path.Combine(Path.GetFullPath(options.OutDir), Path.GetFileName(outPath));
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(outPath));
         File.Delete(outPath);
-        using IMEPackage pcc = MEPackageHandler.CreateAndOpenPackage(outPath, Lex.Game, forceLoadFromDisk: true);
+        using IMEPackage pcc = MEPackageHandler.CreateAndOpenPackage(outPath, options.Game, forceLoadFromDisk: true);
         var done = new Dictionary<string, StepPlan>(StringComparer.OrdinalIgnoreCase);
         var index = new List<(string path, string name)>();
         int built = 0, skipped = 0, failed = 0, fitted = 0;
@@ -152,6 +180,7 @@ internal static class Rigging
                     Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{step.Name}: skipped, no soft tissue");
                     report.Print();
                     ++skipped;
+                    options.Progress?.Invoke(step.Name);
                     continue;
                 }
             }
@@ -172,9 +201,11 @@ internal static class Rigging
                 Console.WriteLine($"{Path.GetFileNameWithoutExtension(outPath)}.{step.Name}: FAILED, {e.GetType().Name}: {e.Message}");
                 report.Print();
                 ++failed;
+                options.Progress?.Invoke(step.Name);
                 continue;
             }
             ++built;
+            options.Progress?.Invoke(step.Name);
             foreach (string p in step.StandsFor.Count > 0 ? step.StandsFor : new List<string> { sourceMesh.InstancedFullPath })
             {
                 index.Add((p, step.Name));
@@ -185,7 +216,7 @@ internal static class Rigging
         WriteIndex(indexPath, Path.GetFileNameWithoutExtension(outPath), index);
         Console.WriteLine($"{Path.GetFileName(outPath)}: {built} built ({fitted} skirts fitted), {skipped} skipped (no soft tissue), {failed} failed, " +
             $"{new FileInfo(outPath).Length / 1024} KB, {started.Elapsed.TotalSeconds:F0} s; index {indexPath}");
-        return failed > 0 ? 1 : 0;
+        return new BuildResult(outPath, built, skipped, failed, fitted, started.Elapsed.TotalSeconds);
     }
 
     // <package>.json beside the package (mevr-rig-index, version 1): each game object path the plan's rigs stand in for, and the
@@ -277,11 +308,14 @@ internal static class Rigging
     public static Plan ReadPlan(string planPath) =>
         JsonSerializer.Deserialize<Plan>(File.ReadAllText(planPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
 
+    // The Mass Effect Legendary Edition folder: --game-root, else MEVR_GAME_ROOT, else Steam's default.
+    public static string GameRoot(string[] args) => Program.Arg(args, "--game-root") ?? Environment.GetEnvironmentVariable("MEVR_GAME_ROOT")
+        ?? @"C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition";
+
     // A game's BioGame folder: --game-root <Mass Effect Legendary Edition folder>, else MEVR_GAME_ROOT, else Steam's default.
     public static string GameFolder(string[] args, string game)
     {
-        string root = Program.Arg(args, "--game-root") ?? Environment.GetEnvironmentVariable("MEVR_GAME_ROOT")
-            ?? @"C:\Program Files (x86)\Steam\steamapps\common\Mass Effect Legendary Edition";
+        string root = GameRoot(args);
         string folder = game switch { "LE1" => "ME1", "LE2" => "ME2", _ => "ME3" };
         return Path.Combine(root, "Game", folder, "BioGame");
     }

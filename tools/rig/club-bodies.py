@@ -3,14 +3,17 @@
 packages that keeps all of its jiggle (game/Hair's rule: no armour type in its path, no bodyJiggle share under 1), by the
 name in MEVR_Bodies_<GAME>.json. Prints them comma-separated for `mevr-rig clubs --names`; --list explains each.
 
-  python tools/rig/club-bodies.py LE3 [--list]
+  python tools/rig/club-bodies.py LE3 [--list] [--plan]
 
-The club levels are game/Hair's `clubLevels` (docs/trilogy-hair-plan.md section 12; keep the two in step). Reads the census
-and the index in %LOCALAPPDATA%\\MEVR\\rig (the player's game data); writes nothing.
+--plan reads the rigs from tools/rig/plans/<game>-females.jsonc's steps (their `standsFor` paths and names) instead of the built
+index: what females-plan.py writes into the plan's "clubs" list on the dev machine, so the players' build (`mevr-rig bodies`)
+needs no census. The club levels are game/Hair's `clubLevels` (docs/trilogy-hair-plan.md section 12; keep the two in step).
+Reads the census and the index in %LOCALAPPDATA%/MEVR/rig (the player's game data); writes nothing.
 """
 import csv
 import json
 import os
+import re
 import sys
 
 CLUB_LEVELS = {
@@ -39,19 +42,50 @@ def share(path):
     return 1.0
 
 
-def main():
-    game = sys.argv[1].upper()
+def census(game):
     root = os.path.join(os.environ['LOCALAPPDATA'], 'MEVR', 'rig')
-    index = json.load(open(os.path.join(root, game, 'MEVR_Bodies_%s.json' % game)))['meshes']
-    rows = list(csv.DictReader(open(os.path.join(root, 'census', game + '.csv'))))
+    with open(os.path.join(root, 'census', game + '.csv'), newline='') as f:
+        return list(csv.DictReader(f))
+
+
+def found_in_clubs(game, index, rows=None):
+    """{rig name: [census path, {club files}]} for the rigs (index: [{'path', 'name'}]) the census finds in a club level."""
+    rows = census(game) if rows is None else rows
     found = {}
     for r in rows:
-        f = r['file'].split('\\')[-1].lower()
+        f = r['file'].replace('\\', '/').split('/')[-1].lower()
         if not any(p in f for p in CLUB_LEVELS[game]) or r.get('chest2') != '1' or r.get('pelvis') != '1':
             continue
         for e in index:
             if e['path'] == r['path'] or e['path'].endswith('.' + r['path']):
                 found.setdefault(e['name'], [r['path'], set()])[1].add(f)
+    return found
+
+
+def clubs(game, index, rows=None):
+    """The club rigs' names, sorted: those that keep all of their jiggle."""
+    return sorted(n for n, (p, _) in found_in_clubs(game, index, rows).items() if share(p) >= 1.0)
+
+
+def plan_index(game):
+    """The plan's steps as index entries (each standsFor path and the rig's name): what the build's index will list."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plans', game.lower() + '-females.jsonc')
+    entries = []
+    for line in open(path, encoding='utf-8'):
+        m = re.search(r'"name": "([^"]+)".*"standsFor": \[([^\]]*)\]', line)
+        if m:
+            entries += [{'path': p, 'name': m.group(1)} for p in re.findall(r'"([^"]+)"', m.group(2))]
+    return entries
+
+
+def main():
+    game = sys.argv[1].upper()
+    if '--plan' in sys.argv:
+        index = plan_index(game)
+    else:
+        root = os.path.join(os.environ['LOCALAPPDATA'], 'MEVR', 'rig')
+        index = json.load(open(os.path.join(root, game, 'MEVR_Bodies_%s.json' % game)))['meshes']
+    found = found_in_clubs(game, index)
     take = sorted(n for n, (p, _) in found.items() if share(p) >= 1.0)
     if '--list' in sys.argv:
         for n, (p, files) in sorted(found.items()):

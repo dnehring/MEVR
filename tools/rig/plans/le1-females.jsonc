@@ -11,6 +11,8 @@
   "out": "{MEVR}/rig/LE1/MEVR_Bodies_LE1.pcc",
   "continueOnError": true,
   "fitReference": { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_NKD_R.pcc", "mesh": "NKDa.HMF_ARM_NKDa_MDL" },
+  // The rigs the clubs' women wear (club-bodies.py's rule): `mevr-rig bodies` bakes a club copy of each.
+  "clubs": ["HMF_ARM_NKDb_MDL_MEVR"],
   "steps": [
     { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHa.HMF_ARM_CTHa_MDL", "name": "HMF_ARM_CTHa_MDL_MEVR", "place": "auto", "fit": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHa.HMF_ARM_CTHa_MDL"] }, // full
     { "source": "{LE1}/CookedPCConsole/BIOG_HMF_ARM_CTH_R.pcc", "mesh": "CTHa.HMF_ARM_CTHa_MDL_Old", "name": "HMF_ARM_CTHa_MDL_Old_MEVR", "place": "auto", "fit": "auto", "standsFor": ["BIOG_HMF_ARM_CTH_R.CTHa.HMF_ARM_CTHa_MDL_Old"] }, // full
