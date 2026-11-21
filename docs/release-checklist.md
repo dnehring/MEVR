@@ -253,6 +253,8 @@ The owner decided these on 2026-11-04 (asked one by one); the rows below say wha
   such release: `tools/setup/test-fake-game.ps1` (all three games), then one install, Repair and uninstall of that game
   on a real install, and Launch with our loader in the launcher (it starts only Mass Effect 1 until T51).
   **Built 2026-11-16** ([research/33](../research/33-installer.md) section 17), tested on fake games only.
+  **Offered from 0.4.0** (the owner, 2026-11-20: ME2 and ME3 as an alpha): packaged with `-Games LE1,LE2,LE3`; our launcher
+  loader boots all three (T51). Still to do on a real install: an install, Repair and uninstall of each sequel, and Launch.
 - [ ] **[C] CI needs real work (owner, 2026-11-04).** Today there is none: `.github` holds only the issue forms. At least a
   Windows workflow (VS 2022) that builds the players' configuration (monolithic, `MEVR_LE1_LESDK=OFF`, which since
   2026-11-04 configures without the LExSDKv2 submodule) and the setup, runs ctest (`mevr-tests`, the colour and upscale

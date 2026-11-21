@@ -1126,7 +1126,12 @@ These unblock the most: almost every other entry gets smaller once they land.
 #### T51 Our ASI loader [G46]
 - **State:** LE1 done · LE2 verify · LE3 verify
 - **Lives in:** `src/loader`.
-- **Left:** every sequel run so far used LEBinkProxy: one run per game with our `bink2w64.dll` in its Binaries.
+- **Built (0.4.0, 2026-11-20):** the launcher's autoboot starts `-game 2` and `3` too (`BootFromLauncher` with
+  `launch::GameArguments`, `GameFolderName`, `GameExeName`; `kOurLauncherBoots` all three), so Setup's Launch asks Steam for
+  `-applaunch 1328670 -game <n> -autoterminate` for every game. The arguments are LEBinkProxy's behaviour (research/33
+  section 2), unit-tested, never seen starting a sequel.
+- **Left:** every sequel run so far used LEBinkProxy: one run per game with our `bink2w64.dll` in its Binaries, and one
+  Launch per sequel through our launcher loader (its log `Game\Launcher\Logs\MEVRLoader.log`: `-game 2: started Mass Effect 2`).
 
 #### T52 Setup, report a problem, the release package, the campaign pass [G47]
 - **State:** LE1 done · LE2 verify · LE3 verify
@@ -1140,7 +1145,9 @@ These unblock the most: almost every other entry gets smaller once they land.
   `-game 2` and `3` (T51: `launch::GameArguments`, then `kOurLauncherBoots`); the voice files and OpenAL Soft for the
   sequels. The package refuses a sequel that links LExSDKv2 (T04). The campaign and DLC exception register
   ([le2-validation-coverage.md](le2-validation-coverage.md); LE3 plan "Fixture and evidence matrix").
-- **Waits for:** T51 (Launch without the picker); T04 landed 2026-11-16 (a monolithic sequel build links no LExSDKv2). **Who:** the campaign pass: nobody yet.
+- **Offered since 0.4.0** (the owner, 2026-11-20: "a new release version to allow people to try the alpha for Mass Effect 2
+  and Mass Effect 3"): the release is packaged with `-Games LE1,LE2,LE3`.
+- **Waits for:** T51's real-game check (Launch without the picker, built); T04 landed 2026-11-16 (a monolithic sequel build links no LExSDKv2). **Who:** the campaign pass: nobody yet.
 
 #### T53 Crash reports and a safe quit [G48]
 - **State:** LE1 done · LE2 done · LE3 done
