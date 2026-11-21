@@ -1028,6 +1028,110 @@ change by script (the elevator's Kismet) or a save on the CIC deck.
 No scan of the triggers a start's script waits on exists yet (`game/SceneWaits` judges at run time): no fixture found this lane, on
 any game. The run-time source logged no wait in any held scene here (Avina, the refugee leader, Oraka, Sommers, Tali).
 
+## 13. Lane FPC7 (2026-11-20): the player's head drives Shepard ("Your head drives him")
+
+The owner's decision of 2026-11-20 for section 12.2 item 3 (Purgatory's drink): of (a) the view follows his head (a 1 m drift:
+rejected for comfort), (b) his body hidden while his head is more than 0.6 m from the eyes and (d) **the player's head drives him,
+as on foot**, the owner chose (d) with (b) as the fallback. One rule for the three games. ME3 stretch
+`20261120-163450-338-LE3-fpc7` (fake headset, `prep.ps1 -Game LE3 -RendererPreview`, Save_0090, restored with 0 differences).
+
+### 13.1 What happened to Shepard's bones in the drink before (item 1)
+
+1. **On the sequels arm IK never ran in a moment.** `game/ArmIk`'s `OnFoot()` admits game mode 0, a wrist screen or
+   `conversation_world::InWorld()`; on the sequels `InWorld()` is `sequel_conversation_world::InWorld()`, a held *conversation*
+   (`gC.on && gC.placed`). A moment is ME3's cinematic mode (8): `Stop("not on foot")`, the body the matinee's. ME3's drink
+   (`Main_Sequence.Drinking`, `SeqAct_Interp_0`) moves the body bones about 1 m forward onto the bar while the pawn stays: the
+   drawn head 0.81-1.12 m from the eyes (records), the player saw his back.
+2. **Where arm IK ran, the distance test dropped it.** `hand_targets::Current` keeps the view's frame (first person) only while the
+   view is within 45 units of his animated head (75 to leave; `ik::FirstPersonAnchor`), unless the scene says the body is away
+   (`BodyAway().on`). `ArmIk.cpp` and `BodyFollow.cpp` read `BodyAway()` only on LE1 (`#if defined(MEVR_GAME_LE1)`), so on the
+   sequels a held conversation whose animation took his head 0.75 m off fell to the third person: the body the animation's there
+   too. On ME1 a moment with the view with him (`!gC.detached`) has `BodyAway().on` false (it is on only detached or in a
+   conversation), the same fall.
+3. **ME1's hide is by distance and off by default.** `HidePawn` returns at once with `worldBody = player` (the default); the
+   sequels' moment hides his pawn only past 60 units between the pawn and the view's place (`gM.hid`), never for his bones.
+4. **The arms.** ME1: arm IK runs in moments and conversations (the arms on the controllers). The sequels: no arm IK in a moment
+   (the arms the matinee's); in a conversation the arms on the controllers.
+
+### 13.2 The rule (item 2)
+
+- **Core** `cw::StepHeadDrive` (`core/vr/ConversationWorld`): facts `scene`, `withHim`, `seated`, `dip`, `headFromEyesM` (his drawn
+  head bone from the drawn eyes, flat), `dtS`. `drive` = scene, with him, not seated, not under a dip. Driven: past `hideAboveM`
+  0.6 for `dwellS` 0.25 hides, under `showBelowM` 0.4 for 0.25 shows; NaN holds. Out of the scene, apart or seated a hide is let go
+  at once (`Shown`); under a dip nothing changes. `ik::kHeadDriveBendDegrees` 80 (the torso's bend limit while driven; on foot
+  35) and `ik::kHeadDriveTiltDegrees` 30 with the new `TorsoGoal::maxTiltDegrees` (default 180: no limit, on foot unchanged): the
+  lean's aim kept within 30 degrees of upright, so a body the capped slide (`bodyMoveMaxM`) leaves short leans toward the head,
+  never lies back to reach it (with the bend alone the 2 m case lay back far enough to "absorb" it). Tests:
+  `tests/HeadDriveTests.cpp` (`MEVR_HEAD_DRIVE_REPORT=1` prints): LE1's Shepard skeleton, the player standing, the animation
+  leaning him; a 1 m lean (the body 0.37 m forward, the spine 88 degrees) 0.98 -> 0.08 m, never hidden (with the on-foot 35
+  degrees 0.31 m); the drink's shape 1.17 -> 0.18 m; a 2 m lean 2.22 -> 0.79 m, hidden after 0.24 s, once; seated: no drive,
+  no hide; the rule's hysteresis, dip, NaN and release.
+- **Arm IK, every game:** `conversation_world::BodyAwayState` gains `headDrives` and `torsoOnly`. `OnFoot()` admits a head-driven
+  scene; `hand_targets::Current(..., bodyAway || headDrives, ...)` keeps the view's frame; `game/BodyFollow` sets the bend and the
+  tilt. The slide keeps its on-foot limit, or ME1's unlimited one where `BodyAway().on`.
+- **The arms per game:** ME1 keeps them on the controllers (as before in its moments and conversations). The sequels' moments
+  (`torsoOnly`): the torso and the planted legs only, the arms reach for the animation's hand bones (`bone_pose::AnimatedHands`)
+  carried by the torso's last slide and lift, scaled as drawn, so the glass stays in his hand at the bar's height. Carried with
+  the straightened chest instead (the first try), the hands rose into the air in front of the eyes. The sequels' conversations:
+  the controllers, as before.
+- **Each module steps it** where it holds the view: the sequels' `TickMoment` (with him: his pawn shown, within 0.4 m of the
+  player's place) and the conversation tick (his pawn at the pin), ME1's `TickMoment` and conversation tick (not detached). The
+  dip: 0.4 s after the scene's cut counter changes. The hide: `Actor.SetHidden` only over a pawn the scene shows; hidden, his mesh is
+  posed each tick by `SkeletalMeshComponent.ForceSkelUpdate` (a hidden mesh isn't posed, its head would never come back; ME1's
+  walk-in noted it); on the sequels a hide the view leaves is handed to the moment's distance rule (`gM.hid`), no show between.
+- **Logs:** `conversation world: moment N: the player's head drives Shepard's body (...)`, `... his body hidden for the player (the
+  head drive's fallback)`, `... shown again (...)`, `... drove Shepard's body for X s (his drawn head at most Y m from the eyes),
+  hidden N times`; ME1's with `convo:`. **Records:** `player.headDrive`, `player.bodyHiddenBy` (`"head-drive"`), on the sequels
+  `player.armsScene`. **Audit** (`tools/scene_audit.py`): a body hidden by the rule is not `body-not-drawn`; `eyes-off-body` judges a
+  moment's records too where they carry `headDrive` (the view with him; before, moments were left out); `hands-off-controllers` leaves
+  the scene's arms (`armsScene`) alone. ME1's live audit skips a body the rule hid. **Console:** `mevr convo headdrive
+  [on|off|auto]` on all three games; off is the broken run.
+
+### 13.3 ME3 in the game: Purgatory's drink (item 2)
+
+Save_0090, the docking officer's position 3 (`mevr convo pick 3`, `game-watch.ps1 -UntilWorld`), Shepard put at the bar (`mevr
+instances SFXGame.SFXPawn_Player TheWorld`, `mevr setloc 0 -17549 -2078 -176700`), each drink `conversation-world.ps1 -Start
+fire:Engine.SequenceOp:Drinking.SeqAct_Teleport_0 -StartInput 0 -Hands chest -Stances`. **The first fire after the ride starts
+nothing** (game mode stays 0; the second plays); the fourth drink of a series walks him to a booth (the view joins him 18.9 m away,
+not with him, no drive), the fifth is at the bar again.
+
+1. **Broken run** (`-Before 'mevr convo headdrive off'`, `convo-drinkoff-164149`): his drawn head 0.08-1.05 m from the eyes; findings
+   `eyes-off-body` (6 records, at most 1.05 m) and `hands-off-controllers`; snapshot `2026-11-20_16-42-03-982-left.png` (his back
+   and head in front of the eyes, as FPC6's).
+2. **The rule** (`convo-drinkon3-164517`): `the player's head drove Shepard's body for 10.8 s (his drawn head at most 0.18 m from the
+   eyes), hidden 0 times`; records 0.10-0.16 m; **0 findings**; snapshot `2026-11-20_16-45-26-453-left.png`: first person over the
+   bar, his hand with the glass at the bar's height, nobody in front of the eyes.
+3. **A replayed lean** (`make-walk-recording.py --plan stand:4,lean:6,stand:600 --lean-drop 0 --lean-forward 0.3 --hands chest
+   --ease 0.8`, the drink fired during it): the drawn eyes moved 30 units forward in the records (y -2142 -> -2112) and his drawn
+   head 26 units with them (-2127 -> -2101), 0.12-0.17 m from the eyes throughout; snapshot `2026-11-20_16-46-26-805-left.png`.
+4. **The fallback** (a drink without controllers: no arm IK, nothing to drive): `his drawn head stays 0.81 m from the player's eyes,
+   past what his body can take: his body hidden`, shown again at the moment's end (8.2 s hidden).
+5. **Moments this lane on ME3:** 6 held (5 drinks at the bar, 1 to the booth), 0 to the 3D screen.
+
+### 13.4 ME2 and ME1 (items 3 and 4)
+
+1. **ME2** (stretch `20261120-171302-891-LE2-fpc7-le2`, VR_31's Save_0004, Tali's room streamed in as section 6.2, her
+   conversation's start fired, hands at the chest; restored with 0 differences): the rule drove Shepard in the held conversation, his
+   drawn head 0.09-0.10 m from the eyes in every record (3.73 m at the first driven tick only, before arm IK's first write: the
+   0.25 s dwell keeps that from hiding him), no hide; one finding, `squad-behind` (Miranda behind the player at the opening, as
+   Jacob was in section 12.3). **No ME2 moment with his pawn under the view was reached:** ME2's ANIMCUTSCENEs park his pawn at the
+   world's origin (section 6.2), so the view is never with him there and the rule never acts; a level matinee that animates his own
+   pawn in place (as ME3's drink does) is unseen on ME2. Moments this lane on ME2: 0.
+2. **ME1** (research/69 item 45): the regression set drove him in all 16 scenes, `eyes-off-body` and the body rules never tripped,
+   one hide of 0.6 s in Liara's intro moment as the script's track carried him off; ME1 moments with the view with him: 2 driven
+   (the Spectre walk, Liara's intro), at most 0.12 m once driven.
+3. **ME1's compiled code:** with the lane's first commit only ArmIk, BonePose, Mod and TorsoPose differ from main among the top-level
+   LE1 objects (`TorsoGoal`'s new field and the head drive's reads); the ME1 commit changes `ConversationWorld` alone (212 objects
+   compared, non-debug sections).
+
+### 13.5 Left
+
+- The owner's look in the headset (notes/headset-checklist.md): the drink's arms reaching for the animation's glass, a lean over the
+  bar, the fallback's vanish.
+- ME2: a level matinee that animates his pawn in place; ME3: a conversation in the world with the rule (none run this lane: the
+  drinks are moments).
+- The first fire of `Drinking.SeqAct_Teleport_0` after the ride plays nothing (the runner fires twice).
+
 ## 5. How to check ME1 is unchanged
 
 The LE1 objects of every translation unit this lane touched (Mod, ConsoleRequest, ReflectCheck, ModLoader, PadMerge,
