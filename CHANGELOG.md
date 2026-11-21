@@ -5,7 +5,7 @@ What changes for players from one release to the next. Newest first; each releas
 `tools/package-release.ps1` copies its entry into the release notes (`.github/release-notes-template.md`). The version
 itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.txt`.
 
-## Unreleased
+## 0.4.0 (2026-11-20)
 
 - **Mass Effect 2 and 3, as an alpha.** MEVR Setup now offers all three games: pick one at the top of its window, then
   Install and Launch it. Both sequels run Halcyon's renderer for that game in life-size stereo with Mass Effect 1's systems:
