@@ -1141,6 +1141,10 @@ These unblock the most: almost every other entry gets smaller once they land.
   own manifest per game; `MEVR-Setup --for LE2`; the window's game switcher; `ReportRequest` in every host. Tested on
   fake games only (`tools/setup/test-fake-game.ps1`); ME1 byte for byte as before. **Not offered:** one switch,
   `package-release.ps1 -Games LE1,LE2` (the payload and `MEVR-Setup.ini [Setup] games`), the owner's call.
+- **The moving bodies (2026-11-20, research/33 section 18):** every game's install builds the rigged bodies (and Miranda's
+  hair on ME2 and ME3) from the player's own files with `payload\rig`'s `mevr-rig bodies` (`install/Bodies`; tools/rig/README.md
+  "The players' build"), the packages in `CookedPCConsole` with TOC entries on the record; Repair, Uninstall and Optional
+  content cover them. Fake games and a scratch root with copies of the real packages; [verify] a real game folder.
 - **Left, ME2 and ME3:** an install, repair and uninstall of each on the real game; the launcher's own loader starting
   `-game 2` and `3` (T51: `launch::GameArguments`, then `kOurLauncherBoots`); the voice files and OpenAL Soft for the
   sequels. The package refuses a sequel that links LExSDKv2 (T04). The campaign and DLC exception register

@@ -127,6 +127,8 @@ private:
     // The Optional content page's voice orders card (install/Voice, research/33 section 14): what's installed, the sizes,
     // what Install would do, from the manifest (no network).
     void UpdateVoice();
+    // The moving bodies' card and the Install page's row (install/Bodies): what's built for this game, from its record.
+    void UpdateBodies();
     // The Repair page's status (and repairNeeded_) from status_.needsRepair, which `reread` reads again from the files as
     // they are now (whenever the page is shown; Refresh has just read it).
     void UpdateRepairStatus(bool reread = false);
@@ -202,6 +204,9 @@ private:
     bool voiceInstalled_ = false, voiceSmall_ = false, voiceMedium_ = false, voiceLlm_ = true, voiceReady_ = false, voiceWarn_ = false;
     bool voiceUpToDate_ = false, voiceChoicesRead_ = false;
     std::string voiceState_, voiceSize_, voiceSources_, voiceLicences_, voiceButton_ = "Install", voiceModelText_, voiceParts_;
+    // ---- The moving bodies and hair (install/Bodies): the Install page's switch, the Optional content page's card.
+    bool optBodies_ = true, hasRig_ = false, bodiesBuilt_ = false, bodiesWarn_ = false;
+    std::string bodiesPlan_, bodiesState_, bodiesButton_ = "Build";
     std::string cancelText_ = "Stop waiting";  // the progress row's stop button
     std::vector<LogLine> log_;
     std::string progressText_;

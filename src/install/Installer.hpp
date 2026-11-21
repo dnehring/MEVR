@@ -25,7 +25,9 @@ namespace mevr::install {
 // optionally payload\voice\MEVR-Voice.dll (the voice orders' recognizer interface, research/54), which goes in ASI\voice with
 // the mod; what it needs besides is optional content the setup downloads (install/Voice, research/33 section 14); and
 // optionally payload\audio\ (OpenAL Soft: soft_oal.dll and its licence texts, research/69 "Real 3D audio"), which goes in
-// ASI\audio, where the host loads it for the game's audio: no game file is replaced.
+// ASI\audio, where the host loads it for the game's audio: no game file is replaced; and optionally payload\rig\ (the
+// rigged bodies' builder, install/Bodies: run on the player's PC after the install, its packages put in CookedPCConsole with
+// PCConsoleTOC.bin entries; any of the three games).
 //
 // The sequels (docs/trilogy-plan.md T52), when the release carries them: payload\LE2MEVR.asi and payload\LE3MEVR.asi (each
 // game's monolithic build) next to Mass Effect 1's, and payload\MELE2VR.ini / payload\MELE3VR.ini, the renderer's release
@@ -50,6 +52,10 @@ struct Payload {
     bool HasVoice() const;
     std::filesystem::path Audio() const { return dir / L"audio"; }
     bool HasAudio() const;
+    // payload\rig: the rigged bodies' builder (tools/rig's mevr-rig.exe, self-contained, and its plans; install/Bodies).
+    std::filesystem::path RigDir() const { return dir / L"rig"; }
+    std::filesystem::path RigExe() const { return RigDir() / L"mevr-rig.exe"; }
+    bool HasRig() const;
 };
 // `exeDir`\payload, or `exeDir` itself if it holds the files. nullopt when neither does (the copy installed in the
 // game's ASI folder has no payload: it can uninstall and add packs, not install or repair).
@@ -111,6 +117,13 @@ struct InstallOptions {
     // Halcyon's upstream MELE-VR found in Binaries\Win64: move its dxgi.dll and openxr_loader.dll aside (recorded as
     // renamed to *.mevr-off, put back on uninstall; its MELEVR.ini stays). False: refuse to install while it's there.
     bool moveUpstreamAside = true;
+    // The moving bodies and hair (install/Bodies): built from the player's game files after everything else, unless they're
+    // there already from this release's recipe. A failed or stopped build never fails the install. An update
+    // (preserveSettings) builds them only where they were built before.
+    bool bodies = true;
+    // The long steps' progress (the bodies' build: its text and percent) and the way to stop them; may be empty.
+    std::function<void(std::string const&, int)> progress;
+    std::atomic<bool> const* cancel = nullptr;
 };
 
 struct Outcome {
@@ -127,8 +140,10 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
 Outcome Uninstall(Layout const& layout, bool keepUserData, std::filesystem::path const& runningExe, bool removeLocalData = false);
 // Puts back any of our files that are missing or changed (from the payload), the loader if it was removed (RAD's DLL put
 // back by Steam's "verify files": renamed behind ours again), the cockpit's package and its PCConsoleTOC.bin entry,
-// Halcyon's per-slot fixes, and the VR game settings still waiting for GamerSettings.ini once the game has made it.
-Outcome Repair(Layout const& layout, Payload const& payload);
+// Halcyon's per-slot fixes, the VR game settings still waiting for GamerSettings.ini once the game has made it, and the moving
+// bodies' TOC entries (or the bodies built again when a package or their index is gone: `progress`, `cancel` as Install's).
+Outcome Repair(Layout const& layout, Payload const& payload, std::function<void(std::string const&, int)> const& progress = {},
+    std::atomic<bool> const* cancel = nullptr);
 Outcome ApplySettings(Layout const& layout, settings::Choices const& choices);
 // The game settings back to the player's own values (only those still as we set them).
 Outcome RestoreSettings(Layout const& layout);

@@ -187,19 +187,25 @@ internal static class Sizes
 
     public static int Run(string[] args)
     {
-        string bodiesPath = args[1];
         int refAt = Array.IndexOf(args, "--ref");
-        if (refAt < 0 || refAt + 2 >= args.Length)
+        if (args.Length < 2 || refAt < 0 || refAt + 2 >= args.Length)
         {
             Console.Error.WriteLine("mevr-rig sizes <bodies.pcc> --ref <package> <mesh> [--write]");
             return 2;
         }
+        Compute(args[1], args[refAt + 1], args[refAt + 2], args.Contains("--write"));
+        return 0;
+    }
+
+    // Each rigged body's breastMax against the reference (`refMesh` in `refPackagePath`); with `write` into the package's
+    // index. Returns how many bodies have one.
+    public static int Compute(string bodiesPath, string refPackagePath, string refMesh, bool write)
+    {
         Body reference;
-        using (var refPackage = MEPackageHandler.OpenMEPackage(args[refAt + 1], forceLoadFromDisk: true))
+        using (var refPackage = MEPackageHandler.OpenMEPackage(refPackagePath, forceLoadFromDisk: true))
         {
-            reference = Load(MeshOf(refPackage, args[refAt + 2]));
+            reference = Load(MeshOf(refPackage, refMesh));
         }
-        bool write = args.Contains("--write");
         using var package = MEPackageHandler.OpenMEPackage(bodiesPath, forceLoadFromDisk: true);
         var limits = new Dictionary<string, Limit>(StringComparer.OrdinalIgnoreCase);
         foreach (var e in package.Exports.Where(e => e.ClassName == "SkeletalMesh"))
@@ -219,7 +225,7 @@ internal static class Sizes
                 $"{Path.GetFileName(bodiesPath)}: {values.Count} bodies with breasts; breastMax min {values[0]:F3}, median {values[values.Count / 2]:F3}, max {values[^1]:F3}; " +
                 $"at 1.0 (as large as the reference or larger) {values.Count(v => v <= 1.0005f)}, at the cap {MaxScale} {values.Count(v => v >= MaxScale - 0.0005f)}"));
         }
-        if (!write) return 0;
+        if (!write) return limits.Count;
         string indexPath = Path.ChangeExtension(bodiesPath, ".json");
         var root = JsonNode.Parse(File.ReadAllText(indexPath));
         int set = 0;
@@ -238,7 +244,7 @@ internal static class Sizes
         }
         WriteIndex(indexPath, root);
         Console.WriteLine($"{indexPath}: breastMax on {set} of {root["meshes"].AsArray().Count} entries");
-        return 0;
+        return limits.Count;
     }
 
     // The index in WriteIndex's layout (one entry a line), with the added fields.

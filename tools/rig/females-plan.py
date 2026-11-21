@@ -11,6 +11,7 @@ bodies, copies, versions, armour or full by game/Hair OutfitJiggle's rule) and, 
 import argparse
 import collections
 import csv
+import importlib.util
 import os
 import re
 import sys
@@ -23,6 +24,14 @@ ARMOUR = ('_hvy', '_med', '_lgt')               # game/Hair OutfitJiggle's armou
 FULL = ('hmf_mir_',)                            # its fullBodies default: a bodysuit named like armour
 # Rigs (lower case) never fitted as a skirt (tools/rig/Fit.cs), when the owner sees one that shouldn't be.
 FIT_EXCLUDE = set()
+
+
+def club_rules():
+    """tools/rig/club-bodies.py (its name has a hyphen): which rigs the clubs' women wear."""
+    spec = importlib.util.spec_from_file_location('club_bodies', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'club-bodies.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def census_path(game):
@@ -183,6 +192,11 @@ def main():
             lines.append(f'  "fitReference": {{ "source": "{src}", "mesh": "{c["inFile"]}" }},')
         else:
             print('no HMF_ARM_NKDa in', a.game, ': no skirt fit')
+        # The clubs' copies (tools/rig/Clubs.cs), worked out here from the census so the players' build needs none.
+        index = [{'path': pick(groups[p])[0]['path'], 'name': mapping[k]} for k in keys for p in rigs[k]]
+        club_names = club_rules().clubs(a.game, index)
+        lines.append("  // The rigs the clubs' women wear (club-bodies.py's rule): `mevr-rig bodies` bakes a club copy of each.")
+        lines.append('  "clubs": [' + ', '.join(f'"{n}"' for n in club_names) + '],')
         lines.append('  "steps": [')
         steps = []
         for k in keys:

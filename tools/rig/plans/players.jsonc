@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+// What the players' build makes for each game (`mevr-rig bodies --game <GAME>`, MEVR Setup's install step; tools/rig/README.md
+// "The players' build", docs/trilogy-hair-plan.md section 12): `bodies`, the plan of every female body (after it the breasts'
+// limits from the reference and the clubs' copies from the plan's "clubs"), then `also` (hair stand-ins: Miranda's, which
+// engine/GameAdapter.hpp kHairStandIns names). Every package goes in the game's CookedPCConsole with a PCConsoleTOC.bin entry;
+// the index and the body spheres stay in %LOCALAPPDATA%\MEVR\rig\<GAME>, where game/Hair reads them. Only plans named here
+// are shipped in payload\rig\plans (tools/package-release.ps1).
+// `sizesReference`: the body every other body's breast limit is measured against (Sizes.cs: ME3 Liara's romance body), the rig
+// of that name in that game's `bodies` plan; for ME1 and ME2 it is built from ME3's files on its own when ME3's package isn't
+// given (--ref).
+{
+  "games": {
+    "LE1": { "bodies": "le1-females.jsonc", "also": [] },
+    "LE2": { "bodies": "le2-females.jsonc", "also": ["le2-miranda.jsonc"] },
+    "LE3": { "bodies": "le3-females.jsonc", "also": ["le3-miranda.jsonc"] }
+  },
+  "sizesReference": { "game": "LE3", "rig": "ASA_ARM_LIAd_MDL_MEVR" }
+}

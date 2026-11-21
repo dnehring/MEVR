@@ -101,6 +101,13 @@ with a backup, so **Uninstall puts the game back exactly**:
   in the game's file table, `BioGame\PCConsoleTOC.bin` (the game loads only the packages that table lists). Install
   adds just that entry, and Uninstall takes just that entry out again, so other mods' entries stay. The cockpit is
   always installed; `[Cockpit] enabled = 0` in `ASI\LE1MEVR.ini` keeps the game's own chase camera instead.
+- **The moving bodies and hair** (unless you switch them off on the Install page): built on your PC from the game's own
+  files after the install, by `payload\rig\mevr-rig.exe` (a minute or two, at low priority; its log is
+  `%LOCALAPPDATA%\MEVR\rig\build-LE1.log`). It writes `BioGame\CookedPCConsole\MEVR_Bodies_LE1.pcc` (on Mass Effect 2 and 3
+  also `MEVR_Miranda.pcc`) with one entry each in `BioGame\PCConsoleTOC.bin`, both on the install record like the cockpit's, and
+  the bodies' index and collision shapes in `%LOCALAPPDATA%\MEVR\rig\LE1`. They are BioWare's meshes with this mod's bones
+  added, so they are never in the download. If the build fails the install still finishes (the mod runs without them);
+  Optional content builds them again.
 - Halcyon's own **MELE-VR** (its `dxgi.dll` and `openxr_loader.dll` in `Binaries\Win64`), if you had it: this mod has
   Halcyon's renderer built in, so Install renames those two files to `*.mevr-off` and Uninstall puts them back. Your
   `MELEVR.ini` stays.
@@ -114,8 +121,9 @@ with a backup, so **Uninstall puts the game back exactly**:
 **Steam's "verify files"**, the EA app's repair or a game update can put the game's own `bink2w64.dll` and
 `PCConsoleTOC.bin` back: that removes the loader (no VR at all) and the cockpit's table entry (no cockpit in the
 Mako). Run **Repair** in the `MEVR-Setup.exe` from the downloaded zip (the copy in the game's `ASI` folder can't
-repair: it has no `payload` folder). Repair puts the loader back, adds the cockpit's entry again, and restores any of
-the mod's files that are missing or changed.
+repair: it has no `payload` folder). Repair puts the loader back, adds the cockpit's and the moving bodies' entries again
+(and builds the bodies again if one of their packages is gone), and restores any of the mod's files that are missing or
+changed.
 
 ## Controls
 
@@ -254,7 +262,7 @@ puts back what it replaced, and returns your game settings, except any you chang
 the game's renderer profiles, its old settings file and the mod's logs in the game folder, unless you choose **Keep my VR
 settings** (for a later reinstall). Your settings and calibration are one file each for the three games,
 `%LOCALAPPDATA%\MEVR\settings.ini` and `calibration.ini`: they stay unless you tick **Also delete the mod's diagnostics**
-(off by default), which deletes `%LOCALAPPDATA%\MEVR`: the settings, the calibration, snapshots, recordings, frame-timing captures, crash reports and the downloaded Mass Effect Modder (only once no other
+(off by default), which deletes `%LOCALAPPDATA%\MEVR`: the settings, the calibration, snapshots, recordings, frame-timing captures, crash reports, the moving bodies' index and build logs (`rig`) and the downloaded Mass Effect Modder (only once no other
 game of the trilogy still has the mod).
 
 If your `GamerSettings.ini` is read-only, the install goes ahead without the VR game settings and says so: untick

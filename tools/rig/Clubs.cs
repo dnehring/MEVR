@@ -41,13 +41,20 @@ internal static class Clubs
             Console.Error.WriteLine("mevr-rig clubs <bodies.pcc> --names <rig>,<rig>... [--middle 0.7] [--glute 0.12] [--breast-shape k,k,k,k] [--glute-shape k,k,k,k]");
             return 2;
         }
-        string path = Path.GetFullPath(args[1]);
         var names = Program.Arg(args, "--names").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         float middle = float.Parse(Program.Arg(args, "--middle") ?? Middle.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
         float glute = float.Parse(Program.Arg(args, "--glute") ?? Glute.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
         var breastShape = Sizes.Shape.Parse(Program.Arg(args, "--breast-shape"), Sizes.Shape.Breasts);
         var gluteShape = Sizes.Shape.Parse(Program.Arg(args, "--glute-shape"), Sizes.Shape.Glutes);
+        var (_, failed) = Make(args[1], names, middle, glute, breastShape, gluteShape);
+        return failed > 0 ? 1 : 0;
+    }
 
+    // The club copies of `names` in the package at `path` and their index fields; returns (made, not found).
+    public static (int made, int failed) Make(string path, IReadOnlyList<string> names, float middle, float glute,
+        Sizes.Shape breastShape, Sizes.Shape gluteShape)
+    {
+        path = Path.GetFullPath(path);
         string indexPath = Path.ChangeExtension(path, ".json");
         var root = JsonNode.Parse(File.ReadAllText(indexPath));
         var breastMax = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
@@ -105,7 +112,7 @@ internal static class Clubs
         }
         Sizes.WriteIndex(indexPath, root);
         Console.WriteLine($"{Path.GetFileName(path)}: {made.Count} club bodies, {failed} not found; index {indexPath}: club on {set} entries, {new FileInfo(path).Length / 1024} KB");
-        return failed > 0 ? 1 : 0;
+        return (made.Count, failed);
     }
 
     // Every LOD's vertices grown in place (Sizes' growth through each LOD's own weights); returns how many moved.

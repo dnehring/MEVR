@@ -11,8 +11,9 @@
 # and the zip, the checksums and the symbols are made from the signed files. Without those settings the release is
 # built unsigned, as before. SignPath's side is set up from .signpath/artifact-configuration.xml.
 #
-# The zip here has no Mako cockpit (-NoCockpit): its package needs Legendary Explorer and the models on Git LFS, which CI
-# doesn't have. Package the release with the cockpit locally (tools/package-release.ps1 -Zip), or add a reviewed package
+# The zip here has no Mako cockpit (-NoCockpit) and no body builder (-NoRig): the cockpit package needs Legendary Explorer and
+# the models on Git LFS, the builder (tools/rig's payload folder) Legendary Explorer's library, which CI
+# doesn't have. Package the release with both locally (tools/package-release.ps1 -Zip), or add a reviewed package
 # to this zip; either way the checksums and notes here are then those of the zip without it.
 name: Release
 
@@ -58,11 +59,11 @@ jobs:
           if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "The tag $env:TAG isn't v<major>.<minor>.<patch>" }
           "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
 
-      - name: Check, build and test (no cockpit)
+      - name: Check, build and test (no cockpit, no body builder)
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
-        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit
+        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit -NoRig
 
       # ---- Code signing (only with the SignPath settings) --------------------------------------------------------------
       - name: The binaries to sign
@@ -130,7 +131,7 @@ jobs:
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
-        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit -NoBuild -SkipTests -Zip  # tested in the build step
+        run: ./tools/package-release.ps1 -Tag $env:TAG -NoCockpit -NoRig -NoBuild -SkipTests -Zip  # tested in the build step
 
       - name: Keep the release
         uses: actions/upload-artifact@v4

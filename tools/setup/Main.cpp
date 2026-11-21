@@ -11,8 +11,8 @@
 //   MEVR-Setup.exe --preview <folder>      every page to PNGs, offline (no game, no window)
 //   Command line (no window; --out <file> also writes the output there):
 //     --status | --install [--quality headset|auto|performance|balanced|sharp|max|keep] [--no-settings] [--ignore-version]
-//     [--source Steam] [--keep-upstream (refuse instead of moving Halcyon's MELE-VR aside)] | --uninstall [--keep-settings]
-//     [--remove-local-data] | --repair | --launch (the Launch button: SteamVR first when it's the runtime, then the game; for a
+//     [--source Steam] [--keep-upstream (refuse instead of moving Halcyon's MELE-VR aside)] [--no-bodies (the moving bodies
+//     aren't built)] | --uninstall [--keep-settings] [--remove-local-data] | --repair | --launch (the Launch button: SteamVR first when it's the runtime, then the game; for a
 //     desktop shortcut) | --apply-settings [--quality q] | --restore-settings
 //     | --report [--snapshot] [--perf] [--report-dir <folder>] [--local <folder>] [--from-game]  (the problem report's zip:
 //       on the Desktop unless --report-dir; --local reads another %LOCALAPPDATA%\MEVR, for tests; --from-game: started by
@@ -27,6 +27,8 @@
 //     | --install-voice [--voice-small] [--voice-medium] [--no-voice-llm]  (the voice orders' files, install/Voice: downloaded,
 //       checked, put in ASI\voice, recorded; the model's release from MEVR-Setup.ini's [Voice] keys, or --repo) | --remove-voice
 //       | --check-voice [--deep]  (their sizes, or with --deep their SHA-256 sums)
+//     | --build-bodies | --remove-bodies  (the moving bodies and hair, install/Bodies: built from the game's own files with
+//       payload\rig's builder and put in, or taken out; Install builds them too unless --no-bodies)
 //   with --game <folder> and --payload <folder> (default: payload\ next to the exe).
 //   --for LE1|LE2|LE3: which of the Legendary Edition's three games the command (or the window) is about. Without it:
 //     the game whose folder --game names (...\Game\ME2\Binaries\Win64: a game's own setup copy and its in-game Report say
@@ -39,6 +41,7 @@
 //     https:// is refused. Never on by default.
 
 #include "SetupApp.hpp"
+#include "install/Bodies.hpp"
 #include "install/Voice.hpp"
 #include "install/SteamVrSettings.hpp"
 
@@ -77,6 +80,7 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -450,7 +454,21 @@ struct Cli {
     // --install-voice, --check-voice
     mevr::install::voice::Choices voice;
     bool deep = false;
+    bool noBodies = false;  // --install --no-bodies: the moving bodies aren't built (install/Bodies)
 };
+
+// The moving bodies' build as lines: one per new stage of its text's first word, and per quarter of the whole.
+std::function<void(std::string const&, int)> BodiesLines(std::function<void(std::string const&)> const& say) {
+    auto last = std::make_shared<std::pair<std::string, int>>("", -1);
+    return [say, last](std::string const& text, int percent) {
+        std::string const head = text.substr(0, text.find(' '));
+        if (head != last->first || percent / 25 != last->second / 25) {
+            last->first = head;
+            last->second = percent;
+            say(std::format("  [{}] {}", percent, text));
+        }
+    };
+}
 
 // --check-update: the update check the Settings page's Check button runs (install/Updates), its answer as text.
 int RunCheckUpdate(Cli const& cli, std::function<void(std::string const&)> const& say) {
@@ -632,6 +650,8 @@ int RunCli(Cli const& given) {
                 options.source = source;
                 options.ignoreVersion = cli.ignoreVersion;
                 options.moveUpstreamAside = !cli.keepUpstream;
+                options.bodies = !cli.noBodies;
+                options.progress = BodiesLines(say);
                 report(mevr::install::Install(layout, *payload, options));
             }
         } else if (cli.command == "uninstall") {
@@ -643,8 +663,20 @@ int RunCli(Cli const& given) {
                 say("payload: not found");
                 code = 1;
             } else {
-                report(mevr::install::Repair(layout, *payload));
+                report(mevr::install::Repair(layout, *payload, BodiesLines(say)));
             }
+        } else if (cli.command == "build-bodies") {
+            auto const payload = cli.payload ? std::optional<mevr::install::Payload>(mevr::install::Payload{*cli.payload})
+                                             : mevr::install::FindPayload(ExePath().parent_path());
+            if (!payload || !payload->HasRig()) {
+                say("payload: not found, or without the body builder (payload\\rig)");
+                code = 1;
+            } else {
+                auto const lines = BodiesLines(say);
+                report(mevr::install::bodies::Build(layout, *payload, [&](mevr::install::bodies::Step const& s) { lines(s.text, s.percent); }, nullptr));
+            }
+        } else if (cli.command == "remove-bodies") {
+            report(mevr::install::bodies::Remove(layout));
         } else if (cli.command == "launch") {
             // The Launch button's start (SteamVR first when it's the runtime, then the game): for a desktop shortcut, and to test it.
             if (detect::GameRunningIn(*root, game)) {
@@ -763,6 +795,16 @@ int RunCli(Cli const& given) {
             say(std::string("voice orders: ") + (v.parts.empty() ? "not installed" : parts) + (v.recorded ? "" : v.parts.empty() ? "" : " (not recorded as complete)") +
                 (v.damaged.empty() ? "" : std::format(", {} files missing or changed", v.damaged.size())) +
                 (v.dll ? "; MEVR-Voice.dll present" : "; no MEVR-Voice.dll"));
+        }
+        if (spec.bodies && s.installed) {
+            namespace bodies = mevr::install::bodies;
+            bodies::State const b = bodies::ReadState(layout);
+            std::string files;
+            for (std::string const& f : b.packages) {
+                files += (files.empty() ? "" : ", ") + f;
+            }
+            say(std::string("moving bodies: ") + (b.Built() ? std::format("built ({}; {} bodies)", files, b.bodies) : std::string("not built")) +
+                (b.damaged.empty() ? "" : std::format(", {} need repair", b.damaged.size())) + (b.Built() && !b.indexThere ? ", their index is gone" : ""));
         }
         std::error_code memEc;
         if (spec.packs) {
@@ -1210,6 +1252,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             cli.voice.llm = false;
         } else if (a == L"--deep") {
             cli.deep = true;
+        } else if (a == L"--no-bodies") {
+            cli.noBodies = true;
         } else if (a == L"--install-pack") {
             cli.command = "install-pack";
             cli.packId = detect::Utf8(next());
@@ -1230,7 +1274,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             std::wstring const name = a.substr(2);
             if (name == L"status" || name == L"install" || name == L"uninstall" || name == L"repair" || name == L"launch" || name == L"apply-settings" ||
                 name == L"restore-settings" || name == L"report" || name == L"check-update" || name == L"get-mem" || name == L"install-voice" ||
-                name == L"remove-voice" || name == L"check-voice" || name == L"download-update" || name == L"apply-update") {
+                name == L"remove-voice" || name == L"check-voice" || name == L"download-update" || name == L"apply-update" ||
+                name == L"build-bodies" || name == L"remove-bodies") {
                 cli.command = detect::Utf8(name);
             }
         }

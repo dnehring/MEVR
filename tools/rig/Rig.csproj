@@ -1,7 +1,17 @@
 ﻿<!-- SPDX-License-Identifier: GPL-3.0-only -->
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- tools/motion/README.md: adds bones to a skeletal mesh from the player's own game files (tools/rig/README.md).
-       Uses Legendary Explorer's library (GPL-3.0), referenced by path, never copied to our output or to git. -->
+  <!-- tools/rig/README.md: adds bones to a skeletal mesh from the player's own game files. Uses Legendary Explorer's library
+       (GPL-3.0). A development build references it by path in Legendary Explorer's own folder and copies nothing of it:
+
+         dotnet build tools/rig/Rig.csproj -c Release -o tools/rig/bin/out
+
+       The players' build (MEVR Setup's payload\rig, tools/package-release.ps1; tools/rig/README.md "The players' build") is
+       self-contained for Windows x64 (players have no .NET) and carries Legendary Explorer's library and the managed libraries it
+       uses next to the exe (LexRuntime below; GPL-3.0 and permissive, NOTICE.md). Never Oodle (RAD's, not ours to ship: the
+       tool loads the game's own oo2core_8_win64.dll from the player's game folder, Lex.Init) or Legendary Explorer's other
+       native files:
+
+         dotnet publish tools/rig/Rig.csproj -c Release -p:MevrPlayers=true -o <folder> -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -9,22 +19,60 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>mevr-rig</AssemblyName>
     <RootNamespace>Mevr.Rig</RootNamespace>
+    <Product>MEVR</Product>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <LexDir Condition="'$(LexDir)' == '' And Exists('$(MSBuildThisFileDirectory)..\..\mod-manager')">$(MSBuildThisFileDirectory)..\..\mod-manager\ME3TweaksModManager\data\ExternalTools\Legendary Explorer (Nightly)</LexDir>
     <!-- From a worktree under .claude/worktrees: the main checkout's mod-manager. -->
     <LexDir Condition="'$(LexDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\..\mod-manager\ME3TweaksModManager\data\ExternalTools\Legendary Explorer (Nightly)</LexDir>
+    <LexPrivate>false</LexPrivate>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MevrPlayers)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <LexPrivate>true</LexPrivate>
+    <DebugType>none</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- Only the .NET runtime's own libraries are trimmed (partial: no assembly of ours or Legendary Explorer's is touched):
+         93 MB to 39 MB. The three games' packages, indexes and spheres came out byte for byte as the development build's
+         (2026-11-20; tools/rig/README.md "The players' build"). System.Text.Json's reflection stays on for the plans. -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- Only the libraries named below go along, not every one Legendary Explorer's folder holds that its library refers to
+         (MSBuild's reference resolution would copy its image, glTF and tangent libraries, never loaded here). -->
+    <_FindDependencies>false</_FindDependencies>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="obj/**;bin/**" />
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
-    <Reference Include="LegendaryExplorerCore"><HintPath>$(LexDir)\LegendaryExplorerCore.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="Serilog"><HintPath>$(LexDir)\Serilog.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="LegendaryExplorerCore"><HintPath>$(LexDir)\LegendaryExplorerCore.dll</HintPath><Private>$(LexPrivate)</Private></Reference>
+    <Reference Include="Serilog"><HintPath>$(LexDir)\Serilog.dll</HintPath><Private>$(LexPrivate)</Private></Reference>
   </ItemGroup>
-  <ItemGroup>
+  <!-- What the tool loads of LegendaryExplorerCore 6.5's dependencies: MEVR_RIG_LOADED=1 over all three games' `bodies` listed
+       these (2026-11-20; its others, image, glTF, D3D and tangent libraries, are never loaded on this path). A dependency
+       missing here fails a build with FileNotFoundException naming it: MEVR Setup then installs without the bodies. -->
+  <ItemGroup Condition="'$(MevrPlayers)' == 'true'">
+    <LexRuntime Include="CommunityToolkit.Diagnostics;CommunityToolkit.HighPerformance;Microsoft.IO.RecyclableMemoryStream;Newtonsoft.Json" />
+    <Reference Include="@(LexRuntime)"><HintPath>$(LexDir)\%(Identity).dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+  <!-- The licence texts the players' build carries (licenses\ next to the exe; tools/package-release.ps1 copies them into the
+       release's licenses\ too): Legendary Explorer's GPL-3.0, the libraries' MIT and Apache-2.0, the .NET runtime's own. -->
+  <Target Name="MevrPlayersLicences" AfterTargets="Publish" Condition="'$(MevrPlayers)' == 'true'">
+    <PropertyGroup>
+      <MevrLicences>$(MSBuildThisFileDirectory)..\..\LICENSES\</MevrLicences>
+      <MevrRuntimePack>@(ResolvedRuntimePack->WithMetadataValue('FrameworkName', 'Microsoft.NETCore.App')->'%(PackageDirectory)')</MevrRuntimePack>
+    </PropertyGroup>
+    <Copy SourceFiles="$(MevrLicences)GPL-3.0-only.txt" DestinationFiles="$(PublishDir)licenses\LegendaryExplorerCore-GPL-3.0.txt" />
+    <Copy SourceFiles="$(MevrLicences)Apache-2.0.txt" DestinationFiles="$(PublishDir)licenses\Serilog-Apache-2.0.txt" />
+    <Copy SourceFiles="$(MevrLicences)Newtonsoft.Json-MIT.txt;$(MevrLicences)CommunityToolkit-MIT.txt;$(MevrLicences)RecyclableMemoryStream-MIT.txt" DestinationFolder="$(PublishDir)licenses" />
+    <Copy SourceFiles="$(MevrRuntimePack)\LICENSE.TXT" DestinationFiles="$(PublishDir)licenses\dotnet-runtime-MIT.txt" />
+    <Copy SourceFiles="$(MevrRuntimePack)\THIRD-PARTY-NOTICES.TXT" DestinationFiles="$(PublishDir)licenses\dotnet-runtime-THIRD-PARTY-NOTICES.txt" />
+  </Target>
+  <!-- A development build finds Legendary Explorer by this path (Program.cs); the players' build carries it and names no path. -->
+  <ItemGroup Condition="'$(MevrPlayers)' != 'true'">
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>LexDir</_Parameter1>
       <_Parameter2>$(LexDir)</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 </Project>
-

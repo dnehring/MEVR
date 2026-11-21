@@ -3,6 +3,7 @@
 
 #include "XrProbe.hpp"
 #include "core/Json.hpp"
+#include "install/Bodies.hpp"
 #include "install/GameSettings.hpp"
 #include "install/Http.hpp"
 #include "install/Launch.hpp"
@@ -158,7 +159,8 @@ bool App::Bind(Rml::Context* context) {
              Flag{"voice_installed", &voiceInstalled_}, Flag{"voice_small", &voiceSmall_}, Flag{"voice_medium", &voiceMedium_},
              Flag{"voice_llm", &voiceLlm_}, Flag{"voice_ready", &voiceReady_}, Flag{"voice_warn", &voiceWarn_},
              Flag{"voice_up_to_date", &voiceUpToDate_}, Flag{"multi_game", &multiGame_}, Flag{"has_target", &hasTarget_},
-             Flag{"has_content", &hasContent_}}) {
+             Flag{"has_content", &hasContent_}, Flag{"opt_bodies", &optBodies_}, Flag{"has_rig", &hasRig_},
+             Flag{"bodies_built", &bodiesBuilt_}, Flag{"bodies_warn", &bodiesWarn_}}) {
         c.Bind(f.name, f.value);
     }
     struct Text {
@@ -185,7 +187,8 @@ bool App::Bind(Rml::Context* context) {
              Text{"voice_licences", &voiceLicences_}, Text{"voice_button", &voiceButton_}, Text{"voice_model_text", &voiceModelText_},
              Text{"voice_parts", &voiceParts_}, Text{"cancel_text", &cancelText_}, Text{"game_name", &gameName_},
              Text{"game_short", &gameShort_}, Text{"mod_asi_text", &modAsiText_}, Text{"renderer_text", &rendererText_},
-             Text{"config_dir", &configDir_}, Text{"games_text", &gamesText_}}) {
+             Text{"config_dir", &configDir_}, Text{"games_text", &gamesText_}, Text{"bodies_plan", &bodiesPlan_},
+             Text{"bodies_state", &bodiesState_}, Text{"bodies_button", &bodiesButton_}}) {
         c.Bind(t.name, t.value);
     }
     c.Bind("progress", &progress_);
@@ -573,7 +576,8 @@ void App::Refresh() {
         fs::path const local = install::LocalDataDir();
         localText_ = local.empty() ? "Not found."
                                    : detect::Utf8(local.wstring()) + ": your settings and calibration (the three games share them), snapshots, recordings, "
-                                     "frame-timing captures, crash reports, the downloaded Mass Effect Modder and texture-pack work files. "
+                                     "frame-timing captures, crash reports, the moving bodies' index and build logs, the downloaded Mass Effect "
+                                     "Modder and texture-pack work files. "
                                      "Off: they stay.";
     }
     if (status_.hasRecord) {
@@ -600,7 +604,35 @@ void App::Refresh() {
                          : "Installs texture packs (GPL, by the ALOT team). Downloaded from its own GitHub releases when you press Download.";
     UpdatePacks();
     UpdateVoice();
+    UpdateBodies();
     Dirty();
+}
+
+void App::UpdateBodies() {
+    hasRig_ = payload_.has_value() && (sample_ || payload_->HasRig());
+    bodiesPlan_ = !hasRig_ ? std::string("This copy of the setup has no body builder: the mod runs without them.")
+                           : std::string("After the install, built on this PC from your own ") + gameName_ + " files (BioWare's bodies" +
+                                 (game_ == install::GameId::LE1 ? std::string(" with our soft-tissue bones")
+                                                                : std::string(" and Miranda's hair with our soft-tissue bones and hair chains")) +
+                                 "; nothing of the game is in this download): a minute or two, in the background. Off: Optional content "
+                                 "builds them later.";
+    if (sample_) {
+        return;
+    }
+    install::bodies::State const state = status_.root.empty() ? install::bodies::State{} : install::bodies::ReadState(CurrentLayout());
+    bodiesBuilt_ = state.Built();
+    bodiesWarn_ = !state.damaged.empty() || (state.Built() && !state.indexThere) || (installed_ && !hasRig_ && !state.Built());
+    bodiesButton_ = state.Built() ? "Build again" : "Build";
+    std::string files;
+    for (std::string const& f : state.packages) {
+        files += (files.empty() ? "" : ", ") + f;
+    }
+    bodiesState_ = !installed_ ? "Install the mod first: Install builds them too."
+        : !state.damaged.empty() ? std::format("{} needs repair (\"verify files\" took its TOC entry out, or it's gone): Repair, or Build again.", state.damaged.front())
+        : state.Built() && !state.indexThere ? std::string("Their index in %LOCALAPPDATA%\\MEVR\\rig is gone: Build again.")
+        : state.Built() ? std::format("Built from your game files: {} bodies ({}), in BioGame\\CookedPCConsole.", state.bodies, files)
+        : !hasRig_ ? std::string("Not built, and this copy of the setup has no body builder: run the downloaded release's MEVR Setup.")
+                   : std::string("Not built yet: the characters keep the game's own rigid bodies and hair.");
 }
 
 void App::UpdateRepairStatus(bool reread) {
@@ -1106,6 +1138,12 @@ void App::Act(std::string const& name, std::string const& arg) {
         options.choices = ChoicesFromModel();
         options.setupExe = options_.exe;
         options.source = SteamGame() ? "Steam" : status_.source;
+        // The moving bodies' build, last in each game's install: its progress on the bar, and the stop button skips it.
+        options.bodies = optBodies_;
+        options.progress = [this](std::string const& text, int percent) { Progress(text, percent); };
+        options.cancel = &cancel_;
+        canCancel_ = optBodies_ && hasRig_;
+        cancelText_ = "Skip the bodies' build";
         auto const payload = *payload_;
         fs::path const root = status_.root;
         RunJob("Installing", [this, root, payload, options, targets] {
@@ -1157,7 +1195,11 @@ void App::Act(std::string const& name, std::string const& arg) {
             return;
         }
         auto const payload = *payload_;
-        RunJob("Repairing", [this, layout, payload] { Apply(install::Repair(layout, payload)); });
+        canCancel_ = true;
+        cancelText_ = "Skip the bodies' build";
+        RunJob("Repairing", [this, layout, payload] {
+            Apply(install::Repair(layout, payload, [this](std::string const& text, int percent) { Progress(text, percent); }, &cancel_));
+        });
     } else if (name == "apply") {
         if (waiting_ || !hasGamerSettings_) {
             return;
@@ -1283,6 +1325,26 @@ void App::Act(std::string const& name, std::string const& arg) {
         RunJob("Installing the update",[this,layout,payload,installer] {
             Apply(install::updates::Apply(layout,payload,installer,[this](std::string const& text,int percent) { Progress(text,percent); },&cancel_));
         });
+    } else if (name == "bodies_build") {
+        if (!gameOk_ || !installed_ || !hasRig_ || waiting_ || !payload_) {
+            return;
+        }
+        auto const payload = *payload_;
+        canCancel_ = true;
+        cancelText_ = "Stop the build";
+        RunJob("Building the moving bodies", [this, layout, payload] {
+            Apply(install::bodies::Build(layout, payload, [this](install::bodies::Step const& step) { Progress(step.text, step.percent); }, &cancel_));
+        });
+    } else if (name == "bodies_remove") {
+        if (!gameOk_ || waiting_ || !bodiesBuilt_) {
+            return;
+        }
+        Confirm("Take the moving bodies out?",
+            "Removes the rigged bodies and hair built from your game files from BioGame\\CookedPCConsole, with their entries in the "
+            "game's file table. The characters keep the game's own rigid bodies and hair. Build puts them back.",
+            "Remove", true, [this, layout] {
+                RunJob("Removing the moving bodies", [this, layout] { Apply(install::bodies::Remove(layout)); });
+            });
     } else if (name == "voice_toggle") {
         if (arg == "small") {
             voiceSmall_ = !voiceSmall_;
@@ -1590,6 +1652,12 @@ void App::Sample(std::string const& state) {
                          : "Installs texture packs (GPL, by the ALOT team). Downloaded from its own GitHub releases when you press Download.";
     footerText_ = std::string("Mod log: Binaries\\Win64\\Logs\\") + Game().key + "MEVR.log · loader log: Logs\\MEVRLoader.log";
     UpdatePacks();
+    // The moving bodies' card: built (installed samples), or not yet.
+    bodiesBuilt_ = installed_;
+    bodiesWarn_ = false;
+    bodiesButton_ = installed_ ? "Build again" : "Build";
+    bodiesState_ = !installed_ ? "Install the mod first: Install builds them too."
+                               : std::string("Built from your game files: 38 bodies (MEVR_Bodies_") + Game().key + ".pcc), in BioGame\\CookedPCConsole.";
     if (state == "content") {
         for (PackView& v : packs_) {
             v.installed = v.id == "alot-le1";

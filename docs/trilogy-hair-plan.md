@@ -519,3 +519,11 @@ her variation and the club copies asked.
 
 5. **Checks per game:** the generated rigs' `check:` lines, a bench run of the jiggle per body
    (`mevr-hair-bench --jiggle`), then the owner in the headset on a sample: one armour, one bodysuit, one casual per game.
+6. **The players' install (section 7, way 1).** **Built** (2026-11-20; research/33 section 18, tools/rig/README.md "The
+   players' build"): MEVR Setup builds every game's bodies (and Miranda's hair on ME2 and ME3) on the player's PC after the
+   install, from their own game files, with `payload\rig`'s self-contained `mevr-rig bodies` (one run: the females plan, the
+   breasts' limits against ME3's LIAd, the clubs' copies from the plan's `"clubs"` list, no Python, no census), puts the
+   packages in `CookedPCConsole` with `PCConsoleTOC.bin` entries on the install record and the index and spheres in
+   `%LOCALAPPDATA%\MEVR\rig\<GAME>`; Repair, Uninstall and Optional content (Build again, Remove) cover them; a failed build
+   never fails the install. Checked byte for byte against the development pipeline on all three games and end to end through
+   Setup on a scratch game root; [verify] a real game folder and a player's slower PC.

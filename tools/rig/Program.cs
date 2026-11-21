@@ -19,11 +19,15 @@ internal static class Program
         if (args.Length < 1)
         {
             Console.Error.WriteLine("mevr-rig inspect <package.pcc> <mesh path, or its end> [--bones] [--game LE1|LE2|LE3]");
-            Console.Error.WriteLine("mevr-rig rig <plan.json> [--game LE3]   (tools/rig/README.md)");
+            Console.Error.WriteLine("mevr-rig rig <plan.json> [--game LE3] [--out <folder>]   (tools/rig/README.md)");
+            Console.Error.WriteLine("mevr-rig bodies --game LE1|LE2|LE3 [--game-root <folder>] [--out <folder>] [--ref <ME3 bodies package>]");
             return 2;
         }
+        // The players' build (Rig.csproj -p:MevrPlayers=true, MEVR Setup's payload\rig) carries Legendary Explorer's library next
+        // to the exe; a development build finds it in Legendary Explorer's own folder.
         string lexDir = Arg(args, "--lex-dir")
             ?? Environment.GetEnvironmentVariable("MEVR_LEX_DIR")
+            ?? (File.Exists(Path.Combine(AppContext.BaseDirectory, "LegendaryExplorerCore.dll")) ? AppContext.BaseDirectory : null)
             ?? typeof(Program).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == "LexDir")?.Value;
         if (lexDir == null || !File.Exists(Path.Combine(lexDir, "LegendaryExplorerCore.dll")))
         {
@@ -60,15 +64,34 @@ internal static class Program
             Console.Error.WriteLine($"{e.GetType().Name}: {e.Message}\n{e.StackTrace}");
             return 1;
         }
+        finally
+        {
+            // MEVR_RIG_LOADED=1: which assemblies and native modules the run loaded (what the players' build must carry:
+            // Rig.csproj's LexRuntime list, tools/rig/README.md "The players' build").
+            if (Environment.GetEnvironmentVariable("MEVR_RIG_LOADED") == "1")
+            {
+                foreach (var a in AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).OrderBy(n => n))
+                {
+                    Console.Error.WriteLine("loaded assembly: " + a);
+                }
+                foreach (System.Diagnostics.ProcessModule m in System.Diagnostics.Process.GetCurrentProcess().Modules)
+                {
+                    Console.Error.WriteLine("loaded module: " + m.FileName);
+                }
+            }
+        }
     }
 
     // Its own method, never inlined: compiling it loads Legendary Explorer's types, which needs the resolver.
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static int Dispatch(string[] args)
     {
-        Lex.Init(Arg(args, "--game") ?? "LE3");
+        string game = Arg(args, "--game") ?? "LE3";
+        // `bodies` for ME1 or ME2 may build ME3's reference body for the sizes (Bodies.cs).
+        Lex.Init(game, Rigging.GameRoot(args), args[0] == "bodies" ? new[] { "LE3" } : Array.Empty<string>());
         return args[0] switch
         {
+            "bodies" => Bodies.Run(args),
             "inspect" => Inspect.Run(args),
             "rig" => Rigging.Run(args),
             "contents" => Contents.Run(args),
@@ -85,7 +108,7 @@ internal static class Program
 
     private static int Usage()
     {
-        Console.Error.WriteLine("unknown verb: inspect | rig");
+        Console.Error.WriteLine("unknown verb: inspect | rig | bodies | contents | find | colliders | place | census | sizes | export | clubs");
         return 2;
     }
 
