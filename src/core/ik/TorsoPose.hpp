@@ -44,6 +44,10 @@ struct TorsoGoal {
     // Limits: how far the spine bends (whole chain, about its bottom joint) and twists.
     double maxBendDegrees = 35.0;
     double maxTwistDegrees = 60.0;
+    // The lean's aim kept within this angle of the body's up (degrees, about the bottom spine joint): a body the slide can't
+    // bring under the goal (capped at maxBodyShift) leans toward it only this far, never lies back to reach it. 180 or more: no
+    // limit (the default; on foot). The head drive's (ik::kHeadDriveTiltDegrees).
+    double maxTiltDegrees = 180.0;
     // False: twist only, no lean toward `head`.
     bool lean = true;
     // True: `head` is an offset from the reference's animated position, not a point. First

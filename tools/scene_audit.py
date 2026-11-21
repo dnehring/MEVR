@@ -62,17 +62,32 @@ def body_undrawn(st):
     ago = player.get('bodyDrawnAgoS')
     hands = player.get('hands') or {}
     in_view = any(isinstance(h, dict) and h.get('inView') for h in (hands.get('left'), hands.get('right')))
-    return ago if ago is not None and in_view and not player.get('detached') else None
+    # (A body hidden by the head drive's fallback, `player.bodyHiddenBy`, is hidden on purpose: research/le2-conversations-in-world.md
+    # section 13.)
+    return ago if ago is not None and in_view and not player.get('detached') and not player.get('bodyHiddenBy') else None
 
 
 def hands_off(st):
     """The drawn wrists' distance from the controllers, the larger of the two (metres), when both were measured (records since
     2026-11-13: `player.hands`, arm_ik::MeasureHands); else None."""
+    if st['player'].get('armsScene'):
+        return None  # the head drive leaves his arms to the scene's animation (the drink in his hand): not the controllers'
     hands = st['player'].get('hands') or {}
     sides = [hands.get('left'), hands.get('right')]
     if not all(isinstance(h, dict) and h.get('fromGripM') is not None for h in sides):
         return None
     return max(h['fromGripM'] for h in sides)
+
+
+def judges_gap(st, moment):
+    """Whether a record's body gap counts for eyes-off-body: the view with Shepard (not detached), his body not hidden by the
+    head drive's fallback (`player.bodyHiddenBy`), and in a moment only in records of builds where the player's head drives him
+    (`player.headDrive` present, 2026-11-20: research/le2-conversations-in-world.md section 13, research/69 item 45); before
+    that a moment's body was the animation's wherever it leaned."""
+    player = st['player']
+    if player.get('detached') or player.get('bodyHiddenBy'):
+        return False
+    return not moment or 'headDrive' in player
 
 
 def body_gap(st):
@@ -246,7 +261,7 @@ def findings(records):
                 add('too-close', st, p['name'], f"{math.dist(p['at'][:2], e[:2]) / 100:.2f} m from the eyes")
             if p.get('squad') and st.get('tag') in ('opening', 'settled', 'end') and bearing_off(st, p) > SQUAD_BEHIND_DEG:
                 add('squad-behind', st, p['name'], f"{bearing_off(st, p):.0f} deg from where the player faces")
-        if ok and not moment and not player.get('detached') and gap is not None and gap >= BODY_AWAY_M:
+        if ok and judges_gap(st, moment) and gap is not None and gap >= BODY_AWAY_M:
             gap_records.append((st, gap))
         walk = st.get('walkAlong') or {}
         if moment and walk.get('beside', 0) >= 1 and not walk.get('paused') and (walk.get('gapM') or 0) > WALK_LEFT_M:
@@ -294,7 +309,7 @@ def numbers(records):
     settled = settled_flags(records)
     moment = records[-1].get('opening') == 'moment'
     gaps = sorted(g for st, ok in zip(records, settled)
-                  if ok and not moment and not st['player'].get('detached') and (g := body_gap(st)) is not None)
+                  if ok and judges_gap(st, moment) and (g := body_gap(st)) is not None)
     meant = at_you = at_body = 0
     offs = []
     for st in records:

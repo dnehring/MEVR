@@ -12205,6 +12205,8 @@ int RunSquadPlaceTests();
 int RunBodyScaleTests();
 // tests/EyesInBodyTests.cpp: the eyes inside the body (core/ik/TorsoPose's crouch, research/29).
 int RunEyesInBodyTests();
+// tests/HeadDriveTests.cpp: the player's head drives Shepard in a held scene (cw::StepHeadDrive, ik::kHeadDriveBendDegrees).
+int RunHeadDriveTests();
 // tests/CrouchAnchorTests.cpp: the crouch that went third person (core/ik/BodyFollow's FirstPersonAnchor, research/29).
 int RunCrouchAnchorTests();
 // tests/ReplayFloorTests.cpp: a replay drives the floor sample (vr::recording::ReplayedFloor, the format's version 2).
@@ -12462,6 +12464,7 @@ int main() {
     gFailures += RunSquadPlaceTests();
     gFailures += RunBodyScaleTests();
     gFailures += RunEyesInBodyTests();
+    gFailures += RunHeadDriveTests();
     gFailures += RunCrouchAnchorTests();
     gFailures += RunReplayFloorTests();
     gFailures += RunBodySlotsSeatedTests();

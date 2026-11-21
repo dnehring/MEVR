@@ -1533,6 +1533,57 @@ SeatStep StepSeat(SeatState& state, Vec3 const& head, double h, bool crouched, d
     return out;
 }
 
+HeadDriveStep StepHeadDrive(HeadDriveState& state, HeadDriveFacts const& facts, HeadDriveLimits const& limits) {
+    HeadDriveStep out;
+    double const dt = std::isfinite(facts.dtS) ? std::clamp(facts.dtS, 0.0, 0.25) : 0.0;
+    if (!facts.scene || !facts.withHim || facts.seated) {
+        // Out of the scene, apart from him (the scene's own rules hide or show him then) or seated (StepSeat): let go.
+        state.overS = state.underS = 0.0;
+        if (state.hidden) {
+            state.hidden = false;
+            out.change = HeadDriveChange::Shown;
+        }
+        return out;
+    }
+    out.hidden = state.hidden;
+    if (facts.dip) {
+        return out;  // under a dip nothing changes: the dip covers it, and the composition after it decides
+    }
+    out.drive = true;
+    double const gap = facts.headFromEyesM;
+    if (!std::isfinite(gap)) {
+        return out;
+    }
+    if (gap > limits.hideAboveM) {
+        state.underS = 0.0;
+        state.overS += dt;
+        if (!state.hidden && state.overS >= limits.dwellS) {
+            state.hidden = true;
+            out.change = HeadDriveChange::Hid;
+        }
+    } else if (gap < limits.showBelowM) {
+        state.overS = 0.0;
+        state.underS += dt;
+        if (state.hidden && state.underS >= limits.dwellS) {
+            state.hidden = false;
+            out.change = HeadDriveChange::Shown;
+        }
+    } else {
+        state.overS = state.underS = 0.0;
+    }
+    out.hidden = state.hidden;
+    return out;
+}
+
+char const* Name(HeadDriveChange change) {
+    switch (change) {
+    case HeadDriveChange::None: return "none";
+    case HeadDriveChange::Hid: return "hid";
+    case HeadDriveChange::Shown: return "shown";
+    }
+    return "?";
+}
+
 bool Insists(Insistence& state, Vec3 const& wanted, double movedUnits, InsistLimits const& limits) {
     if (movedUnits > limits.maxUnits) {
         state.count = 0;

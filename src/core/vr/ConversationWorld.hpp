@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -922,6 +923,41 @@ struct SeatStep {
 };
 SeatStep StepSeat(SeatState& state, Vec3 const& head, double headAbovePlaceUnits, bool crouched, double dtS,
     SeatLimits const& limits = {});
+
+// The player's head drives Shepard (the owner's "Your head drives him", 2026-11-20; research/le2-conversations-in-world.md
+// section 13, research/69 item 45): in a held scene (a moment, or a conversation shown in the world) with the view with him
+// (his pawn under the view), not seated (the seat keeps StepSeat) and not under a dip, his body is driven by the player's head
+// as on foot (`drive`: arm IK keeps the view's frame whatever his animated head does, the torso's bend widens to
+// ik::kHeadDriveBendDegrees; the view never moves for it). Where the body can't reach (the slide's bodyMoveMaxM, the spine's
+// bend, the legs' room) and his drawn head stays more than `hideAboveM` (flat) from the drawn eyes for `dwellS`, his body is
+// hidden for the player (`hidden`); shown again once the head is within `showBelowM` for `dwellS`. Out of the scene, apart
+// from him or seated, a hide of this rule is let go at once; under a dip nothing changes. An unknown distance (NaN) holds.
+struct HeadDriveFacts {
+    bool scene = false;
+    bool withHim = false;
+    bool seated = false;
+    bool dip = false;
+    double headFromEyesM = std::numeric_limits<double>::quiet_NaN();
+    double dtS = 0.0;
+};
+struct HeadDriveLimits {
+    double hideAboveM = 0.6;
+    double showBelowM = 0.4;
+    double dwellS = 0.25;
+};
+struct HeadDriveState {
+    bool hidden = false;
+    double overS = 0.0;
+    double underS = 0.0;
+};
+enum class HeadDriveChange : std::uint8_t { None, Hid, Shown };
+struct HeadDriveStep {
+    bool drive = false;
+    bool hidden = false;
+    HeadDriveChange change = HeadDriveChange::None;
+};
+HeadDriveStep StepHeadDrive(HeadDriveState& state, HeadDriveFacts const& facts, HeadDriveLimits const& limits = {});
+char const* Name(HeadDriveChange change);
 
 // The starts held for later (an opaque id each: the start action). HoldStart: false if it was held already (its count grows)
 // or eight are held. ReleaseStart: the oldest one to fire now, when nothing that would refuse it is playing (`free`); those

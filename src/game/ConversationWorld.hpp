@@ -55,6 +55,13 @@ struct BodyAwayState {
     // How far the legs stand by leg IK (1) instead of playing the script's walk animation in place (0): 1 while the view
     // rests, 0 while it moves (the stick, the guided walk), eased; 0 with [Cinematics] worldLegs = walk.
     double legsStand = 0.0;
+    // The player's head drives Shepard (the owner's "Your head drives him", 2026-11-20; core cw::StepHeadDrive): a held scene with
+    // the view with him (his pawn under the view), not seated, not under a dip. Arm IK keeps the view's frame (first person)
+    // whatever his animated head does, on foot or not, and the torso bends up to ik::kHeadDriveBendDegrees to put his head at the
+    // player's; the slide keeps its on-foot limit unless `on`. `torsoOnly`: his arms keep the scene's animation (the sequels'
+    // moments: the drink in his hand), only the body under them is the player's.
+    bool headDrives = false;
+    bool torsoOnly = false;
 };
 BodyAwayState BodyAway();
 // The script switched the cinematic mode on while the player stood on foot (game/AuthoredMoment's handler, the game thread):
