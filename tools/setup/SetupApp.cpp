@@ -576,7 +576,8 @@ void App::Refresh() {
         fs::path const local = install::LocalDataDir();
         localText_ = local.empty() ? "Not found."
                                    : detect::Utf8(local.wstring()) + ": your settings and calibration (the three games share them), snapshots, recordings, "
-                                     "frame-timing captures, crash reports, the downloaded Mass Effect Modder and texture-pack work files. "
+                                     "frame-timing captures, crash reports, the moving bodies' index and build logs, the downloaded Mass Effect "
+                                     "Modder and texture-pack work files. "
                                      "Off: they stay.";
     }
     if (status_.hasRecord) {
@@ -610,9 +611,11 @@ void App::Refresh() {
 void App::UpdateBodies() {
     hasRig_ = payload_.has_value() && (sample_ || payload_->HasRig());
     bodiesPlan_ = !hasRig_ ? std::string("This copy of the setup has no body builder: the mod runs without them.")
-                           : std::string("After the install, built on this PC from your own ") + gameName_ +
-                                 " files (BioWare's bodies and Miranda's hair with our soft-tissue bones and hair chains; nothing of "
-                                 "the game is in this download): a minute or two, in the background. Off: Optional content builds them later.";
+                           : std::string("After the install, built on this PC from your own ") + gameName_ + " files (BioWare's bodies" +
+                                 (game_ == install::GameId::LE1 ? std::string(" with our soft-tissue bones")
+                                                                : std::string(" and Miranda's hair with our soft-tissue bones and hair chains")) +
+                                 "; nothing of the game is in this download): a minute or two, in the background. Off: Optional content "
+                                 "builds them later.";
     if (sample_) {
         return;
     }

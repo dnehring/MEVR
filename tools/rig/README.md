@@ -7,12 +7,13 @@ jiggle). The mod then puts the rigged meshes on the character and drives the bon
 character: ME3's Miranda (2026-11-19; research/trilogy-hair.md "The re-rig in the game", research/trilogy-jiggle.md).
 
 Re-rigged meshes are BioWare's meshes with our bones: built on the player's machine from a plan of ours (the owner,
-2026-11-19), never committed or published. The plan files (`plans/`) hold only our numbers and names.
+2026-11-19), never committed or published. The plan files (`plans/`) hold only our numbers and names. Players get them
+through MEVR Setup, which runs this tool's `bodies` verb on their PC ("The players' build" below).
 
 ## Running it
 
-Needs .NET (the tool is `net10.0-windows`) and Legendary Explorer's nightly in `mod-manager/` (the csproj finds it; GPL-3.0,
-referenced by path, never copied; `NOTICE.md`).
+Needs .NET (the tool is `net10.0-windows`) and Legendary Explorer's nightly in `mod-manager/` (the csproj finds it; GPL-3.0;
+a development build references it by path and copies nothing of it; `NOTICE.md`).
 
 ```powershell
 dotnet build tools/rig/Rig.csproj -c Release -o tools/rig/bin/out
@@ -90,10 +91,14 @@ sleeves) is skipped; a torso gets breasts, legs glutes.
 
 ```powershell
 tools/rig/census.ps1 -Game LE1                 # %LOCALAPPDATA%\MEVR\rig\census\LE1.csv
-python tools/rig/females-plan.py LE1 --write   # tools/rig/plans/le1-females.jsonc
-tools/rig/build-bodies.ps1 -Game LE1           # MEVR_Bodies_LE1.pcc + .json + colliders\, its log beside it (Idle priority)
+python tools/rig/females-plan.py LE1 --write   # tools/rig/plans/le1-females.jsonc (its steps and its "clubs" list)
+tools/rig/build-bodies.ps1 -Game LE1           # `mevr-rig bodies`: MEVR_Bodies_LE1.pcc + .json + colliders\ (+ MEVR_Miranda.pcc
+                                               # on ME2 and ME3), its log beside it (Idle priority)
 python tools/rig/bodies-report.py LE1 --list   # per body: mounds placed, LOD 0 vertices per region, checks, spheres
 ```
+
+The census and the plan script are the dev machine's: the plans they write (committed) carry everything the build needs,
+so a player's build reads only their game files.
 
 Sizes and times (2026-11-19): ME1 38 bodies 7.5 MB, ME2 80 of 101 14.4 MB, ME3 116 of 143 22.1 MB, under a minute each
 (research/trilogy-hair.md "Automatic placement and every female body").
@@ -115,8 +120,9 @@ place P, a vertex's share on the bone moves to P + G (v - P):
 
 (kDrop 0.25 drew a crease under the breasts at the upper end.) `mevr-rig sizes <bodies.pcc> --ref <package> <mesh> --write`
 writes each rig's `breastMax` (= 1 + the largest breast `a`) into the package's index: its breast peak reaches ME3 Liara's
-romance body's (ASA_ARM_LIAd) grown by a = 0.10 (the owner: up to 10% larger than hers), clamped 1.0..1.8; build-bodies.ps1
-runs it after each build (LE3's package first: it holds the reference). Glutes a 0.10..0.16, a middle dancer 0.12.
+romance body's (ASA_ARM_LIAd) grown by a = 0.10 (the owner: up to 10% larger than hers), clamped 1.0..1.8; the `bodies` verb
+runs it after each build (ME3's package holds the reference; for ME1 and ME2 it builds that one body from ME3's files when
+ME3's package isn't given with `--ref`). Glutes a 0.10..0.16, a middle dancer 0.12.
 
     tools\rig\preview-sizes.ps1          # before/after sheets: %LOCALAPPDATA%\MEVR\rig\previews\sizes2-<GAME>.png, sizes2-all.png
 
@@ -157,8 +163,12 @@ The game skins a bone from a rotation, a translation and one uniform scale, so t
 sag) can't be made at run time. `Clubs.cs` bakes it into a copy of each body the clubs' women wear, beside the rig in the same
 package:
 
-    python tools\rig\club-bodies.py LE3 --list       # which rigs: in a club level's packages, all of their jiggle kept
+    python tools\rig\club-bodies.py LE3 --list [--plan]  # which rigs: in a club level's packages, all of their jiggle kept
     mevr-rig clubs <bodies.pcc> --names <rig>,<rig>... [--middle 0.7] [--glute 0.12]
+
+The list is in the females plan (`"clubs"`, written by females-plan.py from the census with club-bodies.py's rule; `--plan`
+works it out from the plan's steps instead of a built index: the same names), and the `bodies` verb bakes the copies of the
+ones it built.
 
 - **Which bodies**: every rigged body the census finds in a club level's packages (game/Hair's `clubLevels`: ME1 Chora's Den
   `bioa_sta60_05`, ME2 Afterlife `biod_omghub_2*`, the VIP room and the bars, ME3 Purgatory `biod_cithub_wardsflux*`,
@@ -170,12 +180,53 @@ package:
 - **The index**: the rig's entries get `"club": "<copy>"` and `"clubBreastA": <a baked>` beside `breastMax`. The game wears
   the copy on a club NPC and adds only a small uniform per-dancer variation on top (each Breast*/Glute* bone scaled about a
   pivot 5 units above it).
-- build-bodies.ps1 runs it after `sizes` (it needs breastMax). Pictures of what the game will draw:
+- The `bodies` verb runs it after `sizes` (it needs breastMax). Pictures of what the game will draw:
 
       tools\rig\preview-clubs.ps1        # %LOCALAPPDATA%\MEVR\rig\previews\sizes3-<GAME>.png, sizes3-all.png
 
   per game an underwear body and a dress: LIAd, the game's mesh, the club copy exported from the package, and the copy with
   the strongest variation (`mevr-rig export ... --uniform-breast 1.06 --uniform-glute 1.03 [--pivot-up 5]`).
+
+## The players' build (MEVR Setup)
+
+Players never run Python, the census or a plan by hand: MEVR Setup runs one command per game after installing the mod
+(`src/install/Bodies`, research/33 section 18):
+
+    mevr-rig bodies --game LE1|LE2|LE3 [--game-root <Mass Effect Legendary Edition>] [--out <folder>] [--plans <folder>]
+                    [--ref <ME3's MEVR_Bodies_LE3.pcc>]
+
+`plans/players.jsonc` says what each game gets: its `bodies` plan (`<game>-females.jsonc`), then its `also` plans (Miranda's
+hair, `le2-miranda.jsonc` and `le3-miranda.jsonc`, the packages `engine/GameAdapter.hpp` `kHairStandIns` names; Liara's plan is
+a development one and isn't shipped). In order (`Bodies.cs`): the bodies plan (`Rigging.Build`), the breasts' limits
+(`Sizes.Compute` against `sizesReference`, ME3's LIAd: for ME1 and ME2 that one step of ME3's plan is built alone into
+`<out>\reference` and deleted after, unless `--ref` names ME3's package), the clubs' copies of the plan's `"clubs"` rigs that were
+built (`Clubs.Make`), then the `also` plans. A body that fails is left out of its package (the plan's `continueOnError`); a
+stage or an `also` plan that fails is left out and logged; the run fails (exit 3) only when the bodies package isn't built.
+Into `--out` (default `%LOCALAPPDATA%\MEVR\rig\<GAME>`): the packages, their indexes, `colliders\`, and `bodies.json`
+(`mevr-rig-bodies` version 1: each package's file and size, the bodies built, the failures, the seconds), which Setup reads.
+`progress <percent> <text>` lines on stdout drive Setup's bar; everything else is the log. Setup runs it at below-normal
+priority into `rig\<GAME>.build`, then moves the packages into the game's `BioGame\CookedPCConsole` (with a `PCConsoleTOC.bin`
+entry each, on the install record) and the rest to `rig\<GAME>`. `tools/rig/build-bodies.ps1` runs the same verb for
+development (Idle priority, `--ref` the ME3 package already built there).
+
+**The published tool** (`Rig.csproj -p:MevrPlayers=true`, what `tools/package-release.ps1` puts in `payload\rig` with
+`players.jsonc` and the plans it names): self-contained for Windows x64 (players have no .NET), the .NET runtime trimmed
+(`TrimMode partial`: no assembly of ours or Legendary Explorer's is touched), Legendary Explorer's library and the four
+libraries it loads (`LexRuntime`), their licence texts in `licenses\`, no development path inside. 98 files, 38 MB, 22.7 MB
+zipped (2026-11-20). **Oodle** (the games' package compression, RAD's library) is never shipped: `Lex.Init` loads the
+game's own `oo2core_8_win64.dll` from `<game root>\Game\ME<n>\Binaries\Win64`. Which libraries it needs: run any verb with
+`MEVR_RIG_LOADED=1` (it lists every loaded assembly and module on stderr); all three games' `bodies` load Legendary
+Explorer's library, Serilog, Newtonsoft.Json, CommunityToolkit.Diagnostics and .HighPerformance and RecyclableMemoryStream,
+never its image, glTF, D3D or tangent libraries. A missing one fails the build (Setup installs without the bodies).
+
+    dotnet publish tools/rig/Rig.csproj -c Release -p:MevrPlayers=true -o <folder>   # then copy plans\ beside it
+
+Checked 2026-11-20 on this machine's game files into scratch folders: the packages, indexes and body spheres of all three
+games byte for byte the development pipeline's (the old rig, sizes, clubs sequence), from the development build and from the
+published one; ME1 7 s, ME2 10 s, ME3 16 s at below-normal priority on the development PC (24 threads),
+12 s, 23 s and 40 s at Idle with a game running beside it. And end to end through MEVR Setup's `--install` on a scratch
+game root holding copies of the packages ME1's plan and ME3's reference read: the installed package byte for byte, the
+root byte for byte after the uninstall.
 
 ## Body spheres (the hair's collision with the body)
 

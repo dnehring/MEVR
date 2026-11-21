@@ -28,7 +28,7 @@
 	<div class="rail">
 		<button class="navb" data-class-on="page == 'welcome'" data-event-click="page = 'welcome'"><div class="nico i-home"/><div><div class="navl">Welcome</div><div class="navs">Status</div></div></button>
 		<button class="navb" data-class-on="page == 'install'" data-event-click="page = 'install'"><div class="nico i-download"/><div><div class="navl">Install</div><div class="navs">The mod and its loader</div></div></button>
-		<button class="navb" data-class-on="page == 'content'" data-event-click="page = 'content'"><div class="nico i-layers"/><div><div class="navl">Optional content</div><div class="navs">Voice orders, texture packs</div></div></button>
+		<button class="navb" data-class-on="page == 'content'" data-event-click="page = 'content'"><div class="nico i-layers"/><div><div class="navl">Optional content</div><div class="navs">Bodies, voice, textures</div></div></button>
 		<button class="navb" data-class-on="page == 'settings'" data-event-click="page = 'settings'"><div class="nico i-sliders"/><div><div class="navl">Settings</div><div class="navs">VR game settings</div></div></button>
 		<button class="navb" data-class-on="page == 'repair'" data-event-click="page = 'repair'"><div class="nico i-wrench"/><div><div class="navl">Repair</div><div class="navs">Check the files</div></div></button>
 		<button class="navb" data-class-on="page == 'uninstall'" data-event-click="page = 'uninstall'"><div class="nico i-trash"/><div><div class="navl">Uninstall</div><div class="navs">Put the game back</div></div></button>
@@ -125,7 +125,7 @@
 				<button class="tog" data-class-on="g.chosen" data-event-click="act('choose', g.key)"><div class="knob"/></button></div>
 		</div>
 		<div class="group">
-			<div class="row"><div class="rl"><div class="rlab">{{install_title}}</div><div class="rdesc">Close the game first. Takes a few seconds.</div></div>
+			<div class="row"><div class="rl"><div class="rlab">{{install_title}}</div><div class="rdesc">Close the game first. Takes a few seconds, and a minute or two more for the moving bodies.</div></div>
 				<button class="btn primary" data-class-disabled="!can_install || busy || waiting" data-event-click="act('install')"><div class="sweep"/><div class="bi i-download"/><span>{{install_button}}</span></button></div>
 		</div>
 	</div>
@@ -133,14 +133,14 @@
 	<!-- ===================================================================================== Optional content -->
 	<div data-if="page == 'content'">
 		<div class="stitle">Optional content</div>
-		<div class="sdesc">Extras that aren't in the download: the voice orders' recognizer and models, and texture packs made by others, each from where it officially lives, under its own terms.</div>
+		<div class="sdesc">Extras that aren't in the download: the moving bodies, built from your own game files, the voice orders' recognizer and models, and texture packs made by others, each from where it officially lives, under its own terms.</div>
 		<div class="row" data-if="request_text != ''"><div class="lead i-info"/><div class="rl"><div class="rlab">Asked for from the game</div><div class="rdesc">{{request_text}}</div></div></div>
 		<div class="group">
 			<div class="gtitle"><span>Moving bodies and hair</span><div class="gline"/></div>
 			<div class="card" data-class-installed="bodies_built">
 				<div class="ch"><div class="cn">Moving bodies and hair</div><span class="badge cyan" data-if="bodies_built">Built</span></div>
 				<div class="ca">Built on this PC from your own {{game_name}} files</div>
-				<div class="cd">Every woman's body gets soft-tissue bones and Miranda's hair gets hair chains, so they move with her. They are BioWare's meshes with our bones added, so they are never in this download: the setup builds them from your game (a minute or two) and puts them in BioGame\CookedPCConsole with entries in the game's file table. Install builds them too.</div>
+				<div class="cd">Every woman's body gets soft-tissue bones (and on Mass Effect 2 and 3 Miranda's hair gets hair chains), so they move with her. They are BioWare's meshes with our bones added, so they are never in this download: the setup builds them from your game (a minute or two) and puts them in BioGame\CookedPCConsole with entries in the game's file table. Install builds them too.</div>
 				<div class="cs" data-class-warn="bodies_warn">{{bodies_state}}</div>
 				<div class="cb">
 					<button class="btn small" data-class-disabled="busy || waiting || !installed || !has_rig" data-event-click="act('bodies_build')"><div class="sweep"/><div class="bi i-wrench"/><span>{{bodies_button}}</span></button>

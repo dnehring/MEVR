@@ -24,6 +24,10 @@
 # Effect 1's install is byte for byte what it was).
 #
 # The payload carries MEVR-Voice.dll when it's built (the voice orders, install/Voice): Install puts it in ASI\voice.
+# It carries the moving bodies' builder as the stand-in (rig\mevr-rig.exe, tools/setup/FakeRig.cpp, mevr-fake-rig: the fake
+# games have no packages to rig) with tools/rig/plans/players.jsonc: every game's install builds its packages into its
+# CookedPCConsole with TOC entries (each sequel gets a copy of its own game's PCConsoleTOC.bin), "verify files" and Repair put
+# the entries back, and the uninstalls take them out byte for byte (install/Bodies, research/33 section 18).
 # -Voice also runs the voice orders' downloads for real (research/33 section 14: Moonshine Voice's release and the tiny
 # models from GitHub and Hugging Face, about 71 MB, and GitHub's answer for the order model's release), checks them by
 # SHA-256, and leaves them for the uninstall's byte-for-byte check. Needs the internet; nothing else here does.

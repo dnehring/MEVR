@@ -7,6 +7,11 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **MEVR Setup builds the moving bodies and hair from your own game files.** After installing the mod for a game, Setup adds
+  soft-tissue bones to every woman's body and hair chains to Miranda's hair, built on your PC from that game's own files
+  (nothing of the game is in the download), in the background at low priority: about a minute or two per game. The Install
+  page can leave it out, Optional content builds them again or takes them out, Repair puts them back after Steam's "verify
+  files", and Uninstall removes them. If the build can't run, the install still finishes and the mod runs without them.
 - **Mako: your head aims the turret in the cockpit.** Both hands drive, so riding in the cockpit the cannon and machine gun
   fire where you look (the reticle sits in the middle of your view); the stick's trigger and A still fire them. The toggle
   nearest you on the stick's base is the **auto-turret switch**: flip it with a fingertip and your squadmate aims and fires

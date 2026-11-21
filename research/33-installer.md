@@ -1060,6 +1060,79 @@ starts `ASI\MEVR-Setup.exe --report --from-game --game <its Win64>`, and Setup t
 - The renderer-settings diff in REPORT.md is Mass Effect 1's only (the sequels' file is in the zip as it is).
 - A real-game install of each sequel (the owner's, or a lane with the game slot), and the campaign pass.
 
+## 18. The moving bodies, built on the player's PC (2026-11-20)
+
+The rigged bodies and hair (docs/trilogy-hair-plan.md sections 7 and 12: every female body with breast and glute bones,
+Miranda's hair with hair chains) are BioWare's meshes with our bones, so they are built from the player's own game files and
+never shipped (the owner's way 1). Until now only development scripts built them (`tools/rig/build-bodies.ps1`,
+`install.ps1`). Now MEVR Setup does, for each of the three games.
+
+### What the release carries
+
+`payload\rig\`: `mevr-rig.exe` (tools/rig) published self-contained for Windows x64 (`Rig.csproj -p:MevrPlayers=true`, by
+`tools/package-release.ps1` into `build-mono\rig`; the runtime trimmed, Legendary Explorer's library (GPL-3.0) and the four
+libraries it loads, MIT and Apache-2.0, their texts in `licenses\`), and `plans\`: `players.jsonc` and the five plans it names.
+98 files, 38 MB, 22.7 MB of the zip. No Oodle (RAD's): the tool loads the game's own `oo2core_8_win64.dll`. `-NoRig` leaves it
+out (CI's release workflow: no Legendary Explorer there). One command builds a game: `mevr-rig bodies --game <G> --game-root
+<root> --out <folder> [--ref <ME3's package>]` (tools/rig/README.md "The players' build": the females plan, the breasts' limits
+against ME3 Liara's romance body, the clubs' copies from the plan's `"clubs"` list, Miranda's hair on ME2 and ME3; no Python,
+no census: the dev machine's census went into the committed plans).
+
+### The step (`src/install/Bodies`)
+
+- **Install**, last (after the settings): `bodies::BuildIn` runs the builder at below-normal priority, hidden, into
+  `%LOCALAPPDATA%\MEVR\rig\<GAME>.build`, every line into `rig\build-<GAME>.log`, its `progress` lines on Setup's bar (the
+  stop button, "Skip the bodies' build", ends it). It reads the result (`bodies.json`: `ParseResult` takes only bare
+  `MEVR_*.pcc` names, each once, with sizes the files have), takes out what an earlier build put in and this one doesn't make,
+  then per package: a package of ours there without a record (a lost record, `install.ps1`'s development install) is adopted
+  (`AdoptAdded` + `AdoptTocEntry`: ours to replace and to remove, never a game file to back up), `PlaceIn` moves it into
+  `Game\ME<n>\BioGame\CookedPCConsole` as content `bodies/<file>`, `SetTocEntry` adds its `BioGame\CookedPCConsole\<file>`
+  entry. The index, `colliders\` and `bodies.json` move to `rig\<GAME>` (what game/Hair reads), with `setup.json` (the recipe:
+  a SHA-256 of the builder, Legendary Explorer's library and the plans). For ME1 and ME2 the reference body is ME3's installed
+  `MEVR_Bodies_LE3.pcc` when it's there (`--ref`), else the builder builds that one body from ME3's files.
+- **Never fails the install**: a failed, stopped or empty build, or a TOC Setup can't edit (checked before building), is a
+  warning (`Transaction::DemoteErrors`); an earlier build's packages stay as they were (nothing is touched before the build
+  succeeded). The mod runs without bodies (game/Hair finds no index).
+- **Kept**: an install over packages built from the same recipe, all there with their entries, builds nothing. An update
+  (`preserveSettings`) builds only where they were built before. The Install page's "Moving bodies and hair" switch (on by
+  default) and `--no-bodies` skip it.
+- **Repair** (`bodies::RepairIn`): after "verify files" puts the game's TOC back, each recorded package gets its entry again;
+  a package missing or changed, or the index gone from `%LOCALAPPDATA%`, builds them again. `ReadStatus` lists those in "needs
+  repair" (the TOC's path from `Verify`, the package's and the index's from `bodies::ReadState`).
+- **Uninstall**: the packages and the entries go like any other file (`added`, `toc`); `%LOCALAPPDATA%\MEVR\rig` only with the
+  "%LOCALAPPDATA%\MEVR" box (as the rest of it). **Optional content**'s card per game builds them again or removes them
+  (packages, entries and the index: `bodies::Build`, `bodies::Remove`; `--build-bodies`, `--remove-bodies`).
+  `Transaction::RemoveTocEntry` takes one entry out again (its size before us back, or removed).
+
+### Tested
+
+- `mevr-tests` `TestBodies`: the result's and the progress lines' parsing (bad names, a package twice, another game's),
+  the command line's quoting, `RemoveTocEntry` (ours out, the game's own size back, the TOC byte for byte), `DemoteErrors`;
+  then on a fake Mass Effect 2 with the stand-in builder (`tools/setup/FakeRig.cpp`, `mevr-fake-rig`): install (two packages,
+  two entries, the index), a second install keeps them (no build), "verify files" then Repair (entries back, no build), a
+  deleted package built again by Repair, a failing build (`MEVR_FAKE_RIG_FAIL=1`) through Build and through an install with a
+  new recipe (install ok, a warning, the old packages byte for byte), an empty build, Remove and Build, an unrecorded package
+  adopted, `--no-bodies`, uninstall byte for byte; Mass Effect 1 without a TOC: the install stands with the warning.
+- `tools/setup/test-fake-game.ps1 -Games LE1,LE2,LE3` with the stand-in in the payload and each sequel's own TOC (a copy of
+  the real game's) in the fake game: every game's install builds and records them, "verify files" and Repair put the entries
+  back byte for byte, every uninstall leaves the folder byte for byte: 303 checks, none failed.
+- The real builder (the published one) on this machine's game files into scratch folders: all three games' packages,
+  indexes and spheres byte for byte the development pipeline's; ME1 7 s, ME2 10 s, ME3 16 s (below-normal priority, nothing
+  else running), 12, 23 and 40 s at Idle with a game running beside it.
+- End to end: MEVR Setup `--install` with the published builder on a scratch game root holding copies of the five ME1 body
+  packages, ME3's two reference packages and the game's Oodle DLL (never the real game folder): the installed
+  `MEVR_Bodies_LE1.pcc` and its index byte for byte the development pipeline's, the root byte for byte after `--uninstall`.
+
+### Left
+
+- **[verify]** On a player's PC: the time on a slower CPU (estimate "a minute or two" per game), and a real install into a game
+  folder, then the game loading the packages Setup put in (the same packages and TOC entries `install.ps1` put in on the
+  development PC, which the game loads).
+- `tools/rig/install.ps1 -Uninstall` puts its kept TOC back whatever Setup added since: use one or the other on a PC.
+- The Six Labors, BCnEncoder, SharpGLTF and Mikktspace libraries Legendary Explorer's library refers to are not shipped
+  (never loaded on this path); a future plan that needs one fails its build until `Rig.csproj`'s `LexRuntime` and the licence
+  texts grow.
+
 ## Open
 
 - **[verify]** In the game: the EA app build; "Install after I quit" end to end; "Start the game once" (section 9).
