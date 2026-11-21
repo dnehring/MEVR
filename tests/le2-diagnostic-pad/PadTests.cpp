@@ -124,15 +124,18 @@ int main() try {
         Check(q.pad==Pad{} && q.packet!=p.packet && q.packet!=1,"release packet avoids physical packet collision after wrap");
     }
     {
-        Source s; Arm(s); std::atomic<bool> bad{}, go{};
+        // Each poller keeps polling until it has polled once after the cancel returned: under load the cancelling thread
+        // could otherwise run after every poll, and no neutral poll would follow it (a race in the test, not the source).
+        Source s; Arm(s); std::atomic<bool> bad{}, go{}, cancelled{};
         std::vector<std::thread> threads;
         for(unsigned i=0;i<4;++i) threads.emplace_back([&]{ while(!go.load()) std::this_thread::yield();
-            for(unsigned j=0;j<5000;++j) { auto p=s.Poll(0,disconnected,101); auto v=s.Snapshot();
+            for(unsigned j=0;;++j) { bool const last=j>=5000 && cancelled.load(); auto p=s.Poll(0,disconnected,101); auto v=s.Snapshot();
                 if((p.replace && p.pad!=tap && p.pad!=Pad{}) || v.run!=1 || v.sequence!=1 ||
                     v.activationDeadlineMs!=5100 || v.requestedDurationMs!=80 ||
-                    v.expiresMs!=(v.pulsePolls ? 181u : 0u)) bad=true; }
+                    v.expiresMs!=(v.pulsePolls ? 181u : 0u)) bad=true;
+                if(last) break; }
         });
-        threads.emplace_back([&]{ while(!go.load()) std::this_thread::yield(); s.CancelRun(1,101); });
+        threads.emplace_back([&]{ while(!go.load()) std::this_thread::yield(); s.CancelRun(1,101); cancelled=true; });
         go=true; for(auto& t:threads) t.join();
         auto view=s.Snapshot(); Check(!bad && !view.runOpen && view.phase==Phase::DrainPending && view.neutralPolls>=1,"concurrent cancellation emits neutral without early completion");
         Check(s.Poll(0,disconnected,102).pad==Pad{},"no held input during concurrent cancellation drain");
