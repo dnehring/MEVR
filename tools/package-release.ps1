@@ -28,6 +28,14 @@
 #                           texts. MEVR Setup puts it in ASI\audio; the host points the game's OpenAL imports at it (no game
 #                           file replaced). It is LGPL-2.0-or-later: the source it was built from goes in licenses\
 #                           (openal-soft-<version>.tar.bz2), the same place as the binary. -NoAudio leaves it out.
+#     payload\rig\*         the moving bodies' builder (tools/rig/README.md "The players' build", install/Bodies): mevr-rig.exe
+#                           published self-contained for Windows x64 (dotnet publish tools/rig/Rig.csproj -p:MevrPlayers=true
+#                           into build-mono\rig: the .NET runtime trimmed, Legendary Explorer's library and the four libraries
+#                           it loads, their licence texts in licenses\, also copied into the release's licenses\; never Oodle,
+#                           which it loads from the player's game folder), and plans\: players.jsonc and the plans it names.
+#                           MEVR Setup runs it after each game's install and puts the packages it builds from the player's
+#                           own game files in CookedPCConsole with PCConsoleTOC.bin entries. The publish needs Legendary
+#                           Explorer's nightly in mod-manager\ (Rig.csproj's LexDir). -NoRig leaves it out.
 #     With -Games LE1,LE2 (or LE3): the sequels' part of the release (docs/trilogy-plan.md T52). Whether and when a sequel is
 #     offered to players is the owner's call, so the default is -Games LE1 and nothing below is in the package:
 #     payload\LE2MEVR.asi   that game's monolithic mod (build-mono configured with -DMEVR_BUILD_LE2=ON / -DMEVR_BUILD_LE3=ON)
@@ -43,7 +51,7 @@
 #     dist\MEVR-<version>-release-notes.md (.github/release-notes-template.md with this version's CHANGELOG.md entry).
 #
 #   tools\package-release.ps1 [-Version 0.1.0] [-Tag v0.1.0] [-NoBuild] [-Zip] [-AllowDirty] [-SkipTests]
-#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit] [-NoVoice] [-Games LE1,LE2,LE3]
+#                             [-LexSdkPermission] [-CockpitPackage <pcc>] [-NoCockpit] [-NoVoice] [-NoRig] [-Games LE1,LE2,LE3]
 #
 # The version is CMake's: project(MEVR VERSION x.y.z) in CMakeLists.txt is the only place it is written. -Version only
 # confirms it. It refuses to package (docs/release-checklist.md section 5):
@@ -55,7 +63,8 @@
 #   - a failing ctest in build-mono, unless -SkipTests;
 #   - an ASI that links LExSDKv2 (no licence), unless -LexSdkPermission says its author agreed: LE1MEVR.asi, and
 #     LE2MEVR.asi / LE3MEVR.asi when build-mono is configured with them (T04, docs/trilogy-plan.md);
-#   - a missing licence text, a missing cockpit package (unless -NoCockpit), or no MEVR-Voice.dll (unless -NoVoice).
+#   - a missing licence text, a missing cockpit package (unless -NoCockpit), no MEVR-Voice.dll (unless -NoVoice), or no
+#     published mevr-rig of this version and commit (unless -NoRig).
 # It warns when HEAD has no tag v<version> and when the cockpit package is older than its sources (tools/cockpit,
 # concept/assets/game-ready: rebuild it with tools/cockpit/package). Texture packs are never bundled.
 #
@@ -73,6 +82,7 @@ param(
     [switch]$NoCockpit,
     [switch]$NoVoice,
     [switch]$NoAudio,
+    [switch]$NoRig,
     # The games the package carries and MEVR Setup offers. Mass Effect 1 always; a sequel only when named.
     [string[]]$Games = @('LE1')
 )
@@ -208,10 +218,35 @@ if (-not $NoBuild) {
     if (-not $SkipTests) { $targets += 'mevr-test-programs' }  # everything ctest runs (CMakeLists.txt)
     Invoke-Native { cmake --build $buildDir --config Release --parallel --target $targets }
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
+    if (-not $NoRig) {
+        # The moving bodies' builder, published self-contained (Rig.csproj's players' build), this version and commit in it.
+        $rigVersion = "$Version+$head$(if ($dirty.Count -gt 0) { '-dirty' })"
+        $rigOut = Join-Path $buildDir 'rig'
+        if (Test-Path $rigOut) { Remove-Item -Recurse -Force $rigOut }
+        Invoke-Native { dotnet publish (Join-Path $repo 'tools\rig\Rig.csproj') -c Release -p:MevrPlayers=true "-p:Version=$Version" "-p:InformationalVersion=$rigVersion" -o $rigOut -nologo -v q }
+        if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish of tools/rig failed: it needs the .NET 10 SDK and Legendary Explorer's nightly in mod-manager\ (Rig.csproj's LexDir), or pass -NoRig"
+        }
+    }
 }
 
 $out = Join-Path $buildDir 'Release'
 foreach ($sequel in $sequels) { Assert-SequelSdkFree $sequel }  # with -NoBuild too, before anything else about the sequel
+# The moving bodies' builder (with -NoBuild too: an earlier publish of this version and commit).
+$rigOut = Join-Path $buildDir 'rig'
+if (-not $NoRig) {
+    $rigDll = Join-Path $rigOut 'mevr-rig.dll'
+    if (-not (Test-Path (Join-Path $rigOut 'mevr-rig.exe')) -or -not (Test-Path $rigDll)) {
+        throw "Not published: $rigOut\mevr-rig.exe (package without -NoBuild, which publishes tools/rig, or pass -NoRig)"
+    }
+    $rigInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($rigDll)
+    if ($rigInfo.ProductVersion -ne "$Version+$head" -and -not ($AllowDirty -and $rigInfo.ProductVersion -eq "$Version+$head-dirty")) {
+        Stop-Packaging "mevr-rig was published as $($rigInfo.ProductVersion), not $Version+$head (HEAD): package without -NoBuild"
+    }
+    if (Get-ChildItem $rigOut -Recurse -File -Filter 'oo2core*' -ErrorAction SilentlyContinue) {
+        Stop-Packaging "$rigOut has an Oodle DLL (RAD's, never ours to ship): the tool loads the game's own"
+    }
+}
 $binaries = @('LE1MEVR.asi', 'bink2w64.dll', 'MEVR-Setup.exe')
 foreach ($sequel in $sequels) { $binaries += "${sequel}MEVR.asi" }
 if (-not $NoVoice) { $binaries += 'MEVR-Voice.dll' }
@@ -304,6 +339,14 @@ if (-not $NoAudio) {
     $licences['OpenAL-Soft-BSD-3-Clause.txt'] = 'external\openal-soft\BSD-3Clause'
     $licences["openal-soft-$softVersion.tar.bz2"] = "external\openal-soft\openal-soft-$softVersion.tar.bz2"
 }
+# The moving bodies' builder: Legendary Explorer's library (GPL-3.0, GPL-3.0.txt above; its source: github.com/ME3Tweaks/
+# LegendaryExplorer, NOTICE.md), the libraries it loads and the .NET runtime, as its publish put them in its licenses\.
+if (-not $NoRig) {
+    foreach ($name in 'Serilog-Apache-2.0.txt', 'Newtonsoft.Json-MIT.txt', 'CommunityToolkit-MIT.txt', 'RecyclableMemoryStream-MIT.txt',
+        'dotnet-runtime-MIT.txt', 'dotnet-runtime-THIRD-PARTY-NOTICES.txt') {
+        $licences["rig-$name"] = "build-mono\rig\licenses\$name"
+    }
+}
 foreach ($source in $licences.Values) {
     if (-not (Test-Path (Join-Path $repo $source))) { throw "Licence text missing: $source (fill external\ and third_party\ first)" }
 }
@@ -352,6 +395,22 @@ if ($NoAudio) {
         Copy-Item (Join-Path $soft $f) $audioDir
     }
     Write-Output "OpenAL Soft ${softVersion}: payload\audio"
+}
+if ($NoRig) {
+    Write-Warning 'No body builder (-NoRig): players of this package get no moving bodies and hair.'
+} else {
+    $rigDir = Join-Path $payload 'rig'
+    New-Item -ItemType Directory -Force (Join-Path $rigDir 'plans') | Out-Null
+    Get-ChildItem $rigOut | Where-Object { $_.Name -ne 'plans' } | Copy-Item -Destination $rigDir -Recurse
+    # The plans the players' build runs: players.jsonc and the plans it names (never a development plan such as Liara's).
+    $plansDir = Join-Path $repo 'tools\rig\plans'
+    $playersText = (Get-Content (Join-Path $plansDir 'players.jsonc') | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
+    $players = $playersText | ConvertFrom-Json
+    $planFiles = @('players.jsonc')
+    foreach ($g in $players.games.PSObject.Properties) { $planFiles += @($g.Value.bodies) + @($g.Value.also) }
+    foreach ($f in ($planFiles | Where-Object { $_ } | Select-Object -Unique)) { Copy-Item (Join-Path $plansDir $f) (Join-Path $rigDir 'plans') }
+    $rigBytes = (Get-ChildItem -Recurse -File $rigDir | Measure-Object Length -Sum).Sum
+    Write-Output ("Body builder: payload\rig ({0} files, {1:N1} MB; plans {2})" -f @(Get-ChildItem -Recurse -File $rigDir).Count, ($rigBytes / 1MB), ($planFiles -join ', '))
 }
 if (-not $NoCockpit) {
     if (-not $CockpitPackage) { $CockpitPackage = Join-Path $repo 'build\cockpit-hull\BIOG_MEVR_Cockpit.pcc' }
