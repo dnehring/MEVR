@@ -1768,6 +1768,11 @@ switching frameworks.
   (`tools/package-release.ps1 -Games`, which refuses a sequel linking LExSDKv2). Tested on fake games only
   (`tools/setup/test-fake-game.ps1 -Games LE1,LE2,LE3`; `-Setup <old exe> -Trace <folder>` proves ME1 unchanged between
   two builds). Never add an LE1 path constant (`install::paths`) to a step that should work for every game.
+  **Offered since 0.4.0** (the owner, 2026-11-20: ME2 and ME3 as an alpha; `package-release.ps1 -Games LE1,LE2,LE3`), and our
+  launcher loader boots `-game 2` and `3` too (T51). **The moving bodies** (research/33 section 18, `install/Bodies`): Install
+  runs `payload\rig\mevr-rig.exe bodies` (tools/rig, self-contained, Legendary Explorer's library) on the player's own game
+  files, last and at below-normal priority, puts the packages in CookedPCConsole with TOC entries in the manifest and the
+  index and colliders in `%LOCALAPPDATA%\MEVR\rig\<G>`; a failed build only warns. Never ship the built packages.
 - Report a problem ([research/33](research/33-installer.md) section 8): MEVR Setup's page (or `--report [--snapshot]
   [--perf]`), the menu's Advanced > Diagnostics > Report (`plugin/ReportRequest`: starts `ASI\MEVR-Setup.exe --report
   --from-game` at once, background priority, no window) and the crash offer (`install/ReportMarks`) write a redacted

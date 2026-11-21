@@ -95,7 +95,7 @@ with a backup, so **Uninstall puts the game back exactly**:
 - `bink2w64.dll`: the ASI loader that loads the mod. The game's own file is kept as `bink2w64_original.dll`. This is
   skipped if ME3Tweaks' loader is already installed. If another tool replaces our loader later, Uninstall and Repair
   leave that tool's loader alone. The same loader also goes into `Game\Launcher` (that folder's own Bink DLL is kept as
-  `bink2w64_original.dll` there too): when **Launch** asks Steam for Mass Effect 1, it starts the game from the launcher
+  `bink2w64_original.dll` there too): when **Launch** asks Steam for a game, it starts that game from the launcher
   without its game picker.
 - **The Mako's cockpit:** its 3D model package, `BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc`, and one entry for it
   in the game's file table, `BioGame\PCConsoleTOC.bin` (the game loads only the packages that table lists). Install
