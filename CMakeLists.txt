@@ -1386,6 +1386,8 @@ add_library(mevr-install STATIC
     src/install/ReportMarks.hpp
     src/install/Toc.cpp
     src/install/Toc.hpp
+    src/install/Bodies.cpp
+    src/install/Bodies.hpp
     src/install/Updates.cpp
     src/install/Updates.hpp
     src/install/UpdateInstall.cpp
@@ -1935,6 +1937,13 @@ if (MEVR_BUILD_TESTS)
     set_target_properties(mevr-fake-mem PROPERTIES OUTPUT_NAME MassEffectModderNoGui RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fake-mem/$<CONFIG>)
     target_compile_definitions(mevr-fake-mem PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
     target_compile_options(mevr-fake-mem PRIVATE /W4 /WX /permissive- /utf-8)
+    # A stand-in for the rigged bodies' builder (tools/rig's mevr-rig.exe bodies): writes small packages, their index and
+    # bodies.json, so the setup's bodies step (install/Bodies) is tested on a fake game (TestBodies, test-fake-game.ps1).
+    add_executable(mevr-fake-rig tools/setup/FakeRig.cpp)
+    set_target_properties(mevr-fake-rig PROPERTIES OUTPUT_NAME mevr-rig RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/fake-rig/$<CONFIG>)
+    target_compile_definitions(mevr-fake-rig PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+    target_compile_options(mevr-fake-rig PRIVATE /W4 /WX /permissive- /utf-8)
+    add_dependencies(mevr-tests mevr-fake-rig)
     # MEVR Setup's web and MEM paths against a local server (tools/setup/test-network.py, research/33 section 10): the
     # update check's answers, MEM's download and unpacking, a texture pack's install and uninstall on a fake game, and
     # "Install after I quit". Nothing reaches the internet (--test-server); skipped without Python or the setup.
@@ -2142,7 +2151,7 @@ if (MEVR_BUILD_TESTS)
     # The loader too: mevr-tests installs the bink2w64.dll built next to it into its fake game.
     add_custom_target(mevr-test-programs)
     add_dependencies(mevr-test-programs mevr-context-LE1-tests mevr-context-LE2-tests mevr-context-LE3-tests)
-    add_dependencies(mevr-test-programs mevr-tests mevr-colour-preview mevr-upscale-preview MEVR-Loader mevr-fake-game mevr-fake-mem)
+    add_dependencies(mevr-test-programs mevr-tests mevr-colour-preview mevr-upscale-preview MEVR-Loader mevr-fake-game mevr-fake-mem mevr-fake-rig)
     # The LE2 tests' programs (above): CI and package-release build only this target, so a test whose program isn't
     # listed here is "Not Run" there, and the Python tests that call one fail.
     add_dependencies(mevr-test-programs

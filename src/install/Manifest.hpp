@@ -146,6 +146,11 @@ std::optional<std::string> ReadFile(std::filesystem::path const& file);
 // Through a temporary file and a rename, so a reader never sees half of it. False: GetLastError() says why.
 bool WriteFileAtomic(std::filesystem::path const& file, std::string_view bytes);
 
+// The file steps' retry while antivirus holds a file just written (Manifest.cpp's Retrying), for files outside a transaction
+// (%LOCALAPPDATA%\MEVR\rig): true once the file is gone (or never was), or moved over `to`.
+bool RemoveFileRetrying(std::filesystem::path const& file);
+bool MoveFileRetrying(std::filesystem::path const& from, std::filesystem::path const& to);
+
 // The current local time as "2026-10-23T14:05:00".
 std::string NowIso();
 
@@ -197,6 +202,9 @@ public:
     // Sets `name`'s entry in the TOC at `relative` to `size` (added if missing), recorded so uninstall takes it out again (or
     // puts back the size it had). Refuses a TOC whose entries aren't where our hash puts them.
     bool SetTocEntry(std::string_view relative, std::string_view name, std::uint32_t size);
+    // Takes our entry `name` out of the TOC at `relative` again (or puts back the size it had before us) and off the record.
+    // Nothing when it isn't ours. False if the TOC can't be written.
+    bool RemoveTocEntry(std::string_view relative, std::string_view name);
 
     // A file the mod writes at run time (LE1MEVR.ini, its logs), recorded as added user data so a full uninstall
     // deletes it and a "keep my settings" one keeps it. Only our own file names: whether or not it exists yet (one
@@ -227,6 +235,9 @@ public:
     std::vector<std::string> const& Log() const { return log_; }
     void Fail(std::string message);
     void Note(std::string message);
+    // The errors after the first `from` become warnings in the log (a step that must never fail the whole: the rigged
+    // bodies' build, install/Bodies).
+    void DemoteErrors(std::size_t from);
 
 private:
     bool EnsureParent(std::filesystem::path const& file);

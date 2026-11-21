@@ -5,6 +5,7 @@
 
 #include "core/Json.hpp"
 #include "core/vr/MenuSettings.hpp"
+#include "install/Bodies.hpp"
 #include "install/Detect.hpp"
 #include "install/GameSettings.hpp"
 #include "install/Http.hpp"
@@ -2269,6 +2270,209 @@ void TestGames() {
     }
 }
 
+// The moving bodies and hair (install/Bodies, research/33 section 18): the builder's result and progress lines read, its
+// command line, a TOC entry taken out again, errors demoted to warnings; then the whole step on a fake Mass Effect 2 with the
+// stand-in builder (tools/setup/FakeRig.cpp, mevr-fake-rig): built and recorded at install, kept by a second install, the TOC
+// entries back after "verify files", a deleted package built again by Repair, a failed build that leaves the install and the
+// earlier packages as they were, removal, and the uninstall putting the TOC back byte for byte.
+void TestBodies() {
+    using namespace mevr::install;
+    namespace bodies = mevr::install::bodies;
+    // ---- What the builder writes.
+    std::string const good = R"({"format": "mevr-rig-bodies", "version": 1, "game": "LE2",
+        "packages": [{"file": "MEVR_Bodies_LE2.pcc", "size": 14937173}, {"file": "MEVR_Miranda.pcc", "size": 408947}],
+        "bodies": 80, "skipped": 21, "failed": 0, "seconds": 22})";
+    auto const r = bodies::ParseResult(good, "LE2");
+    ICHECK(r && r->packages.size() == 2 && r->packages[0].file == "MEVR_Bodies_LE2.pcc" && r->packages[1].size == 408947 && r->bodies == 80 &&
+           r->seconds == 22);
+    ICHECK(!bodies::ParseResult(good, "LE3"));  // another game's
+    ICHECK(!bodies::ParseResult(R"({"format": "mevr-rig-index", "version": 1, "game": "LE2", "packages": []})", "LE2"));
+    ICHECK(!bodies::ParseResult(R"({"format": "mevr-rig-bodies", "version": 2, "game": "LE2", "packages": []})", "LE2"));
+    for (char const* bad : {"..\\\\MEVR_X.pcc", "sub/MEVR_X.pcc", "BIOG_HMF_ARM.pcc", "MEVR_X.u", "MEVR_..pcc", "C:MEVR_X.pcc"}) {
+        std::string const text = std::string(R"({"format": "mevr-rig-bodies", "version": 1, "game": "LE1", "packages": [{"file": ")") + bad +
+            R"(", "size": 5}]})";
+        ICHECK(!bodies::ParseResult(text, "LE1"));
+    }
+    ICHECK(!bodies::ParseResult(R"({"format": "mevr-rig-bodies", "version": 1, "game": "LE1", "packages": [{"file": "MEVR_A.pcc", "size": 0}]})", "LE1"));
+    ICHECK(!bodies::ParseResult(R"({"format": "mevr-rig-bodies", "version": 1, "game": "LE1",
+        "packages": [{"file": "MEVR_A.pcc", "size": 1}, {"file": "mevr_a.PCC", "size": 1}]})", "LE1"));  // twice
+    auto const empty = bodies::ParseResult(R"({"format": "mevr-rig-bodies", "version": 1, "game": "LE1", "packages": []})", "LE1");
+    ICHECK(empty && empty->packages.empty());
+    auto const p = bodies::ParseProgress("progress 42 body HMF_ARM_NKDa_MDL_MEVR");
+    ICHECK(p && p->percent == 42 && p->text == "body HMF_ARM_NKDa_MDL_MEVR");
+    ICHECK(bodies::ParseProgress("progress 100") && bodies::ParseProgress("progress 100")->text.empty());
+    ICHECK(!bodies::ParseProgress("progress 101 x") && !bodies::ParseProgress("progress x") && !bodies::ParseProgress("  progress 5 x") &&
+           !bodies::ParseProgress("progress 5x") && !bodies::ParseProgress("progressing 5 x"));
+    ICHECK(bodies::CommandLine(L"C:\\a b\\mevr-rig.exe", GameId::LE2, L"D:\\Mass Effect Legendary Edition", L"C:\\Users\\x\\rig\\LE2.build", {}) ==
+           L"\"C:\\a b\\mevr-rig.exe\" bodies --game LE2 --game-root \"D:\\Mass Effect Legendary Edition\" --out \"C:\\Users\\x\\rig\\LE2.build\"");
+    ICHECK(bodies::CommandLine(L"r.exe", GameId::LE1, L"G", L"O", L"P\\MEVR_Bodies_LE3.pcc").ends_with(L" --ref \"P\\MEVR_Bodies_LE3.pcc\""));
+    ICHECK(bodies::CookedFile(GameId::LE3, "MEVR_Miranda.pcc") == "Game/ME3/BioGame/CookedPCConsole/MEVR_Miranda.pcc");
+    ICHECK(bodies::TocName("MEVR_Bodies_LE1.pcc") == "BioGame\\CookedPCConsole\\MEVR_Bodies_LE1.pcc");
+    ICHECK(bodies::GameDir(GameId::LE2).filename() == L"LE2" && bodies::GameDir(GameId::LE2).parent_path().filename() == L"rig");
+
+    std::filesystem::path const temp = mevr::tests::TempRoot();
+    fs::path const base = fs::path(temp) / L"mevr-install-bodies";
+    fs::path const root = base / L"Mass Effect Legendary Edition";
+    if (detect::GameRunningIn(root, GameId::LE2)) {
+        std::printf("  (a game runs from the test folder: TestBodies' install part is skipped)\n");
+        return;
+    }
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    fs::remove_all(bodies::RigDir(), ec);
+    // ---- A TOC entry out again, and errors made warnings.
+    {
+        Layout const layout{root};
+        std::string const toc = SmallToc();
+        Write(layout.Full(paths::kToc), toc);
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.SetTocEntry(paths::kToc, "BioGame\\CookedPCConsole\\MEVR_A.pcc", 10) &&
+               tx.SetTocEntry(paths::kToc, "BioGame\\CookedPCConsole\\A.pcc", 99));  // the game's own A.pcc, its size changed
+        ICHECK(tx.RemoveTocEntry(paths::kToc, "BioGame\\CookedPCConsole\\MEVR_A.pcc"));
+        ICHECK(tx.RemoveTocEntry(paths::kToc, "BioGame\\CookedPCConsole\\Nothing.pcc"));  // not ours: nothing
+        ICHECK(tx.Data().Find(paths::kToc) != nullptr && tx.Data().Find(paths::kToc)->toc.size() == 1);
+        ICHECK(tx.RemoveTocEntry(paths::kToc, "BioGame\\CookedPCConsole\\A.pcc") && tx.Data().Find(paths::kToc) == nullptr);
+        ICHECK(Read(layout.Full(paths::kToc)) == toc);  // both out: the game's own bytes
+        tx.Fail("one");
+        std::size_t const at = tx.Errors().size();
+        tx.Fail("two");
+        tx.DemoteErrors(at);
+        ICHECK(tx.Errors().size() == 1 && std::find(tx.Log().begin(), tx.Log().end(), "warning: two") != tx.Log().end());
+        fs::remove_all(root, ec);
+    }
+
+    // ---- The whole step on a fake Mass Effect 2, with the stand-in builder.
+    wchar_t self[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    fs::path const exeDir = fs::path(self).parent_path();
+    fs::path const fakeRig = exeDir.parent_path() / L"fake-rig" / exeDir.filename() / L"mevr-rig.exe";
+    if (!fs::exists(fakeRig)) {
+        std::printf("  (no stand-in builder at %s: TestBodies' install part is skipped)\n", detect::Utf8(fakeRig.wstring()).c_str());
+        return;
+    }
+    Layout const layout{root, GameId::LE2};
+    fs::path const payloadDir = base / L"payload";
+    Write(payloadDir / L"LE2MEVR.asi", "LE2 ASI");
+    Write(payloadDir / L"bink2w64.dll", "our loader");
+    Write(payloadDir / L"fonts" / L"A.ttf", "font");
+    Write(payloadDir / L"menu" / L"main.rml", "<rml/>");
+    fs::create_directories(payloadDir / L"rig" / L"plans");
+    fs::copy_file(fakeRig, payloadDir / L"rig" / L"mevr-rig.exe", fs::copy_options::overwrite_existing, ec);
+    Write(payloadDir / L"rig" / L"plans" / L"players.jsonc", "{ \"games\": {} }\n");
+    Payload const payload{payloadDir};
+    ICHECK(payload.Has(GameId::LE2) && payload.HasRig() && !Payload{base / L"nothing"}.HasRig());
+    std::string const toc = SmallToc();
+    std::string const tocRel = "Game/ME2/BioGame/PCConsoleTOC.bin";
+    Write(layout.Win64() / L"MassEffect2.exe", "exe");
+    Write(layout.Win64() / L"bink2w64.dll", "a proxy");
+    Write(layout.Win64() / L"bink2w64_original.dll", "RAD original");
+    Write(layout.Full(tocRel), toc);
+    Write(layout.Full("Game/ME2/BioGame/CookedPCConsole/BioP_Global.pcc"), "the game's own");
+    auto calls = [&] {
+        std::string const log = Read(payloadDir / L"rig" / L"fake-rig.log");
+        return log == "<missing>" ? 0 : static_cast<int>(std::count(log.begin(), log.end(), '\n'));
+    };
+    InstallOptions options;
+    options.ignoreVersion = true;
+    options.gameSettings = false;
+    int lastPercent = -1;
+    options.progress = [&](std::string const&, int percent) { lastPercent = percent; };
+    std::string const bodiesRel = bodies::CookedFile(GameId::LE2, "MEVR_Bodies_LE2.pcc");
+    std::string const mirandaRel = bodies::CookedFile(GameId::LE2, "MEVR_Miranda.pcc");
+    ICHECK(Ok(Install(layout, payload, options)));
+    ICHECK(calls() == 1 && lastPercent == 100);
+    ICHECK(fs::file_size(layout.Full(bodiesRel), ec) == 4096 && fs::file_size(layout.Full(mirandaRel), ec) == 4096);
+    std::string const installedToc = Read(layout.Full(tocRel));
+    {
+        auto const t = toc::Parse(installedToc);
+        ICHECK(t && toc::Find(*t, bodies::TocName("MEVR_Bodies_LE2.pcc")) == std::optional<std::uint32_t>(4096) &&
+               toc::Find(*t, bodies::TocName("MEVR_Miranda.pcc")) == std::optional<std::uint32_t>(4096));
+    }
+    fs::path const dir = bodies::GameDir(GameId::LE2);
+    ICHECK(fs::exists(dir / L"MEVR_Bodies_LE2.json") && fs::exists(dir / L"colliders" / L"HMF_ARM_NKDa_MDL_MEVR.json") &&
+           fs::exists(dir / L"setup.json") && !fs::exists(bodies::StageDir(GameId::LE2)) && !fs::exists(dir / L"MEVR_Bodies_LE2.pcc"));
+    ICHECK(fs::exists(bodies::LogFile(GameId::LE2)) && Read(bodies::LogFile(GameId::LE2)).find("progress 100") != std::string::npos);
+    {
+        bodies::State const s = bodies::ReadState(layout);
+        ICHECK(s.packages.size() == 2 && s.damaged.empty() && s.indexThere && s.bodies == 1 && s.recipe == bodies::Recipe(payload.RigDir()) && !s.recipe.empty());
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        FileEntry const* e = tx.Data().Find(bodiesRel);
+        ICHECK(e != nullptr && e->action == "added" && e->content == "bodies/MEVR_Bodies_LE2.pcc" && e->size == 4096 && !e->sha256.empty());
+    }
+    ICHECK(ReadStatus(root, "Folder", GameId::LE2).needsRepair.empty());
+    // Installed again (an update of the same release): built from this recipe already, so kept.
+    Outcome const again = Install(layout, payload, options);
+    ICHECK(Ok(again) && calls() == 1 && Read(layout.Full(tocRel)) == installedToc);
+    // "Verify files": the game's own TOC back. Status says so; Repair puts the entries back without a build.
+    Write(layout.Full(tocRel), toc);
+    {
+        std::vector<std::string> const bad = ReadStatus(root, "Folder", GameId::LE2).needsRepair;
+        ICHECK(std::find(bad.begin(), bad.end(), tocRel) != bad.end() && std::find(bad.begin(), bad.end(), bodiesRel) != bad.end());
+    }
+    ICHECK(Ok(Repair(layout, payload)) && Read(layout.Full(tocRel)) == installedToc && calls() == 1);
+    ICHECK(ReadStatus(root, "Folder", GameId::LE2).needsRepair.empty());
+    // A package deleted: Repair builds them again.
+    fs::remove(layout.Full(mirandaRel), ec);
+    ICHECK(!ReadStatus(root, "Folder", GameId::LE2).needsRepair.empty());
+    ICHECK(Ok(Repair(layout, payload)) && fs::exists(layout.Full(mirandaRel)) && calls() == 2 && Read(layout.Full(tocRel)) == installedToc);
+    // A build that fails: the explicit Build says so; the earlier packages and their entries stay as they were. An install whose
+    // recipe changed tries, fails, and still succeeds (a warning).
+    std::string const packageBytes = Read(layout.Full(bodiesRel));
+    SetEnvironmentVariableW(L"MEVR_FAKE_RIG_FAIL", L"1");
+    Outcome const failed = bodies::Build(layout, payload, {}, nullptr);
+    ICHECK(!failed.ok && Read(layout.Full(bodiesRel)) == packageBytes && Read(layout.Full(tocRel)) == installedToc && fs::exists(dir / L"MEVR_Bodies_LE2.json"));
+    Write(payloadDir / L"rig" / L"plans" / L"le2-females.jsonc", "{ \"steps\": [] }\n");  // a new recipe
+    Outcome const throughFail = Install(layout, payload, options);
+    bool warned = false;
+    for (std::string const& line : throughFail.log) {
+        warned = warned || (line.rfind("warning: the body builder failed", 0) == 0);
+    }
+    ICHECK(Ok(throughFail) && warned && calls() == 4 && Read(layout.Full(bodiesRel)) == packageBytes);
+    SetEnvironmentVariableW(L"MEVR_FAKE_RIG_FAIL", L"nothing");
+    ICHECK(!bodies::Build(layout, payload, {}, nullptr).ok && fs::exists(layout.Full(bodiesRel)));
+    SetEnvironmentVariableW(L"MEVR_FAKE_RIG_FAIL", nullptr);
+    // Removed (Optional content): packages, entries and the index out; built again.
+    ICHECK(Ok(bodies::Remove(layout)) && !fs::exists(layout.Full(bodiesRel)) && !fs::exists(layout.Full(mirandaRel)) && Read(layout.Full(tocRel)) == toc &&
+           !fs::exists(dir / L"MEVR_Bodies_LE2.json") && !bodies::ReadState(layout).Built());
+    ICHECK(Ok(bodies::Build(layout, payload, {}, nullptr)) && Read(layout.Full(tocRel)) == installedToc && bodies::ReadState(layout).Built());
+    // A package of ours there without a record (a development install, or a lost record): adopted, so the uninstall removes it.
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load());
+        tx.Forget(bodiesRel);
+        ICHECK(tx.Save());
+    }
+    ICHECK(Ok(bodies::Build(layout, payload, {}, nullptr)));
+    {
+        Transaction tx(layout);
+        ICHECK(tx.Load() && tx.Data().Find(bodiesRel) != nullptr && tx.Data().Find(bodiesRel)->action == "added");
+    }
+    // Left out at install (the Install page's switch): nothing built, nothing removed.
+    InstallOptions without = options;
+    without.bodies = false;
+    ICHECK(Ok(Install(layout, payload, without)) && calls() == 7 && fs::exists(layout.Full(bodiesRel)));
+    // The uninstall: our packages out, the game's TOC and its own package exactly as they were; %LOCALAPPDATA%'s index stays.
+    ICHECK(Ok(Uninstall(layout, false, {})));
+    ICHECK(Read(layout.Full(tocRel)) == toc && !fs::exists(layout.Full(bodiesRel)) && !fs::exists(layout.Full(mirandaRel)) &&
+           Read(layout.Full("Game/ME2/BioGame/CookedPCConsole/BioP_Global.pcc")) == "the game's own" && fs::exists(dir / L"MEVR_Bodies_LE2.json"));
+    // Mass Effect 1 with no TOC to edit: the install stands, with a warning, and nothing is built.
+    Layout const le1{root, GameId::LE1};
+    Write(payloadDir / L"LE1MEVR.asi", "LE1 ASI");
+    Write(le1.Win64() / L"MassEffect1.exe", "exe");
+    Write(le1.Win64() / L"bink2w64.dll", "a proxy");
+    Write(le1.Win64() / L"bink2w64_original.dll", "RAD original");
+    Outcome const noToc = Install(le1, payload, options);
+    bool tocWarned = false;
+    for (std::string const& line : noToc.log) {
+        tocWarned = tocWarned || (line.rfind("warning: BioGame\\PCConsoleTOC.bin is missing", 0) == 0);
+    }
+    ICHECK(Ok(noToc) && tocWarned && calls() == 7 && !bodies::ReadState(le1).Built());
+    ICHECK(Ok(Uninstall(le1, false, {})));
+    fs::remove_all(base, ec);
+    fs::remove_all(bodies::RigDir(), ec);
+}
+
 } // namespace
 
 void RunInstallTests(int& failures) {
@@ -2304,4 +2508,5 @@ void RunInstallTests(int& failures) {
     TestAudio();
     TestBusyFile();
     TestGames();
+    TestBodies();
 }

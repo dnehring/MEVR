@@ -112,6 +112,8 @@
 			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">The VR mod</div><div class="rdesc">{{mod_asi_text}}</div></div></div>
 			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">ASI loader</div><div class="rdesc">{{loader_plan}}</div></div></div>
 			<div class="row"><div class="lead i-check"/><div class="rl"><div class="rlab">Renderer settings</div><div class="rdesc">{{renderer_text}}</div></div></div>
+			<div class="row" data-class-disabled="!has_rig"><div class="rl"><div class="rlab">Moving bodies and hair</div><div class="rdesc">{{bodies_plan}}</div></div>
+				<button class="tog" data-class-on="opt_bodies &amp;&amp; has_rig" data-event-click="opt_bodies = !opt_bodies"><div class="knob"/></button></div>
 			<div class="row"><div class="rl"><div class="rlab">VR game settings</div><div class="rdesc">Borderless window at the VR resolution, VSync, motion blur and film grain off, HDR off. Your values are kept for Restore.</div></div>
 				<button class="tog" data-class-on="opt_settings" data-event-click="opt_settings = !opt_settings"><div class="knob"/></button></div>
 			<div class="row resolution-row" data-if="has_target" data-class-disabled="!opt_settings"><div class="rl"><div class="rlab">Render resolution</div><div class="rdesc">{{quality_text}}</div></div>
@@ -133,7 +135,20 @@
 		<div class="stitle">Optional content</div>
 		<div class="sdesc">Extras that aren't in the download: the voice orders' recognizer and models, and texture packs made by others, each from where it officially lives, under its own terms.</div>
 		<div class="row" data-if="request_text != ''"><div class="lead i-info"/><div class="rl"><div class="rlab">Asked for from the game</div><div class="rdesc">{{request_text}}</div></div></div>
-		<div class="row" data-if="!has_content"><div class="lead i-info"/><div class="rl"><div class="rlab">Nothing optional for {{game_name}} yet</div><div class="rdesc">The voice orders' files and the texture packs here are Mass Effect 1's: switch to it above to add them.</div></div></div>
+		<div class="group">
+			<div class="gtitle"><span>Moving bodies and hair</span><div class="gline"/></div>
+			<div class="card" data-class-installed="bodies_built">
+				<div class="ch"><div class="cn">Moving bodies and hair</div><span class="badge cyan" data-if="bodies_built">Built</span></div>
+				<div class="ca">Built on this PC from your own {{game_name}} files</div>
+				<div class="cd">Every woman's body gets soft-tissue bones and Miranda's hair gets hair chains, so they move with her. They are BioWare's meshes with our bones added, so they are never in this download: the setup builds them from your game (a minute or two) and puts them in BioGame\CookedPCConsole with entries in the game's file table. Install builds them too.</div>
+				<div class="cs" data-class-warn="bodies_warn">{{bodies_state}}</div>
+				<div class="cb">
+					<button class="btn small" data-class-disabled="busy || waiting || !installed || !has_rig" data-event-click="act('bodies_build')"><div class="sweep"/><div class="bi i-wrench"/><span>{{bodies_button}}</span></button>
+					<button class="btn small" data-if="bodies_built" data-class-disabled="busy || waiting" data-event-click="act('bodies_remove')"><div class="sweep"/><span>Remove</span></button>
+				</div>
+			</div>
+		</div>
+		<div class="row" data-if="!has_content"><div class="lead i-info"/><div class="rl"><div class="rlab">No voice orders or texture packs for {{game_name}} yet</div><div class="rdesc">The voice orders' files and the texture packs here are Mass Effect 1's: switch to it above to add them.</div></div></div>
 		<div data-if="has_content">
 		<div class="group">
 			<div class="gtitle"><span>Voice orders</span><div class="gline"/></div>

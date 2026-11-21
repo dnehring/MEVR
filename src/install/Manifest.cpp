@@ -424,6 +424,30 @@ void Transaction::Note(std::string message) {
     log_.push_back(std::move(message));
 }
 
+void Transaction::DemoteErrors(std::size_t from) {
+    for (std::size_t n = from; n < errors_.size(); ++n) {
+        std::string const line = "error: " + errors_[n];
+        for (std::string& l : log_) {
+            if (l == line) {
+                l = "warning: " + errors_[n];
+                break;
+            }
+        }
+    }
+    if (from < errors_.size()) {
+        errors_.resize(from);
+    }
+}
+
+bool RemoveFileRetrying(fs::path const& file) {
+    std::error_code ec;
+    return RemoveFile(file, ec);
+}
+
+bool MoveFileRetrying(fs::path const& from, fs::path const& to) {
+    return Retrying([&] { return MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) != FALSE; }, &to);
+}
+
 bool Transaction::Load() {
     std::error_code ec;
     fs::path const file = layout_.ManifestFile();
@@ -787,6 +811,33 @@ bool Transaction::SetTocEntry(std::string_view relative, std::string_view name, 
         entry->toc.push_back(TocEdit{std::string(name), before, size});  // the first `before` is the game's own
     } else {
         it->after = size;
+    }
+    return Save();
+}
+
+bool Transaction::RemoveTocEntry(std::string_view relative, std::string_view name) {
+    FileEntry* entry = manifest_.Find(relative);
+    if (entry == nullptr || entry->action != "toc") {
+        return true;
+    }
+    auto const it = std::find_if(entry->toc.begin(), entry->toc.end(), [&](TocEdit const& t) { return _stricmp(t.name.c_str(), std::string(name).c_str()) == 0; });
+    if (it == entry->toc.end()) {
+        return true;
+    }
+    fs::path const target = layout_.Full(relative);
+    auto const bytes = ReadFile(target);
+    auto file = bytes ? toc::Parse(*bytes) : std::nullopt;
+    if (file) {
+        bool const changed = it->before ? toc::Set(*file, it->name, *it->before) != it->before : toc::Remove(*file, it->name);
+        if (changed && !WriteFileAtomic(target, toc::Serialize(*file))) {
+            Fail("couldn't take " + it->name + " out of " + std::string(relative) + WriteFailureHint(target));
+            return false;
+        }
+        Note("took " + it->name + " out of " + std::string(relative));
+    }
+    entry->toc.erase(it);
+    if (entry->toc.empty()) {
+        Forget(relative);
     }
     return Save();
 }

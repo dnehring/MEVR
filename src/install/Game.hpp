@@ -47,6 +47,8 @@ struct GameSpec {
     // 3072x2216, the owner's answer to docs/trilogy-plan.md question 17; 0: the game's own resolution, LE2's code default).
     int rendererDefaultW = 0;
     int rendererDefaultH = 0;
+    // The moving bodies and hair (install/Bodies): built from the game's own files on the player's PC, every game.
+    bool bodies = true;
 };
 
 inline constexpr std::array<GameId, 3> kAllGames{GameId::LE1, GameId::LE2, GameId::LE3};

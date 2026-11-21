@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "install/Installer.hpp"
 
+#include "install/Bodies.hpp"
 #include "install/Ini.hpp"
 #include "install/Packs.hpp"
 #include "install/Voice.hpp"
@@ -507,6 +508,11 @@ bool Payload::HasAudio() const {
     return fs::exists(Audio() / L"soft_oal.dll", ec);
 }
 
+bool Payload::HasRig() const {
+    std::error_code ec;
+    return fs::exists(RigExe(), ec) && fs::exists(RigDir() / L"plans" / L"players.jsonc", ec);
+}
+
 bool Payload::HasCockpit() const {
     std::error_code ec;
     return fs::exists(CockpitPackage(), ec) && fs::exists(CockpitScript(), ec);
@@ -604,6 +610,19 @@ Status ReadStatus(fs::path const& root, std::string const& source, GameId game) 
             }
             if (CheckLoader(layout, tx.Data(), paths::kLauncherBink) == LoaderNow::Foreign || SharedLauncherCurrent(layout)) {
                 std::erase(s.needsRepair, std::string(paths::kLauncherBink));
+            }
+            // The moving bodies (install/Bodies): a package gone or changed, or their index in %LOCALAPPDATA% gone.
+            if (spec.bodies) {
+                bodies::State const b = bodies::ReadState(layout);
+                for (std::string const& file : b.damaged) {
+                    std::string const rel = bodies::CookedFile(game, file);
+                    if (std::find(s.needsRepair.begin(), s.needsRepair.end(), rel) == s.needsRepair.end()) {
+                        s.needsRepair.push_back(rel);
+                    }
+                }
+                if (b.Built() && !b.indexThere) {
+                    s.needsRepair.push_back(detect::Utf8((bodies::GameDir(game) / (L"MEVR_Bodies_" + detect::Wide(spec.key) + L".json")).wstring()));
+                }
             }
         }
     }
@@ -729,6 +748,24 @@ Outcome Install(Layout const& layout, Payload const& payload, InstallOptions con
         m.setupVersion = updates::kVersion;
         m.installedAt = NowIso();
         ok = tx.Save();
+    }
+    // The moving bodies and hair (install/Bodies), last: built from the player's own game files, which takes a minute or more.
+    // Whatever happens to the build, the install stands (its errors are warnings: the mod runs without them). An update builds
+    // them only where they were built before.
+    if (ok && spec.bodies && options.bodies && (!options.preserveSettings || bodies::ReadState(layout).Built())) {
+        std::size_t const errorsBefore = tx.Errors().size();
+        if (payload.HasRig()) {
+            bodies::BuildIn(tx, payload, false, [&](bodies::Step const& step) {
+                if (options.progress) {
+                    options.progress(step.text, step.percent);
+                }
+            }, options.cancel);
+        } else {
+            tx.Note("this release has no body builder (payload\\rig): no moving bodies and hair");
+        }
+        tx.DemoteErrors(errorsBefore);
+    } else if (ok && spec.bodies && !options.bodies) {
+        tx.Note("the moving bodies and hair weren't built (left out): Optional content builds them");
     }
     Outcome done = Finish(tx, ok);
     if (kept) {
@@ -856,7 +893,8 @@ Outcome Uninstall(Layout const& layout, bool keepUserData, fs::path const& runni
     return Finish(tx, ok);
 }
 
-Outcome Repair(Layout const& layout, Payload const& payload) {
+Outcome Repair(Layout const& layout, Payload const& payload, std::function<void(std::string const&, int)> const& progress,
+    std::atomic<bool> const* cancel) {
     Outcome out;
     if (!Preflight(layout, out)) {
         return out;
@@ -974,6 +1012,16 @@ Outcome Repair(Layout const& layout, Payload const& payload) {
     }
     if (spec.cockpit) {
         ok = InstallCockpit(tx, payload) && ok;
+    }
+    // The moving bodies' TOC entries after "verify files", or the bodies built again; never a reason for Repair to fail.
+    if (spec.bodies) {
+        std::size_t const errorsBefore = tx.Errors().size();
+        bodies::RepairIn(tx, payload, [&](bodies::Step const& step) {
+            if (progress) {
+                progress(step.text, step.percent);
+            }
+        }, cancel);
+        tx.DemoteErrors(errorsBefore);
     }
     // An install from before the voice orders gets their DLL now (their downloads stay optional content).
     if (spec.voice && payload.HasVoice() && tx.Data().Find(voice::kDll) == nullptr) {

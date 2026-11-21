@@ -204,12 +204,24 @@ if (-not $Payload) {
         [IO.File]::WriteAllBytes((Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc'), [byte[]](@(0xC1, 0x83, 0x2A, 0x9E) + (1..4092 | ForEach-Object { 0 })))
         [IO.File]::WriteAllText((Join-Path $Payload 'cockpit\cockpit.txt'), "# stand-in cockpit script (test-fake-game.ps1)`r`n")
     }
+    # The moving bodies' builder (install/Bodies): the stand-in (tools/setup/FakeRig.cpp: small packages, their index and
+    # bodies.json, as `mevr-rig bodies` writes them; the fake games have no packages to rig) with the real plans list.
+    $fakeRig = Join-Path $Build 'fake-rig\Release\mevr-rig.exe'
+    if (Test-Path $fakeRig) {
+        New-Item -ItemType Directory -Force (Join-Path $Payload 'rig\plans') | Out-Null
+        Copy-Item $fakeRig (Join-Path $Payload 'rig')
+        Copy-Item (Join-Path $repo 'tools\rig\plans\players.jsonc') (Join-Path $Payload 'rig\plans')
+    }
 }
 $withCockpit = Test-Path (Join-Path $Payload 'cockpit\BIOG_MEVR_Cockpit.pcc')
+$withRig = Test-Path (Join-Path $Payload 'rig\mevr-rig.exe')
+# One PCConsoleTOC.bin entry's bytes (install/Toc): a 28-byte header and the name, NUL-terminated, padded to 4.
+function Toc-EntryBytes([string]$name) { 28 + [math]::Ceiling(($name.Length + 1) / 4) * 4 }
 $withVoice = Test-Path (Join-Path $Payload 'voice\MEVR-Voice.dll')
 if ($Voice -and -not $withVoice) { throw "-Voice needs MEVR-Voice.dll in the payload (build the MEVR-Voice target: tools/fetch-voice.ps1 first)" }
 
 # The fake game.
+. (Join-Path $repo 'tools\common.ps1')  # Find-MELEInstall: the sequels' TOCs below
 Remove-Item -Recurse -Force (Join-Path $scratch 'fakegame') -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $win64, $config, $launcher | Out-Null
 Copy-Item $fakeExe $win64
@@ -227,6 +239,11 @@ foreach ($n in 2, 3) {
     Copy-Item $LauncherBinkDll (Join-Path $w 'bink2w64.dll')
     [IO.File]::WriteAllText((Join-Path $c 'GamerSettings.ini'), $sequelGamer)
     [IO.File]::WriteAllText((Join-Path $c 'BIOEngine.ini'), "[Engine.GameEngine]`r`nSmoothFrameRate=TRUE`r`n`r`n[SystemSettings]`r`nDynamicShadows=True`r`n")
+    # Its own TOC (read only: the one tools/rig/install.ps1 kept before a development install, else the game's), where the
+    # moving bodies get their entries.
+    $sequelToc = Join-Path $env:LOCALAPPDATA "MEVR\rig-install\LE$n\PCConsoleTOC.bin.orig"
+    if (-not (Test-Path $sequelToc)) { $sequelToc = Join-Path (Find-MELEInstall).Root "Game\ME$n\BioGame\PCConsoleTOC.bin" }
+    Copy-Item $sequelToc (Join-Path $root "Game\ME$n\BioGame\PCConsoleTOC.bin")
 }
 $gameToc = Join-Path $env:LOCALAPPDATA 'MEVR\cockpit-install\PCConsoleTOC.bin.original'
 if (-not (Test-Path $gameToc)) { $gameToc = Join-Path (Split-Path (Split-Path $BinkDll)) '..\BioGame\PCConsoleTOC.bin' }
@@ -275,7 +292,16 @@ if ($withCockpit) {
     Check (Test-Path (Join-Path $root 'Game\ME1\BioGame\CookedPCConsole\BIOG_MEVR_Cockpit.pcc')) 'the cockpit''s package'
     Check (Test-Path (Join-Path $win64 'ASI\cockpit\cockpit.txt')) 'the cockpit''s script'
     $tocInstalled = (Get-FileHash $toc).Hash
-    Check ($tocInstalled -ne (Get-FileHash $gameToc).Hash -and (Get-Item $toc).Length -eq (Get-Item $gameToc).Length + 76) 'PCConsoleTOC.bin: one entry more'
+    $tocGrows = 76 + $(if ($withRig) { Toc-EntryBytes 'BioGame\CookedPCConsole\MEVR_Bodies_LE1.pcc' } else { 0 })
+    Check ($tocInstalled -ne (Get-FileHash $gameToc).Hash -and (Get-Item $toc).Length -eq (Get-Item $gameToc).Length + $tocGrows) "PCConsoleTOC.bin: the cockpit's entry more$(if ($withRig) { ' and the moving bodies''' })"
+}
+if ($withRig) {
+    $bodiesLocal = Join-Path $setupLocal 'MEVR\rig\LE1'
+    Check ((Get-Item (Join-Path $root 'Game\ME1\BioGame\CookedPCConsole\MEVR_Bodies_LE1.pcc')).Length -eq 4096) 'the moving bodies: their package in CookedPCConsole'
+    Check ((Test-Path (Join-Path $bodiesLocal 'MEVR_Bodies_LE1.json')) -and (Test-Path (Join-Path $bodiesLocal 'colliders\HMF_ARM_NKDa_MDL_MEVR.json')) -and
+        -not (Test-Path (Join-Path $setupLocal 'MEVR\rig\LE1.build'))) 'the moving bodies: their index and spheres in %LOCALAPPDATA%\MEVR\rig\LE1'
+    Check ((Get-Content -Raw (Join-Path $scratch 'setup-cli.txt')) -match '(?m)^moving bodies: built \(MEVR_Bodies_LE1\.pcc; 1 bodies\)') 'status: the moving bodies built'
+    Check ((Get-Content -Raw (Join-Path $Payload 'rig\fake-rig.log')) -match "(?m)^call: bodies \| --game \| LE1 \| --game-root \| $([regex]::Escape($root)) \| --out \| ") 'the builder: run for LE1 on this game folder'
 }
 
 # The player tunes Halcyon in game (a value we never touch): it must survive everything below.
@@ -508,6 +534,7 @@ function Test-Sequel([string]$game) {
     $hasTemplate = Test-Path (Join-Path $Payload "MELE${n}VR.ini")
     $cli = Join-Path $scratch 'setup-cli.txt'
     $beforeGame = Snapshot
+    Copy-Item (Join-Path $root "Game\ME$n\BioGame\PCConsoleTOC.bin") (Join-Path $scratch "toc-$game.bin") -Force  # the game's own, for "verify files"
 
     Check ((Run-Setup @('--status')) -eq 0) "${game}: status"
     Check ((Get-Content -Raw $cli) -match "(?m)^title: $name \($game\)") "${game}: status names the game"
@@ -523,6 +550,17 @@ function Test-Sequel([string]$game) {
     Check (-not (Test-Path (Join-Path $root 'Game\ME1\Binaries\Win64\ASI'))) "${game}: nothing in Mass Effect 1's folder"
     Check (-not (Test-Path (Join-Path $w 'ASI\cockpit')) -and -not (Test-Path (Join-Path $w 'ASI\voice')) -and -not (Test-Path (Join-Path $w 'ASI\audio'))) "${game}: no cockpit, voice or OpenAL Soft (Mass Effect 1's)"
     Check ((Get-Content -Raw (Join-Path $w 'steam_appid.txt')) -eq '1328670') "${game}: steam_appid.txt"
+    $sequelToc = Join-Path $root "Game\ME$n\BioGame\PCConsoleTOC.bin"
+    $sequelTocGame = Join-Path $scratch "toc-$game.bin"
+    if ($withRig) {
+        # The moving bodies: both packages in its CookedPCConsole, their TOC entries, the index in %LOCALAPPDATA%.
+        $cooked = Join-Path $root "Game\ME$n\BioGame\CookedPCConsole"
+        Check ((Get-Item (Join-Path $cooked "MEVR_Bodies_$game.pcc")).Length -eq 4096 -and (Get-Item (Join-Path $cooked 'MEVR_Miranda.pcc')).Length -eq 4096) "${game}: the moving bodies' packages (and Miranda's hair)"
+        $grows = (Toc-EntryBytes "BioGame\CookedPCConsole\MEVR_Bodies_$game.pcc") + (Toc-EntryBytes 'BioGame\CookedPCConsole\MEVR_Miranda.pcc')
+        Check ((Get-Item $sequelToc).Length -eq (Get-Item $sequelTocGame).Length + $grows) "${game}: PCConsoleTOC.bin: two entries more"
+        Check (Test-Path (Join-Path $setupLocal "MEVR\rig\$game\MEVR_Bodies_$game.json")) "${game}: the moving bodies' index in %LOCALAPPDATA%\MEVR\rig\$game"
+        $sequelTocInstalled = (Get-FileHash $sequelToc).Hash
+    }
     if ($hasTemplate) {
         Check ((Get-FileHash $rendererIni).Hash -eq (Get-FileHash (Join-Path $Payload "MELE${n}VR.ini")).Hash) "${game}: the renderer's release settings next to the exe"
     } else {
@@ -549,12 +587,15 @@ function Test-Sequel([string]$game) {
     Copy-Item $LauncherBinkDll (Join-Path $w 'bink2w64.dll') -Force
     Copy-Item $LauncherBinkDll (Join-Path $launcher 'bink2w64.dll') -Force
     Remove-Item (Join-Path $w 'ASI\menu\main.rcss')
+    if ($withRig) { Copy-Item $sequelTocGame $sequelToc -Force }  # and the game's own TOC
     Run-Setup @('--status') | Out-Null
     $st = Get-Content -Raw $cli
     Check ($st -match "(?m)^needs repair: .*Game/ME$n/Binaries/Win64/bink2w64\.dll" -and $st -match '(?m)^needs repair: .*Game/Launcher/bink2w64\.dll' -and $st -match '(?m)^needs repair: .*main\.rcss') "${game}: status after `"verify files`": both loaders and the menu file need repair"
+    if ($withRig) { Check ($st -match "(?m)^needs repair: .*Game/ME$n/BioGame/PCConsoleTOC\.bin") "${game}: status after `"verify files`": the TOC needs repair" }
     Check ((Run-Setup @('--repair')) -eq 0) "${game}: repair"
     Run-Setup @('--status') | Out-Null
     Check ((Get-Content -Raw $cli) -match '(?m)^needs repair: nothing') "${game}: status after repair: nothing to repair"
+    if ($withRig) { Check ((Get-FileHash $sequelToc).Hash -eq $sequelTocInstalled) "${game}: repair: the moving bodies' TOC entries back" }
     Check ((Get-Item (Join-Path $w 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*' -and
         (Get-Item (Join-Path $launcher 'bink2w64.dll')).VersionInfo.FileDescription -like 'MEVR ASI loader*' -and (Test-Path (Join-Path $w 'ASI\menu\main.rcss'))) "${game}: repair: both loaders and the menu file back"
     Check ((Get-Content -Raw $rendererIni) -match '(?m)^HalfEyeUU=2\.900') "${game}: repair: the player's renderer value kept"
