@@ -71,7 +71,8 @@ for anim, want in (('FC_ButtonPress01', 'press'), ('WI_TypeStanding1Idle', 'pres
                    ('2P_Kissing_Male_Female_A_Idle', 'other-actor'), ('2P_HoldHand_A_Idle', 'other-actor'),
                    ('DG_Stomach', 'other-actor'), ('2P_PunchFace_Shep', 'other-actor'), ('2P_SomethingTogether', 'other-actor'),
                    ('WI_OmniIdle', 'other-hands'), ('DP_PistolThreatenIdle', 'other-hands'), ('DL_DeniedHandShake', 'other-hands'),
-                   ('DL_HeadShake', 'not-hands'), ('DL_PointRight', 'not-hands'), ('AM_WeightShift01', 'not-hands'),
+                   ('DL_HeadShake', 'not-hands'), ('DL_PointRight', 'not-hands'), ('DL_Temple_Tap', 'not-hands'),
+                   ('ForceFieldTap', 'press'), ('AM_WeightShift01', 'not-hands'),
                    ('DL_Injured_WalkForward_Enter', 'not-hands'), ('2P_BarStool_Idle', 'not-hands'), ('Wander_LongWalkEnter', 'not-hands'),
                    ('Test004_Farewell_3', 'unclassified')):
     s = scene('test_dlg.Node_Data_Sequence.SeqAct_Interp_1', [

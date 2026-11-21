@@ -142,7 +142,7 @@ WORDS = (
                       r'|handonshoulder|hand_on_shoulder|shoud?lder|cheek|carried|drag|tango|^dg_|strike|hit_|2p_?grab|grab_?2p'
                       r'|2p_\w*push|restrain|arrest|interrupt_reaction')),
     ('drink', W(r'drink|cheers|toast|(^|_)sip|pour|bartender|shotglass|chug')),
-    ('press', W(r'button|keypad|(^|_|[a-z])typ(e|ing)|console|terminal|keyboard|panel|lever|switch|computer|corepush|tap($|_|\d)|hatch')),
+    ('press', W(r'button|keypad|(^|_|[a-z])typ(e|ing)|console|terminal|keyboard|panel|lever|switch|computer|corepush|(?<!temple_)tap($|_|\d)|hatch')),
     ('give', W(r'give|hand_?over|handoff|offer')),
     ('take', W(r'pick_?up|(^|_)take|catch|receive|retriev|collect')),
     ('other-hands', W(r'omni|pda|data_?pad|pistol|rifle|shotgun|weapon|(^|_)aim|draw(_|$)|holster|fire(start|_|$)|shoot|reload|exam'
