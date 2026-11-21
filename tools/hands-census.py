@@ -448,6 +448,18 @@ def read(paths):
                 if mount_rank(r.get('file')) <= mount_rank(table[key].get('file')):
                     continue
             table[key] = r
+    # A conversation's line is the same line in every package that carries the conversation (ME1's cab ride is in 12 of the
+    # Citadel's; ME3's Citadel levels share some): one copy, by its path (the conversation's name and the node's objects).
+    lines = {}
+    for key, r in sorted(scenes.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or '')):
+        if not r.get('inConversation'):
+            continue
+        k = (r.get('game'), (r.get('path') or '').lower())
+        if k in lines:
+            dupes[(r.get('game'), 'line copies')] += 1
+            del scenes[key]
+        else:
+            lines[k] = key
     return list(scenes.values()), list(uses.values()), meta, dupes
 
 
@@ -516,17 +528,26 @@ def summarize(argv):
 def pick(facts, top):
     """The best gesture scenes, one per sequence and kind (a scene's copies, a conversation's repeats of one gesture)."""
     best = sorted((f for f in facts if f['kind'] in GESTURE_KINDS), key=lambda f: (-f['score'], f['package'], f['path']))
-    seen, picks = set(), []
+    distinct, seen = [], set()
     for f in best:
         # A conversation is one whatever package carries a copy of it (ME3's Citadel levels share some).
         k = (f['conversation'].lower(), f['kind']) if f['conversation'] else (f['package'], f['sequence'], f['kind'])
-        if k in seen:
-            continue
-        seen.add(k)
-        picks.append(f)
+        if k not in seen:
+            seen.add(k)
+            distinct.append(f)
+    # At most a third of the list of one kind first, then the rest by score: the best of each kind show.
+    cap = max(1, top // 3)
+    picks, per = [], collections.Counter()
+    for f in distinct:
+        if per[f['kind']] < cap and len(picks) < top:
+            picks.append(f)
+            per[f['kind']] += 1
+    for f in distinct:
         if len(picks) >= top:
             break
-    return picks
+        if f not in picks:
+            picks.append(f)
+    return sorted(picks, key=lambda f: (-f['score'], f['package'], f['path']))
 
 
 def report(facts, use_rows, totals, meta, dupes, top, quiet=False):

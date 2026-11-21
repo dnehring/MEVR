@@ -18,6 +18,36 @@ python -I tests/ConversationSweepTests.py
 
 `InspectionTests.cs` uses original synthetic property fixtures: string references, reply categories, node/transition IDs, high-precision timing, mismatched/missing arrays and sequence scope. No copyrighted dialogue or package binary is embedded. `ConversationScanTests.py` additionally accepts `--le2-cooked`, `--le1-cooked` and `--baseline-scanner` for read-only installed-corpus checks. Its generated output is temporary; these optional checks must report skipped corpus coverage when paths are omitted. The C++ runtime is unchanged.
 
+## Hands census (all three games)
+
+Which scripted scenes have Shepard's hands doing something the player could do with their own (research/74). The scanner
+writes the facts, `tools/hands-census.py` classifies:
+
+```powershell
+conversation-scan <Game>\ME3\BioGame scratch\hands-census\le3.jsonl --hands-census --game LE3 [--only <file text>] [--threads 4]
+python tools/hands-census.py summarize scratch\hands-census\le1.jsonl scratch\hands-census\le2.jsonl scratch\hands-census\le3.jsonl --out scratch\hands-census
+python tools/hands-census.py show scratch\hands-census\scenes.jsonl WardsFlux
+python tools/hands-census.py names scratch\hands-census\scenes.jsonl drink
+python -I tests/HandsCensusTests.py
+```
+
+`<BioGame>` is a game's `BioGame` folder: its `CookedPCConsole` and every `DLC\*\CookedPCConsole` are read (or pass one
+`CookedPCConsole`). Packages skipped: other languages' `_LOC_`, `_SND`, `_ART`, `_LIGHT`, `_T`, `Textures*`. It reads at below
+normal priority with 4 threads (a game may be running; it only opens packages). The whole of ME1 takes about 20 s, ME2 30 s,
+ME3 50 s; the JSONL is 70, 100 and 200 MB: keep it in `scratch\hands-census\` (gitignored).
+
+| Record | What it holds |
+|---|---|
+| `scene` | One per `SeqAct_Interp` (level matinee or conversation line, `inConversation`) and per `InterpData` none plays (`orphanData`): `path`, `sequence`, `data`, `length`, the designer `comment` (level matinees only: a line's comment is its text and is never read); each group's `class`, `name`, `name:m_nmSFXFindActor` and `bound` (what the `SeqAct_Interp` gives the group's variable link: `var` class, find-by-tag tags, `objClass`/`obj`/`tag`/`meshes` of an object, `named` targets of a `SeqVar_Named`, `outer` for a `SeqVar_External`: what the enclosing sequence or its `SequenceReference` is given for that label, three sequences out); each track's `class`, `actor` (ME1's `sActorTag`, the sequels' `m_nmFindActor`), `anims` (`InterpTrackAnimControl` keys: `t`, `end` from the AnimSet's sequence length when the set is in the package, `anim`, `rate`, `loop`), `gestures` (`BioEvtSysTrackGesture` keys: `t`, the gesture, transition and pose sets and anims), `props` (every property of a track named for a prop, an attachment or a weapon: `BioEvtSysTrackProp`'s `m_aPropKeys` with `nmProp`, `pPropMesh`, `nmAction`, `bEquip`), `keyTimes`, move spans, director `cuts`, fades; `upstream` (the nearest events before it, with a use's originator and a conversation node's ID), `downstream` (what its outputs do, three actions deep), `siblings` (the attach, prop and weapon actions in its sequence, with what each variable binds). |
+| `use` | A use event (`SeqEvent_Used`, `BioSeqEvt_OnPlayerActivate`, `BioSeqEvt_ArtPlaceableUsed` ...): its originator's class, name, tag and meshes, and the matinees within 12 actions of it. |
+| `conversation` | A `BioConversation`'s lines by node: each entry's `nExportID` and speaker tag (`Owner` for -1), the replies' IDs (Shepard's lines). No text. |
+| `classes` | Last line: the packages read, failures, seconds, the folders, and every sequence/interp class's export count (how each game names its prop and attach actions). |
+
+`hands-census.py summarize` keeps one copy of a package's scene (a DLC's over the base game's, the later DLC folder over an
+earlier one: an approximation of the mount order), and writes `scenes.jsonl`/`scenes.csv` (every scene with Shepard: how he is
+bound, his animation windows, props, what else the scene drives, kind, confidence, the names that drove it, `pauseAt`),
+`uses.jsonl` and `summary.json`; the rule is in its docstring and research/74.
+
 ## LE2 commands
 
 Pass the installed LE2 `CookedPCConsole` directory as `<cooked>`. Choose a new private output for every command; pass `--lex-dir` if the build's recorded path is unavailable.
