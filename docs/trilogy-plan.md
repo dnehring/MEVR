@@ -1260,6 +1260,18 @@ about stutter or pacing in a real headset.
 
 Each is asked once. "Today" is what the build does if nobody answers; no default changes without a yes (rule 19).
 
+**Asked 2026-11-20** (lane CEN1, the owner's idea "take the drink at Purgatory's bar ourselves"; research/74, the hands census,
+offline): of 120,000 scripted scenes in the three games, 720 have Shepard's hands doing one of six gestures (drink 74, press 313,
+take 168, give 20, salute 25, handshake 120; ME1 79, ME2 145, ME3 496), 89% of them conversation lines; 79 are level matinees,
+28 of those started by a use (Purgatory's drink, Kasumi's bar on ME2's Normandy, Tali's picture in ME3's cabin, ME3's elevator
+keypads). The proposal: pause the matinee at the gesture (`SeqAct_Interp.bPaused`, as walk-along does), give arm IK the arms,
+detect the gesture, resume to the end (the game's effects unchanged); fights, kisses and anything done to him stay authored.
+(a) Build it, and which kinds first? (b) Purgatory's drink as the prototype? (c) How strict a gesture (radius, hold, a timeout
+after which the authored animation plays)? (d) Level scenes from uses first, conversation lines later? Recommendation: yes;
+drink, then salute and handshake, then press, take and give last; Purgatory first (Kasumi's bar the alternative); lenient (a
+clear motion within ~12 cm held 0.4 s, an 8 s timeout and B play the authored animation); level scenes first. Today: nothing
+is built.
+
 **Answered 2026-11-19:** "Should crouching behind a low wall count as cover even when your real eyes stay above it?" (lane SMOKE's
 finding: the owner's natural crouch lowered his eyes to 1.52 m over walls about 1 m tall, 0 of 164 hits covered): "Yes I think so,
 for seated players this should of course be necessary." **Built (lane CCV, T31):** while the game has Shepard crouched, VR cover

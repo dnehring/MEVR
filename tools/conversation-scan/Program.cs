@@ -22,6 +22,7 @@ internal static class Program
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.jsonl> --wheels [--only <file text>] [--isb <ISACT folder>]  every line as text (Thespian mode, research/70)");
             Console.Error.WriteLine("conversation-scan <ISACT folder> <out folder> --vo-extract <list.tsv>  lines' recordings as WAV (Thespian mode's bench, research/70)");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out> --state-events <id,id,...> [--game LE2 --only <package>]   direct serialized state-transition elements");
+            Console.Error.WriteLine("conversation-scan <BioGame> <out.jsonl> --hands-census [--game LE1|LE2|LE3] [--only <text>] [--threads n]  scripted scenes where Shepard's hands may act (research/74)");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --references <name,name,...>  which level objects point at those conversations");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --class-dump <Class> [--only <file text>]  every object of a class, its properties");
             Console.Error.WriteLine("conversation-scan <CookedPCConsole> <out.txt> --script <Class.Function> [--only <file text>]  a script function or state, decompiled (game code: never commit it)");
@@ -105,6 +106,12 @@ internal static class Program
                 || output.Equals(source, StringComparison.OrdinalIgnoreCase)
                 || output.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new IOException("LE2 and LE3 inspection require a new output file outside the input package directory.");
+        }
+        if (args.Contains("--hands-census"))
+        {
+            string threads = args.SkipWhile(a => a != "--threads").Skip(1).FirstOrDefault();
+            return HandsCensus.Run(args[0], args[1], args.SkipWhile(a => a != "--only").Skip(1).FirstOrDefault(),
+                threads != null ? int.Parse(threads) : 4);
         }
         string voExtract = args.SkipWhile(a => a != "--vo-extract").Skip(1).FirstOrDefault();
         if (voExtract != null)
