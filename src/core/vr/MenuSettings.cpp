@@ -148,6 +148,9 @@ std::vector<Field> const& Schema() {
         {"vent", Type::Flag, 1},           // [Vent] enabled (research/45)
         {"mako_controls", Type::Flag, 1},  // [Mako] controls: the lever and the stick (research/46)
         {"cockpit", Type::Flag, 1},        // [Cockpit] enabled (research/47)
+        {"hair_physics", Type::Flag, 1},   // [Hair] on: hair and soft tissue move (docs/trilogy-hair-plan.md)
+        {"body_jiggle", Type::Flag, 1},    // [Hair] jiggle: the female bodies' soft tissue (section 12)
+        {"club_boost", Type::Flag, 1},     // [Hair] clubJiggle > 1 or clubSize: the clubs' dancers (section 12)
         {"mako_seat", Type::Choice, 0, "top"},
         {"mako_bottom_available", Type::Flag, 0, "", 0, 1, F::None, true},
         // The controller guide's texts (core/vr/MenuSettings GuideTexts; "<id>" the drawing's label, "<id>_how" the list's line).

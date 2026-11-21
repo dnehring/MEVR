@@ -14,7 +14,7 @@ open hand, order your squad by pointing or by voice, and drive the Mako from its
 [Report a problem](#report-a-problem) ·
 [Discord](https://discord.gg/flat2vr)
 
-> **Development preview.** Mass Effect 1 only for now; Mass Effect 2 and 3 come later. Much of it has been played
+> **Development preview.** Mass Effect 1, with Mass Effect 2 and 3 as an alpha since 0.4.0. Much of it has been played
 > in a headset only a few times, so your reports are very welcome. What comes next, and what needs testing, is in the
 > [roadmap](ROADMAP.md).
 
@@ -94,7 +94,8 @@ The full list is in the [changelog](CHANGELOG.md); every button and gesture is i
 
 ## Known issues
 
-- **Mass Effect 1 only**, on game version 2.0.0.48602.
+- **Mass Effect 2 and 3 are an alpha**: much less played than Mass Effect 1, mostly on a simulated headset; no
+  Hammerhead controls, hacking in your hands, reload by hand or placed sound yet. Game version 2.0.0.48602.
 - **Performance:** the heaviest scenes don't hold 90 frames a second everywhere; a lower render resolution helps.
 - **Walking more than about 0.75 m** around your room leaves Shepard behind: recenter (double-click the right stick).
 - **Steam's "verify files"** or a game update can remove the loader: run **Repair** in `MEVR-Setup.exe` from the

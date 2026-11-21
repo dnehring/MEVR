@@ -55,10 +55,9 @@ inline constexpr wchar_t kSteamAppIdW[] = L"1328670";
 inline constexpr wchar_t kSteamBootLe1Args[] = L"-applaunch 1328670 -game 1 -autoterminate";
 // The same for any of the three games: "-applaunch 1328670 -game <n> -autoterminate".
 std::wstring SteamBootArgs(int game);
-// Which games our own loader in Game\Launcher starts when the launcher is given -game <n> (src/loader BootFromLauncher).
-// Today only Mass Effect 1: for a sequel the launcher's own picker shows, and Setup's Launch says so. ME3Tweaks'
-// LEBinkProxy there starts all three. When the loader's autoboot takes -game 2 and 3 (GameArguments above is what it
-// needs), set these and Launch stops telling players to pick the game.
-inline constexpr bool kOurLauncherBoots[4] = {false, true, false, false};
+// Which games our own loader in Game\Launcher starts when the launcher is given -game <n> (src/loader BootFromLauncher):
+// all three since 0.4.0 (T51; ME1 since research/33 section 12), as ME3Tweaks' LEBinkProxy there does. A game set false
+// here would get the launcher's own picker, and Setup's Launch would tell the player to pick it.
+inline constexpr bool kOurLauncherBoots[4] = {false, true, true, true};
 
 } // namespace mevr::install::launch

@@ -1,20 +1,22 @@
-# MEVR: Mass Effect 1 in VR
+# MEVR: Mass Effect Legendary Edition in VR
 
 <!-- DRAFT for the GitHub release (research/33). tools/package-release.ps1 copies it into the release as README.md. -->
 
 **Source code:** https://github.com/dnehring/MEVR (tag v<version>), GPL-3.0.
 
-VR for **Mass Effect 1, Legendary Edition** on PC: stereo 3D, head tracking, and your hands as Shepard's hands. You
+VR for **Mass Effect Legendary Edition** on PC: stereo 3D, head tracking, and your hands as Shepard's hands. You
 aim with the controller, carry guns in body holsters, hold a rifle with both hands, and throw real grenades. Built on
-Halcyon's MassEffect1-VR renderer.
+Halcyon's MassEffect1-VR, MassEffect2-VR and MassEffect3-VR renderers.
 
-**Mass Effect 1 only.** Mass Effect 2 and 3 are not playable in VR with this mod. The setup changes nothing in their
-folders, so they play as before.
+**Mass Effect 1** is the main game of this release. **Mass Effect 2 and 3 are an alpha:** the same body, hands,
+holsters, menus and cinema screen as Mass Effect 1, played through far less of each campaign, mostly on a simulated
+headset. Expect rough edges, and please report them. MEVR Setup installs each game on its own (the game switcher at
+the top of its window); a game you don't install plays as before.
 
 ## What you need
 
-- **Mass Effect Legendary Edition** from Steam or the EA app, up to date: `MassEffect1.exe` version **2.0.0.48602**.
-  The mod stays switched off on any other version.
+- **Mass Effect Legendary Edition** from Steam or the EA app, up to date: `MassEffect1.exe`, `MassEffect2.exe` and
+  `MassEffect3.exe` version **2.0.0.48602**. The mod stays switched off on any other version.
 - **A PC VR headset** and its OpenXR runtime, set as the active one: SteamVR, the Meta app (Quest over Link), or
   Virtual Desktop. See [Headsets and controllers](#headsets-and-controllers) for what has actually been tried.
 - Windows 10 or 11 (64-bit) and a recent GPU. VR renders the game twice per frame.
@@ -72,8 +74,10 @@ The log names the profile the runtime chose and what's missing on it (`halcyon b
 2. Start the game once and quit, so it creates its settings file.
 3. Run **MEVR-Setup.exe**. It finds the game, checks its version and your VR runtime, and tells you what it will do.
 4. Press **Install**.
-5. Put the headset on and press **Launch**. With SteamVR as your VR runtime it starts SteamVR first, then Mass
-   Effect 1 straight past the launcher's game picker.
+5. Put the headset on and press **Launch**. With SteamVR as your VR runtime it starts SteamVR first, then the game
+   straight past the launcher's game picker.
+
+For Mass Effect 2 or 3, pick the game at the top of MEVR Setup's window and press **Install** and **Launch** for it.
 
 In the game, both thumbsticks clicked in and held (or `\` on the keyboard) open the VR menu. With new controllers,
 the game first offers a calibration of about a minute in the headset, so the guns line up with your hands and the
@@ -258,7 +262,11 @@ Read-only in the file's Properties, then use **Settings > Apply**.
 
 ## Known issues
 
-- **Mass Effect 1 only.** Mass Effect 2 and 3 aren't playable in VR.
+- **Mass Effect 2 and 3 are an alpha.** Most of Mass Effect 1's systems run on them, but they have been played much
+  less, mostly on a simulated headset. Not there yet: the Hammerhead (it drives with the game's own controls), Mass
+  Effect 2's hacking and bypass minigames in your hands, reloading thermal clips by hand, and placed sound. MEVR Setup
+  doesn't yet install voice orders, 3D audio or texture packs for them.
+- **Mass Effect 3** has been played the least: combat in particular has barely been tried in a headset.
 - **Much of it is new.** The project started in October 2026. Many features were tried in a headset only a few times,
   and the newest (the game's screens in the room, the galaxy map, the 3D cinema screen, the vent, the fingers, the
   wrist and gun panels) only on a simulated headset so far; the Mako's cockpit had two drives in a headset.
@@ -277,14 +285,14 @@ Read-only in the file's Properties, then use **Settings > Apply**.
 ## Troubleshooting
 
 - **"Unsupported game version"**: update the game in Steam or the EA app.
-- **The launcher shows its game picker**: use the setup's **Launch** button, or pick Mass Effect 1 in the launcher.
+- **The launcher shows its game picker**: use the setup's **Launch** button, or pick the game in the launcher.
 - **No VR**: start SteamVR (or your headset's runtime) and wake the headset first, then the game. Make sure your
   headset's runtime is the active OpenXR runtime (SteamVR: Settings > OpenXR; Meta app: General > OpenXR runtime).
 - **No VR or no cockpit after Steam's "verify files"**: run **Repair** in the `MEVR-Setup.exe` from the downloaded zip.
 - **Logs**:
-  - the mod: `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log`
-  - the loader: `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log`
-  - the renderer: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt`
+  - the mod: `Game\ME1\Binaries\Win64\Logs\LE1MEVR.log` (`ME2`, `LE2MEVR.log` and `ME3`, `LE3MEVR.log` for the others)
+  - the loader: `Game\ME1\Binaries\Win64\Logs\MEVRLoader.log` (each game's own folder)
+  - the renderer: `%LOCALAPPDATA%\MELEVR\MELEVR_Log.txt` (Mass Effect 2: `%LOCALAPPDATA%\MELE2VR\MELE2VR_Log.txt`)
 
 ## Reporting a problem
 

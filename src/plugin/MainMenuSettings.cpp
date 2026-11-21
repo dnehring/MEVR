@@ -404,6 +404,10 @@ void Settings::Read(menu::Values& v) {
     flag("vent", ini.Num("Vent", "enabled", 1.0f) != 0.0f);
     flag("mako_controls", ini.Num("Mako", "controls", 1.0f) != 0.0f);
     flag("cockpit", ini.Num("Cockpit", "enabled", 1.0f) != 0.0f);
+    // Hair and body physics (game/Hair re-reads [Hair] every second; its defaults: on, jiggle, clubJiggle 2, clubSize 1).
+    flag("hair_physics", ini.Num("Hair", "on", 1.0f) != 0.0f);
+    flag("body_jiggle", ini.Num("Hair", "jiggle", 1.0f) != 0.0f);
+    flag("club_boost", ini.Num("Hair", "clubJiggle", 2.0f) > 1.0f || ini.Num("Hair", "clubSize", 1.0f) != 0.0f);
     bool const bottomAvailable = vr::mako_seat::BottomAvailable(mevr::engine::AsiDir());
     auto const seat = vr::mako_seat::Parse(ini.Text("Cockpit", "seatPosition", ""))
         .value_or(vr::mako_seat::FromScript(ini.Text("Cockpit", "script", vr::mako_seat::kTopScript)));
@@ -1019,6 +1023,15 @@ void Settings::Write(std::string const& key, menu::Values const& v, bool final) 
         Put("Mako", "controls", onOff("mako_controls"), true);
     } else if (key == "cockpit") {
         Put("Cockpit", "enabled", onOff("cockpit"), true);
+    } else if (key == "hair_physics") {
+        Put("Hair", "on", onOff("hair_physics"), true);
+    } else if (key == "body_jiggle") {
+        Put("Hair", "jiggle", onOff("body_jiggle"), true);
+    } else if (key == "club_boost") {
+        // Off: the clubs' women move and look as everyone else (twice the jiggle and the dancers' shapes, on).
+        bool const on = v.Flag("club_boost");
+        Put("Hair", "clubJiggle", on ? "2" : "1", true);
+        Put("Hair", "clubSize", on ? "1" : "0", true);
     } else if (key == "mako_seat") {
         bool const bottom = v.Text("mako_seat") == "bottom" && vr::mako_seat::BottomAvailable(mevr::engine::AsiDir());
         Put("Cockpit", "seatPosition", bottom ? "bottom" : "top", true);

@@ -13,7 +13,7 @@
 // Plugins hook through us (InstallHook / UninstallHook: MinHook) and find byte patterns in the exe (FindPattern).
 // Plain ASIs without SPI exports are only loaded (their DllMain does the rest). The log is
 // Binaries\Win64\Logs\MEVRLoader.log. In the Legendary Edition launcher (Game\Launcher) it loads no ASIs: it starts
-// Mass Effect 1 when the launcher is given -game 1 (BootFromLauncher; its log is Game\Launcher\Logs\MEVRLoader.log).
+// the game when the launcher is given -game 1, 2 or 3 (BootFromLauncher; its log is Game\Launcher\Logs\MEVRLoader.log).
 
 #include "install/LaunchArgs.hpp"
 #include "loader/Forwarders.hpp"
@@ -339,8 +339,9 @@ bool WaitForDecryption(DWORD timeoutMs) {
 // `-game 1` (MEVR Setup's Launch asks Steam for `-applaunch 1328670 -game 1 -autoterminate`), the launcher hands over:
 // Mass Effect 1 starts from its Binaries\Win64 with the launcher's own arguments (LauncherConfig.cfg: language,
 // subtitles), as a child of the launcher (so it keeps what Steam and the EA app gave the launcher), and with
-// `-autoterminate` the launcher ends. Without `-game` the launcher is left alone (its own picker). LE2 and LE3 aren't
-// booted (their arguments differ): the picker shows. The behaviour of LEBinkProxy's launcher module, written anew.
+// `-autoterminate` the launcher ends. Without `-game` the launcher is left alone (its own picker). `-game 2` and `3` start
+// Mass Effect 2 and 3 the same way, with their own language switch (launch::GameArguments; T51). The behaviour of
+// LEBinkProxy's launcher module, written anew.
 void BootFromLauncher(fs::path const& launcherDir) {
     std::vector<std::wstring> args;
     int count = 0;
@@ -356,27 +357,24 @@ void BootFromLauncher(fs::path const& launcherDir) {
         Log("the launcher, without -game: its own menu");
         return;
     }
-    if (*boot.game != 1) {
-        Log("the launcher was asked for game %d: only Mass Effect 1 is started from here; its own menu", *boot.game);
-        return;
-    }
+    int const game = *boot.game;
     std::error_code ec;
-    fs::path const win64 = fs::weakly_canonical(launcherDir / L".." / L"ME1" / L"Binaries" / L"Win64", ec);
-    fs::path const exe = win64 / L"MassEffect1.exe";
+    fs::path const win64 = fs::weakly_canonical(launcherDir / L".." / launch::GameFolderName(game) / L"Binaries" / L"Win64", ec);
+    fs::path const exe = win64 / launch::GameExeName(game);
     if (!fs::exists(exe, ec)) {
-        Log("-game 1, but there's no %s: its own menu", Narrow(exe.wstring()).c_str());
+        Log("-game %d, but there's no %s: its own menu", game, Narrow(exe.wstring()).c_str());
         return;
     }
-    std::wstring const arguments = launch::Le1Arguments(launch::ReadLauncherConfig());
+    std::wstring const arguments = launch::GameArguments(game, launch::ReadLauncherConfig());
     std::wstring commandLine = L"\"" + exe.wstring() + L"\" " + arguments;
     STARTUPINFOW startup{};
     startup.cb = sizeof startup;
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, win64.c_str(), &startup, &process)) {
-        Log("-game 1: couldn't start %s (error %lu): its own menu", Narrow(exe.wstring()).c_str(), GetLastError());
+        Log("-game %d: couldn't start %s (error %lu): its own menu", game, Narrow(exe.wstring()).c_str(), GetLastError());
         return;
     }
-    Log("-game 1: started Mass Effect 1 (pid %lu) with %s", process.dwProcessId, Narrow(arguments).c_str());
+    Log("-game %d: started Mass Effect %d (pid %lu) with %s", game, game, process.dwProcessId, Narrow(arguments).c_str());
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
     if (boot.autoTerminate) {

@@ -463,6 +463,15 @@
 			<div class="row" data-class-disabled="le2"><div class="rl"><div class="rlab">Steady cutscenes</div><div class="rdesc">Caps cutscenes to a frame rate the headset can hold</div></div>
 				<button class="tog" data-class-on="steady_cine" data-event-click="toggle('steady_cine')"><div class="knob"/></button></div>
 		</div>
+		<div class="group">
+			<div class="gtitle"><span>Characters</span><div class="gline"/></div>
+			<div class="row"><div class="rl"><div class="rlab">Hair and body physics</div><div class="rdesc">The hair and bodies of the people near you move as they do, and your hands push them aside. On the characters MEVR Setup rigged from your game files.</div></div>
+				<button class="tog" data-class-on="hair_physics" data-event-click="toggle('hair_physics')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Body physics</div><div class="rdesc">Women's bodies move with their steps and jumps; in armour a quarter as much</div></div>
+				<button class="tog" data-class-on="body_jiggle" data-event-click="toggle('body_jiggle')"><div class="knob"/></button></div>
+			<div class="row"><div class="rl"><div class="rlab">Club dancers</div><div class="rdesc">In the clubs (Chora's Den, Afterlife, the Citadel's) the women move twice as much and the dancers have fuller figures. Off: as everyone else.</div></div>
+				<button class="tog" data-class-on="club_boost" data-event-click="toggle('club_boost')"><div class="knob"/></button></div>
+		</div>
 		<div class="group" data-class-disabled="le2">
 			<div class="gtitle"><span>Optional content</span><div class="gline"/></div>
 			<div class="hint" data-if="le2">Not available in {{game_title}} yet.</div>

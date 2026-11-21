@@ -7,6 +7,24 @@ itself is written in one place only: `project(MEVR VERSION ...)` in `CMakeLists.
 
 ## Unreleased
 
+- **Mass Effect 2 and 3, as an alpha.** MEVR Setup now offers all three games: pick one at the top of its window, then
+  Install and Launch it. Both sequels run Halcyon's renderer for that game in life-size stereo with Mass Effect 1's systems:
+  Shepard's body and arms on your controllers, hand aim, body holsters (only a holster draws), sights and scopes, the gun
+  kick, physical crouch and cover, the melee gesture, the power wheel at your left hand, the squad placed with the B arc,
+  our menu and the omni-tool rail, the galaxy map, and conversations and cutscenes on the 3D cinema screen (first person
+  as an experimental choice). Mass Effect 2 also vaults with a double A. They have been played far less than Mass Effect 1,
+  mostly on a simulated headset, and some things aren't there yet: the Hammerhead's controls and cockpit, Mass Effect 2's
+  hacking in your hands, the thermal-clip reload by hand, placed sound; Setup doesn't install voice orders, 3D audio or
+  texture packs for them yet. Mass Effect 3 has seen the least play, combat most of all.
+- **Launch starts Mass Effect 2 and 3 straight away too.** Our loader in the Legendary Edition launcher now starts the
+  game Launch asks for, not only Mass Effect 1, so there's no game picker in between.
+- **Hair and body physics.** The people near you move as they should: Miranda's hair swings with her head and steps
+  (Mass Effect 2 and 3), and every woman's body in the trilogy moves with her steps, turns and jumps: in a bodysuit, casual
+  clothes or underwear fully, in armour a quarter as much (Samara half, Kasumi a quarter, EDI not at all). Your hands push
+  hair aside. In the clubs (Chora's Den, Afterlife, the Citadel's) the women move twice as much and each dancer has a
+  fuller figure of her own, the same every visit; skirts and dresses hang naturally over the shape. Shepard herself isn't
+  changed. The rigged bodies are made from your own game files when you install (nothing of the game is in the download).
+  Display > Characters in the VR menu turns the physics, the body physics or the clubs' boost off.
 - **Mako: your head aims the turret in the cockpit.** Both hands drive, so riding in the cockpit the cannon and machine gun
   fire where you look (the reticle sits in the middle of your view); the stick's trigger and A still fire them. The toggle
   nearest you on the stick's base is the **auto-turret switch**: flip it with a fingertip and your squadmate aims and fires
